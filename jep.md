@@ -1,4 +1,4 @@
-(This is a draft for a planned JEP to improve metaspace allocator)
+(This is a draft for a possible future JEP improving the metaspace allocator)
 
 # Improved metaspace allocator
 
