@@ -1,150 +1,116 @@
-(This is a draft for a possible future JEP improving the metaspace allocator)
 
-# Improved metaspace allocator
 
 Summary
 -------
 
-Enhance the metaspace allocator to reduce memory footprint and to return memory to the OS in a more timely manner.
-
-Goals
------
-
-- Improve memory elasticity for metaspace. In its current form, memory is often retained by the VM even when classes are unloaded; that memory may be reused for future metaspace growth but that may never happen.
-
-- Reduce amount of memory waste for space in use by a life class loader.
-
-- Simplify metaspace coding and make it cheaper to maintain and easier to experiment with.
-
+Metaspace allocator shall be improved to reduce memory footprint, return unused memory to the OS more promptly, and make the CPU-to-memory-footprint tradeoff taken by the allocator adjustable.
 
 Non-Goals
 ---------
 
-- Replacement of metaspace allocator with a different mechanism (e.g. malloc).
-
-- Wholesale change of metaspace architecture.
+- Wholesale replacement of the metaspace allocator with a different mechanism (e.g. raw malloc, dlmalloc etc).
 
 Success Metrics
 ---------------
 
-Metaspace memory footprint should be reduced. Amount of unused metaspace memory retained by the VM should be reduced. Metaspace coding should be more maintainable.
+Memory footprint for active Metaspace allocations should go down. Less memory should be retained for released Metaspace allocations - Metaspace should be more elastic.
 
 
 Motivation
 ----------
 
-Metaspace uses more memory than needed to store class metadata. While that is not completely avoidable, the waste/usage ratio can get excessive when certain pathological allocation pattern happen (e.g. many shortlived class loaders). Furthermore, spikes in memory footpring due to high metaspace usage are often partly retained by the VM even when the spike has subsided again.
+### Reduce memory footprint and make Metaspace more elastic
 
-Memory is mostly wasted in two places:
+Allocating memory for class meta data from Metaspace incurs overhead. That is normal for any allocator. However, for the JVM, the overhead ratio can get excessive in certain pathological situations.
 
-Unused space in chunks in use: when a classloader allocates metaspace, it gets handed a chunk for its exclusive use. The size of that chunk is a guess toward the assumed future allocation behaviour of the loader. A loader which is assumed to load many more classes is given a large chunk, to prevent frequent callups into metaspace; a loader which is assumed to not need much space (e.g. Reflection loaders) will be given a very small chunk to reduce memory waste.
+In particular, two waste areas stick out:
 
-Loader usually stop loading classes at some point and often never resume class loading. In that case, the unused part of its current chunk is wasted. This waste ratio is especially high for loaders which did not load many classes and are on its first or second small chunk.
+#### Intra-chunk waste for active allocations
+When a classloader allocates metaspace, it gets handed a memory chunk of a (often much) larger size than would be necessary to satisfy that single allocation. It is guessed that the loader will continue loading classes and store metadata. And if that guess is correct, giving the loader a memory chunk for exlusive use is a good decision since further allocations can be satisfied concurrently to other allocations, lock-free, from that chunk without bothering the global Metaspace allocator. In addition, the chunk serves as an arena for all allocations from that class loader, simplifying bulk-releasing that memory when the class loader goes away.
 
-Free chunks: when a loader gets unloaded, all its chunks are returned to a free list. Those chunks may be reused for future allocation, but that may never happen or at least not in the immediate future. In the meantime that memory is retained by the VM and lost to the OS. There is a mechanism in place to return that memory to the OS (VirtualSpaceNode::purge()), but that only works with low fragmentation, and not for the class metaspace.
+But a class loader usually stops and never resumes class loading at some point. Any memory of that chunk not used up at that point stays unused and is wasted. That is why it is important to correctly guess future loading behaviour for a class loader; e.g. loaders known or suspected to load only few classes are given very small chunks. But in the end, that guess can go wrong; currently there is no mechanism to reuse the rest of unused chunks for different loaders.
 
-Both types of waste may add up to substantial losses in pathological cases. This is particularly disadvantageous in container environments where resources are paid by use. In addition, there is very little control today of when memory is returned to the OS. Since both returning memory and retaining memory may be called for in various situations, more control would be a good thing.
+#### Waste in unused chunks
+
+When a loader gets unloaded, all its chunks are returned to a free list. Those chunks may be reused for future allocation, but that may never happen or at least not in the immediate future. In the meantime that memory is wasted.
+
+Currently that memory is released to the OS when one of the underlying 2MB virtual memory regions happens to only contain free chunks; however that depends highly on fragmentation (how tightly interleaved allocations from live and dead classloaders are). In addition to that, memory in the Compressed Class Space is never returned. So in practice much of freelist Metaspace memory is often retained by the VM.
+
+### Better tunability
+
+A lot of decisions the Metaspace allocator does are tradeoffs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Currently those decisions are hard wired and cannot be influenced. It may be advantagous to influence them with an outside switch, e.g. to generally shift emphasis to memory footprint in situations where we care more about footprint than about startup time. That would make it also interesting to experiment with different settings.
+
+### Code clarity
+
+It is the intention of this proposal that, when implemented, code complexity should ideally go down. Or at least not increase by much. 
+
 
 Description
 -----------
 
 The proposed implementation changes come in three parts:
 
-Part A)
+### A) Replace hard-wired chunk geometry with a buddy-style allocation scheme
 
-Change chunk geometry to reduce fragmentation
+Currently there exist three kinds of chunks - leaving out humongous chunks for sake of simplicity - called "specialized", "small" and "medium" for historic reason. They are typically sized 1K/4K/64K. These odd ratios increase fragmentation and sometimes footprint unnecessarily and hamper in a number of ways. 
 
-Currently there exist three kinds of chunks, traditionally called "specialized", "small" and "medium", sized 1K/4K/64K (64bit, non-class case, not counting humongous chunks). Size ratio between "specialized" and "small" is 1:4, between "small" and "medium" 1:16. These odd ratios increase fragmentation unnecessarily and hamper in a number of ways:
+- It may increase memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
+- It increases fragmentation unnecessarily since when chunks are merged upon return to the freelist, to form a 64K chunk we need 16 4K chunks happen to be free at just the right location.
 
-When allocating from metaspace, a chunk is needed large enough to hold the allocation. Today, where a loader needs 5K of metaspace memory, a small chunk of 4K size would be insufficient and it would be given a full medium chunk of 64K. Even worse, if the freelist only contains small 4K chunks, that 64K chunk would have to be allocated from virtual memory.
+It is proposed to replace the hard-wired three-chunk-type scheme with a more fluent one where chunks are sized in power-of-two steps from a minimum (1K) to a maximum (64K) - essentially a buddy-allocation scheme. Chunks would have to be allocated at boundaries aligned to their chunk size, but that is already the case today (since the introduction of chunk coalescation).
 
-When classes are unloaded, the corresponding metaspace is returned and added to freelists. It is compacted where possible - chunks are merged with neighboring free chunks. However, we need 16 small chunks to be free to form one "medium" 64K sized chunk. A single chunk in that range still in use will prevent us from merging a 64K chunk.
+The proposed scheme would also the the prerequisite for parts (B) and (C) of the proposal, see below.
 
-How to do this better:
+Note that such a change in chunk geometry needs to be coupled with a smarter chunk handout strategy which would be able to reuse free chunks of all sizes. For example, a class loader deemed worthy of large chunks, which normally would have handed a 64K chunk, may be given a 32K or 16K chunk instead if such a chunk happens to be free, before allocating a new 64K chunk from virtual memory.
 
-Replace the hard-wired "three chunk types" system with one where chunks are sized in power-of-two steps from a minimum (1K) to a maximum (64K). It would increase chances of getting chunks close to the desired size and increase chances of chunk merging, thus reducing fragmention of free chunks.
+### B) Reduce intra-chunk waste for active allocations
 
-This is very close to a traditional buddy allocation style. However no tree structure would be needed; it can be implemented using the mechanisms existing today.
+This could be done with two techniques. Both may be implemented independently from each other.
 
-It would be beneficial toward code complexity: many operations, including fusing and splitting chunks, would become simpler.
+#### B1) Unused chunk space stealing
 
-Note: chunk allocation sequence - the order in which a loader is given chunks of which size - would not have to be changed. That is because the old chunk sizes (1K/4K/64K) clearly map to new chunk sizes. However, we should implement that sequence in a cleaner way, allowing for easy modification and experimentation.
+With Part (A) in place we may actually split a chunk into smaller ones much more efficiently. That means we could, for all live class loaders, periodically "prune" their current chunks: if a loader used less than half his current chunk, the unused part could be split off and used to form new chunks, which could be returned to the freelist.
 
+Example: A loader stopped loading after using up 12K of a 64K chunk. In that case, we could split that 64K chunk into three chunks sized 16K|16K|32K and return the latter two to the freelist.
 
--------
+The assumption here is that the loader will not continue to load classes, at least not in the immediate future, and therefore the freed chunks will not immediately reallocated by it. A natural point to do this pruning would be when handling a Metaspace OOM. It also could happen independently from OOMs at certain periodic intervals. It could also be combined with a heuristic which tries to guess whether the loader stopped loading classes, e.g. a loader-specific timer.
 
-Part B)
+#### B2) Lazily committing chunks
 
-Intra-chunk waste for used chunks could be reduced with two techniques. Both ways are complementary and may be implemented independently from each other.
+Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in VirtualSpaceNode. Each node is a ReservedSpace with a commit watermark; all allocated chunks are completely contained by the committed region.
 
-B1) "Unused chunk space stealing"
+This could be changed: For chunks spanning multiple pages, each chunk could maintain its own commit watermark. The first page, containing the chunk header, would be committed from the start; later pages would be committed when the loader allocates memory from the chunk, but not before.
 
-Iterate over all life class loaders. For each loader, "prune" its current chunk: split the unused parts off, form new chunks from it and and put them into a freelist. To effectively work, this needs Part (A) implemented.
+### C) Return memory for unused chunks more promptly to the OS
 
-Example: A loader is using only the first 12K of a 64K chunk. In that case, we could split that 64K chunk into three chunks sized 16K|16K|32K and return the latter two to the freelist.
-
-The assumption here is that the loader will not continue to load classes, at least not in the immediate future, and therefore the freed chunks will not immediately reallocated by it. A natural point to do this pruning would be when handling a Metaspace OOM. It also could happen independently from OOMs at certain periodic intervals. It could be combined with a heuristic which tries to guess whether the loader stopped loading classes - e.g. if it did not load classes for a certain time period.
-
-B2) Late-committing chunks:
-
-Currently, memory is committed in a coarse-grained fashion in the lowest allocation layer, in VirtualSpaceNode. Each node is a ReservedSpace with a commit watermark; all allocated chunks are completely contained by the committed region.
-
-This could be changed: For chunks spanning multiple pages, each chunk could maintain its own commit boundaries. The first page, containing the chunk header, would obviously always have to be committed; however, the rest of the chunk pages could be committed on demand only when the chunk fills up.
-
-
-The effect of (B1) would be that excessive waste in in-use chunks is reduced.
-
-The effect of (B2) would be that wasted memory in in-use chunks does not count toward the overall resident set size of the process. The performance effects of excessive use of commit/uncommit would have to be examined.
-
------
-
-Part C)
-
-Free chunks:
-
-Chunks in the free list are wasted as long as they are not reused, which may be never or not for a long time. They could be uncommitted for as long as they reside in the freelist, returning their memory to the OS.
-
-As with (B2), since the first page of a chunk contains its header, it cannot be uncommitted. But for chunks spanning multiple pages, all pages following the header page could be uncommitted. 
-
-Since we merge chunks when adding them to the freelist - which would be way more efficient with Part (A) implemented - the chance of chunks spanning multiple pages is good.
-
-
-----
-
+Chunks in the free list are wasted as long as they are not reused, which may be never or not for a long time. Their memory can be uncommitted until they would be reused again. As with (B2), this can only be done for chunks spanning multiple pages, since the header needs to be kept alive. That is why it would benefit from part (A) too, since that would increase the chance of free chunks merging to larger chunks in the free list.
 
 
 Alternatives
 ------------
 
--TBD
+A recurring idea popping up is to get rid of the Metaspace allocator and replace it with a simple malloc() based one. That has obvious drawbacks, since
+- we would not be able to allocate contiguous space for Compressed Class Space
+- we would be highly dependend on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap.
+- we would potentially be slower and/or increase memory footprint since the malloc allocator is geared toward general purpose, random-free allocations whereas the Metaspace allocators can cut corners knowing e.g. that memory is bulk-freed.
 
 Testing
 -------
 
-// What kinds of test development and execution will be required in order
-// to validate this enhancement, beyond the usual mandatory unit tests?
-// Be sure to list any special platform or hardware requirements.
-
 - TBD -
- 
+
 Risks and Assumptions
 ---------------------
 
-// Describe any risks or assumptions that must be considered along with
-// this proposal.  Could any plausible events derail this work, or even
-// render it unnecessary?  If you have mitigation plans for the known
-// risks then please describe them.
+It is assumed that the consensus is not to re-implement Metaspace in a completely different way. Were that to happen, e.g. a hypothetical switch back to PermGen-in-Java-heap or a re-implementation using platform malloc, this proposal would be moot.
 
-- TBD -
+It is also assumed that scenarios which load and unload many class loaders keep being valid and important. A general switch to microservice-everything with tiny heaps and a single app class loader never unloading would make this proposal unnecessary.
+
+Parts (B2) and (C) assume that committing and uncommitting memory can be done reasonably cheap. If that turns out to be untrue, implementation would have to be adjusted to reduce frequency of commit/uncommit calls, but that would not invalidate the basic idea. 
 
 Dependencies
 -----------
 
-// Describe all dependencies that this JEP has on other JEPs, JBS issues,
-// components, products, or anything else.  Dependencies upon JEPs or JBS
-// issues should also be recorded as links in the JEP issue itself.
-//
-// Describe any JEPs that depend upon this JEP, and likewise make sure
-// they are linked to this issue in JBS.
-
 - TBD -
+
+(This is a draft for a possible future JEP improving the metaspace allocator)
