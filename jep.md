@@ -8,7 +8,7 @@ Metaspace allocator shall be improved to reduce memory footprint, return unused 
 Non-Goals
 ---------
 
-- Wholesale replacement of the metaspace allocator with a different mechanism (e.g. raw malloc, dlmalloc etc).
+- Wholesale replacement of the Metaspace allocator with a different mechanism (e.g. raw malloc, dlmalloc etc).
 
 Success Metrics
 ---------------
@@ -26,9 +26,9 @@ Allocating memory for class meta data from Metaspace incurs overhead. That is no
 In particular, two waste areas stick out:
 
 #### Intra-chunk waste for active allocations
-When a classloader allocates metaspace, it gets handed a memory chunk of a (often much) larger size than would be necessary to satisfy that single allocation. It is guessed that the loader will continue loading classes and store metadata. And if that guess is correct, giving the loader a memory chunk for exlusive use is a good decision since further allocations can be satisfied concurrently to other allocations, lock-free, from that chunk without bothering the global Metaspace allocator. In addition, the chunk serves as an arena for all allocations from that class loader, simplifying bulk-releasing that memory when the class loader goes away.
+When a classloader allocates Metaspace, it gets handed a memory chunk of a (often much) larger size than would be necessary to satisfy that single allocation. It is guessed that the loader will continue loading classes and store metadata. And if that guess is correct, giving the loader a memory chunk for exclusive use is a good decision since further allocations can be satisfied concurrently to other allocations, lock-free, from that chunk without bothering the global Metaspace allocator. In addition, the chunk serves as an arena for all allocations from that class loader, simplifying bulk-releasing that memory when the class loader goes away.
 
-But a class loader usually stops and never resumes class loading at some point. Any memory of that chunk not used up at that point stays unused and is wasted. That is why it is important to correctly guess future loading behaviour for a class loader; e.g. loaders known or suspected to load only few classes are given very small chunks. But in the end, that guess can go wrong; currently there is no mechanism to reuse the rest of unused chunks for different loaders.
+But a class loader usually stops and never resumes class loading at some point. Any memory of that chunk not used up at that point stays unused and is wasted. That is why it is important to correctly guess future loading behavior for a class loader; e.g. loaders known or suspected to load only few classes are given very small chunks. But in the end, that guess can go wrong; currently there is no mechanism to reuse the rest of unused chunks for different loaders.
 
 #### Waste in unused chunks
 
@@ -38,7 +38,7 @@ Currently that memory is released to the OS when one of the underlying 2MB virtu
 
 ### Better tunability
 
-A lot of decisions the Metaspace allocator does are tradeoffs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Currently those decisions are hard wired and cannot be influenced. It may be advantagous to influence them with an outside switch, e.g. to generally shift emphasis to memory footprint in situations where we care more about footprint than about startup time. That would make it also interesting to experiment with different settings.
+A lot of decisions the Metaspace allocator does are tradeoffs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Currently those decisions are hard wired and cannot be influenced. It may be advantageous to influence them with an outside switch, e.g. to generally shift emphasis to memory footprint in situations where we care more about footprint than about startup time. That would make it also interesting to experiment with different settings.
 
 ### Code clarity
 
@@ -90,7 +90,7 @@ Alternatives
 
 A recurring idea popping up is to get rid of the Metaspace allocator and replace it with a simple malloc() based one. That has obvious drawbacks, since
 - we would not be able to allocate contiguous space for Compressed Class Space
-- we would be highly dependend on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap.
+- we would be highly dependent on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap.
 - we would potentially be slower and/or increase memory footprint since the malloc allocator is geared toward general purpose, random-free allocations whereas the Metaspace allocators can cut corners knowing e.g. that memory is bulk-freed.
 
 Testing
@@ -112,4 +112,4 @@ Dependencies
 
 - TBD -
 
-(This is a draft for a possible future JEP improving the metaspace allocator)
+(This is a draft for a possible future JEP improving the Metaspace allocator)
