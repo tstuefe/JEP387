@@ -79,7 +79,8 @@ The assumption here is that the loader will not continue to load classes, at lea
 
 Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in VirtualSpaceNode. Each node is a ReservedSpace with a commit watermark; all allocated chunks are completely contained by the committed region.
 
-This could be changed: For chunks spanning multiple pages, each chunk could maintain its own commit watermark. The first page, containing the chunk header, would be committed from the start; later pages would be committed when the loader allocates memory from the chunk, but not before.
+This could be changed: For chunks spanning multiple pages, each chunk could maintain its own commit watermark. The first page, containing the chunk header, would be committed from the start; later pages would be committed when the loader allocates memory from the chunk, but not before. The effect would be that intra-chunk waste would be largely prevented for multi-page-sized chunks since unused waste section would remain uncommitted.
+
 
 ### C) Return memory for unused chunks more promptly to the OS
 
