@@ -52,12 +52,12 @@ The proposed implementation changes come in three parts:
 
 ### A) Replace hard-wired chunk geometry with a buddy-style allocation scheme
 
-Currently there exist three kinds of chunks - leaving out humongous chunks for sake of simplicity - called "specialized", "small" and "medium" for historic reason. They are typically sized 1K/4K/64K. These odd ratios increase fragmentation and sometimes footprint unnecessarily and hamper in a number of ways. 
+Currently there exist three kinds of chunks - leaving out humongous chunks for sake of simplicity - called "specialized", "small" and "medium" for historic reason, sized (64bit, non-class case) 1K/4K/64K. These odd ratios increase fragmentation and sometimes footprint unnecessarily:
 
-- It may increase memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
-- It increases fragmentation unnecessarily since when chunks are merged upon return to the freelist, to form a 64K chunk we need 16 4K chunks happen to be free at just the right location.
+- increased memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
+- increased fragmentation since when chunks are merged upon return to the freelist, to form a 64K chunk we need 16 4K chunks happen to be free at just the right location.
 
-It is proposed to replace the hard-wired three-chunk-type scheme with a more fluent one where chunks are sized in power-of-two steps from a minimum (1K) to a maximum (64K) - essentially a buddy-allocation scheme. Chunks would have to be allocated at boundaries aligned to their chunk size, but that is already the case today (since the introduction of chunk coalescation).
+The proposal is to replace the hard-wired three-chunk-type scheme with a more fluid one where chunks are sized in power-of-two steps from a minimum (e.g 1K) to a maximum (e.g 64K) - essentially a buddy-allocation scheme. Chunks would have to be allocated at boundaries aligned to their chunk size, but that is already the case today (since the introduction of chunk coalescation).
 
 The proposed scheme would also the the prerequisite for parts (B) and (C) of the proposal, see below.
 
@@ -84,7 +84,6 @@ This could be changed: For chunks spanning multiple pages, each chunk could main
 ### C) Return memory for unused chunks more promptly to the OS
 
 Chunks in the free list are wasted as long as they are not reused, which may be never or not for a long time. Their memory can be uncommitted until they would be reused again. As with (B2), this can only be done for chunks spanning multiple pages, since the header needs to be kept alive. That is why it would benefit from part (A) too, since that would increase the chance of free chunks merging to larger chunks in the free list.
-
 
 Alternatives
 ------------
