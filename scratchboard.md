@@ -2,18 +2,22 @@
 
 - chunksizes:
 	
-	MIN_CHUNK_SIZE = 1K (512?)
-	MAX_NUM_LEVELS = 13 (14)
-	MAX_CHUNK_SIZE = 1K << MAX_NUM_LEVELS (4MB)
+	MIN_CHUNK_SIZE = 1K (because that is large enough for 99% of InstanceKlass)
+	max chunk size should be at least 2M, better 4M. That is large enough to capture the largest InstanceKlass theoretically possible. Reasoning:
+		- we want to get rid of humongous chunks. In non-class metaspace we can, as a fallback, always allocate a chunk from C-heap if it turns out our largest chunk size we planned for was not large enough. But in class-space we cannot. Since in class space only Klass structures live and those are the largest things we will see, those will determine the largest chunk size. Largest I can recreate with my little arms are ~512K (with 32000 methods, 32000 interface methods).
+	-> therefore lets assume 4M.
+	-> therefore MAX_NUM_LEVELS = 12
+	MAX_NUM_LEVELS = 12
+	MAX_CHUNK_SIZE = 1K << MAX_NUM_LEVELS (4MB) 
 
 - chunk:
 8	- owner (?) (debug - space mgr or chunk mgr)
 8	- container (still needed since we need to know the borders for safe coalescation)
-16	- prev next (either freelist or spacemgt list)
-1	- level (0 = smallest, e.g. 512)
+16	- prev next (either points to freelist or spacemgt list)
+1	- level (0 = smallest, e.g. 512) -> determines size() 
 1	- flags (is_free)
-2	- num_pages_committed (16bit => 256mb chunks)
-4	- sanity eyecatcher (debug)	
+2	- num_pages_committed (16bit => 256mb chunks) or, for simplicity, commit boundary ptr
+4	- sanity eyecatcher (debug)
 
 - chunkmanager
 	- now has MAX_NUM_LEVELS freelists
