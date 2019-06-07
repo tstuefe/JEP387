@@ -52,18 +52,18 @@ The proposed implementation changes:
 
 ### A) Commit in-use chunks lazily and uncommit free chunks
 
-Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in the nodes of the virtual space list. Each node is an instance of ReservedSpace with a commit watermark; all allocated chunks are completely contained by the committed region.
+Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in the nodes of the virtual space list. Each node is a memory mapping - an instance of ReservedSpace with a commit watermark. All chunks carved from that node are completely contained within the committed region.
 
-Proposed change: Let each chunk be responsible for committing its own pages and delay page commit to the point when caller requests memory from the chunk. Furthermore, let chunks which reside in the freelist uncommit their pages.
+Proposed change: Let each chunk be responsible for maintaining its own commit watermark, committing its own pages and delay page commits to the point when caller requests memory from the chunk. Furthermore, let chunks which reside in the freelist uncommit their pages.
 
 Notes:
-- the page containing the chunk header cannot be uncommitted. Only the followup pages can be uncommitted. This rules out uncommitting completely for chunks whose size is page size or smaller.
-- fine granular committing/ucommitting comes with cost: first, runtime costs of the associated mmap calls; then, fragmentation of the virtual memory into many small segments. The costs of the latter depend highly on the platform. So instead of a very naive approach where one would uncommit every single page a more controlled and tunable approach is needed where uncommitting would be limited to larger chunks and be done in units of multiple pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk.
+- Obviously, the page containing the chunk header cannot be uncommitted - unless one were to remove the chunk headers from the chunk and store them somewhere else, which is out of scope for this improvement. Only pages followin the header page can be uncommitted. This means only chunks which span multiple pages can uncommit.
+- fine granular committing/ucommitting comes with cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So instead of a naive approach where one would uncommit every single page a more controlled and tunable approach is needed where uncommitting would be limited to larger chunks and be done in units of multiple pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk.
  
 
 ### B) Replace hard-wired chunk geometry with a buddy-style allocation scheme
 
-Currently there exist three kinds of chunks,  called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exists of heterogenous sizes larger than a medium chunk. These odd ratios increase fragmentation and footprint unnecessarily:
+Currently there exist three kinds of chunks,  called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exist of heterogenous sizes larger than a medium chunk. These odd ratios increase fragmentation and footprint unnecessarily:
 
 - increased chunk-internal memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
 - increased fragmentation since when chunks are merged upon return to the freelist: to form a 64K chunk we need 16 4K chunks happen to be free at just the right location.
