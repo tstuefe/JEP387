@@ -121,8 +121,6 @@ This drastically simplifies VirtualSpaceNode coding: We do not need a "retire" m
 
 
 
-
-
 ### The advantages of this proposal:
 
 - the chance to combine free chunks is greatly increased. This reduces fragmentation of free chunks. It makes uncommitting free chunks easier and more effective, since the larger those chunks are the larger the portion which can be uncommitted, and the smaller the number of virtual memory segments created.
