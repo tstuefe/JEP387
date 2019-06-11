@@ -18,7 +18,7 @@ Memory footprint for active Metaspace allocations should go down. Less memory sh
 Motivation
 ----------
 
-### Reduce memory footprint and make Metaspace more elastic
+## Reduce memory footprint and make Metaspace more elastic
 
 Allocating memory for class meta data from Metaspace incurs overhead. That is normal for any allocator. However, overhead-to-payload ratio can get excessive in pathological situations.
 
@@ -37,13 +37,13 @@ When a loader gets unloaded, all its chunks are returned to a free list. Those c
 Currently that memory is released to the OS when the underlying VirtualSpaceNode only consists of free chunks; however the chance of that happening depends highly on fragmentation (how tightly interleaved allocations from live and dead class loaders are). To make matters worse, memory in the Compressed Class Space is never returned. So in practice freelist memory is often retained by the VM.
 
 
-### Better tunability
+## Better tunability
 
 A lot of decisions the Metaspace allocator does are trade-offs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Many of these decisions are currently hard wired and cannot be influenced easily. 
 
 It may be advantageous to influence them with an outside switch, e.g. to shift emphasis to memory footprint in situations where we care more about footprint than about startup time.
 
-### Code clarity
+## Code clarity
 
 It is the intention of this proposal that, when implemented, code complexity should go down.
 
@@ -103,7 +103,7 @@ Returning C1 to the freelist will merge it with c2, then in turn with c3. It can
 
 Basically, chunks will "crystallize" around a freed chunk as far as possible.
 
-### Buddy-style chunk merging
+### Buddy-style chunk splitting
 
 When a chunk is requested from the freelist and no chunk of exactly the requested size is found, a larger chunk can  be taken and be split. The resulting superfluous smaller chunks would be returned to the freelist.
 
@@ -133,7 +133,7 @@ The maximum size of a chunk should be large enough to hold the largest conceivab
 
 Note that even with this large size - much larger than todays 64K medium chunks, chunk merging and splitting would still be faster: We need 12 operations to form the largest possible chunk (4M) from the smallest possible chunk (1K) whereas today we need 16 operations to form a 64K medium chunk from 16 4K small chunks.
 
-##### We do not need Humongous chunks anymore
+### We do not need Humongous chunks anymore
 
 Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes the chunk splitting and merging code very complex. I propose to get rid of them since with this proposal they will loose their purpose.
 
@@ -151,13 +151,13 @@ This technique would continue to work with this proposal: one would just give th
 
 (Side note, with the advent of CDS most of the humongous chunk allocated for the bootstrap CL remains unused today, so delayed committing would help here.)
 
-##### A new chunk-hand-out strategy toward class loaders
+### A new chunk-hand-out strategy toward class loaders
 
 We may want to have a new chunk-allotment strategy, since now, with the new chunk merging mechanism, we can have a multitude of chunks of all (13) sizes in the freelist. 
 
 - TBD -
 
-##### VirtualSpaceNode can be simplified
+### VirtualSpaceNode can be simplified
 
 VirtualSpaceNode coding can be greatly simplified by changing the allocation process a bit: Instead of carving out chunks of all sizes from the node, we only directly carve root chunks (4MB) from the node. Then we pass this root chunk to the freelist, where the next allocation will split it up into the needed chunk sizes.
 
@@ -166,7 +166,7 @@ Also, we take care that VirtualSpaceNode boundaries are aligned to root node siz
 This simplifies VirtualSpaceNode coding a lot. For instance, we do not need a "retire" mechanism anymore, since there can never be any "leftover chunks": in the current implementation, a node is "retired" when it cannot serve an outstanding metaspace allocation, in which case the leftover space is hacked into smaller chunks and added to the freelist. But with the new scheme, there can be no leftover space since the node is sized to multiples of the largest chunk size, and we only ever allocate in units of the largest chunk size - so we either still have space enogh for a root chunk (which is large enough for every possible allocation) or no space at all.
 
 
-### General advantages of this proposal:
+## General advantages of this proposal:
 
 - the chance to combine free chunks is greatly increased. This reduces fragmentation of free chunks. It makes uncommitting free chunks easier and more effective, since the larger those chunks are the larger the portion which can be uncommitted, and the smaller the number of virtual memory segments created.
 
