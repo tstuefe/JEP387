@@ -30,18 +30,18 @@ When a class loader allocates Metaspace, it gets handed a memory chunk. That chu
 
 But a class loader usually stops class loading at some point. From that point on, the still unsused portion of the current chunk is wasted.
 
-The VM attempts to minimize the effect of this by guessing future loading behavior of a class loader and handing it what it thinks it will need - a loader known to load only few classes is given a small chunk, a loader assumed to go on loading for a while a big chunk. But that guess can be wrong and currently there is no recurse; the unused remainder of a chunk belonging to a loader which did stop loading classes is wasted.
-
 _Waste in unused chunks_
 
 When a loader gets unloaded, all its chunks are returned to a free list. Those chunks may be reused for future allocation, but that may never happen or at least not in the immediate future. In the meantime that memory is wasted.
 
-Currently that memory is released to the OS when one of the underlying virtual memory regions happens to only contain free chunks; however that depends highly on fragmentation (how tightly interleaved allocations from live and dead class loaders are). In addition to that, memory in the Compressed Class Space is never returned. So in practice freelist memory is often retained by the VM.
+Currently that memory is released to the OS when the underlying VirtualSpaceNode only consists of free chunks; however the chance of that happening depends highly on fragmentation (how tightly interleaved allocations from live and dead class loaders are). To make matters worse, memory in the Compressed Class Space is never returned. So in practice freelist memory is often retained by the VM.
 
 
 ### Better tunability
 
-A lot of decisions the Metaspace allocator does are trade-offs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Currently those decisions are hard wired and cannot be influenced. It may be advantageous to influence them with an outside switch, e.g. to generally shift emphasis to memory footprint in situations where we care more about footprint than about startup time. Such a switch would also help with tuning the default allotment policies.
+A lot of decisions the Metaspace allocator does are trade-offs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Many of these decisions are currently hard wired and cannot be influenced easily. 
+
+It may be advantageous to influence them with an outside switch, e.g. to shift emphasis to memory footprint in situations where we care more about footprint than about startup time.
 
 ### Code clarity
 
@@ -53,37 +53,69 @@ Description
 
 The proposed implementation changes:
 
-### A) Commit in-use chunks lazily and uncommit free chunks
+## A) Commit in-use chunks lazily and uncommit free chunks
 
 Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in the nodes of the virtual space list. Each node is a memory mapping - an instance of ReservedSpace with a commit watermark. All chunks carved from that node are completely contained within the committed region.
 
-Proposed change: Move committing/uncommitting memory to the chunk level. Let each chunk be responsible for maintaining its own commit watermark, commit its own pages. Pages can be committed when a caller requests memory from that chunk - not before. Furthermore, let chunks which reside in the freelist uncommit their pages.
+Proposed change: Move committing/uncommitting memory to the chunk level. Let each chunk be responsible for maintaining its own commit watermark and commit its own pages. Pages would be committed when a caller requests memory from that chunk - not before. 
 
-The effect this would have is twofold: for one, the penalty of handing a large chunk to a class loader and it not using the chunk up completely is reduced. Then, when a chunk is returned to the freelist, it can be uncommitted and therefore reduces the memory footprint up to the point where it is needed again.
+Furthermore, let chunks which are put into the freelist uncommit their pages.
+
+The effect this would have is two-fold: for one, the penalty of handing a large chunk to a class loader and it not using the chunk up completely is reduced. Then, when a chunk is returned to the freelist, it can be uncommitted and therefore reduces the memory footprint up to the point where it is needed again.
 
 Notes:
 
 - Obviously, the page containing the chunk header cannot be uncommitted. Only pages following the page containing the chunk header can be uncommitted. This means that this technique can only be used for chunks which span multiple pages.
-- committing/ucommitting comes with a cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So we may want to limit committing/uncommitting to a certain granularity and frequency.For example, uncommitting should be limited to larger chunks and be done in batches of n pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk (e.g. caching).
+- committing/ucommitting comes with a cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So we may want to limit committing/uncommitting to a certain granularity and frequency. For example, uncommitting should be limited to larger chunks and be done in batches of n pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk (e.g. caching).
  
 
-### B) Replace hard-wired chunk geometry with a buddy allocation scheme
+## B) Replace hard-wired chunk geometry with a buddy allocation scheme
 
 Currently there exist three kinds of chunks, called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exist; they are of heterogenous size, larger than a medium chunk. These odd ratios are not the ideal solution.
 
 Since JDK-8198423, we combine free chunks to form larger chunks - meaning, if e.g. a small chunk is returned to the free lists since its class loader died, we attempt to combine it with neighboring free chunks to form a larger chunk. In turn, when a small chunk is needed but only a larger chunk found in the free lists, that chunk is split up into smaller chunks.
 
-However, due to the odd chunk geometry and the existence of humongous chunks that implementation is complicated and not as efficient in preventing fragmentation as it could be. Free lists may fill up with un-mergeable small chunks which are unsuited if a class loader needs a larger chunk.
+However, due to the odd chunk geometry and the existence of humongous chunks that implementation is complicated and not as efficient in preventing fragmentation as it could be. Free lists may still fill up with un-mergeable small chunks which are unsuited if a class loader needs a larger chunk.
 
-#### Proposal: 
+Proposal: 
 
 Replace the hard-wired three-chunk-size scheme with a more fluid scheme where chunks are sized in power-of-two steps from a minimum size to a maximum size. This would be very similar to a standard buddy-allocation scheme [1]. Part of the proposal is to get rid of humongous chunks altogether, more about this below.
 
-##### Buddy-style chunk merging and splitting
+### Buddy-style chunk merging
 
-A chunk, when returned to the freelist, would be merged with its buddy (if free), the resulting merged chunk with its buddy (if free) and so forth, until either the largest chunk size ("root chunk") is reached or a unfree buddy is encountered.
+Such a buddy-style chunk, when returned to the freelist, would be merged with its buddy (if that is free), the resulting merged chunk with its buddy (if that is free) and so forth, until either the largest chunk size ("root chunk") is reached or an unfree buddy is encountered.
 
-In turn, when a chunk is requested from the freelist and no chunk of the requested size is found, a larger chunk can taken and be split. The resulting superfluous smaller chunks would be returned to the freelist.
+Example: let C1 be a used 4K chunk, c2 a free 4K chunk, c3 a free 8K chunk and C4 a used 16K chunk.
+
+0   4   8   12  16  20  24  28  32 k
+|   |   |   |   |   |   |   |   |
+| C1| c2|   c3  |       C4      |
+
+Returning C1 to the freelist will merge it with c2, then in turn with c3. It cannot be merged further since C4 is still in use:
+
+0   4   8   12  16  20  24  28  32 k
+|   |   |   |   |   |   |   |   |
+|       c5      |       C4      |
+
+Basically, chunks will "crystallize" around a freed chunk as far as possible.
+
+### Buddy-style chunk merging
+
+When a chunk is requested from the freelist and no chunk of exactly the requested size is found, a larger chunk can  be taken and be split. The resulting superfluous smaller chunks would be returned to the freelist.
+
+Example: 
+
+We have a single 32K free chunk but need a 4K chunk.
+
+0   4   8   12  16  20  24  28  32 k
+|   |   |   |   |   |   |   |   |
+|               c1              |
+
+The 32K chunk would be split into, respectively, one 16K, one 8K, and two 4K chunks. All but one of the 4K chunks are returned to the freelist, the one 4K chunk marked as in-use and given to the caller:
+
+0   4   8   12  16  20  24  28  32 k
+|   |   |   |   |   |   |   |   |
+| C2| c3|   c4  |       c5      |
 
 ##### New Chunk sizes
 
@@ -91,9 +123,11 @@ In the new scheme, the minimum size of a chunk would be 1K (64bit) - large enoug
 
 The maximum size of a chunk should be large enough to hold the largest conceivable InstanceKlass structure, plus a healthy margin. I estimate this currently at 4MB. It should be limited upward since the larger this size is, the (slightly) more expensive chunk splitting and merging becomes.
 
+Note that even with this large size - much larger than todays 64K medium chunks, chunk merging and splitting would still be faster: We need 12 operations to form the largest possible chunk (4M) from the smallest possible chunk (1K) whereas today we need 16 operations to form a 64K medium chunk from 16 4K small chunks.
+
 ##### We do not need Humongous chunks anymore
 
-Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes chunk splitting and merging very complicated. I propose to just get rid of them since with this proposal they will loose their purpose.
+Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes the chunk splitting and merging code very complex. I propose to get rid of them since with this proposal they will loose their purpose.
 
 Humongous chunks are currently needed because:
 
