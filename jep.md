@@ -85,7 +85,7 @@ A chunk, when returned to the freelist, would be merged with its buddy (if free)
 
 In turn, when a chunk is requested from the freelist and no chunk of the requested size is found, a larger chunk can taken and be split. The resulting superfluous smaller chunks will be returned to the freelist.
 
-##### Chunk sizes
+##### New Chunk sizes
 
 In the new scheme, the minimum size of a chunk would be 1K (64bit) - large enough to hold 99% of InstanceKlass structures but small enough to not unnecessarily waste memory for class loaders which only ever load one class (e.g. Reflection- or Lambda-CL). This would correspond to the "specialized" chunk of today.
 
@@ -95,16 +95,20 @@ The maximum size of a chunk should be large enough to hold the largest conceivab
 
 Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes chunk splitting and merging very complicated. I propose to just get rid of them since in this proposal they lost their purpose.
 
-Humongous chunks currently serve two needs:
+Humongous chunks are currently needed since:
 
-a) sometimes a Metaspace allocation happens to be larger than the largest possible homogenous chunk (medium chunks at 64K). For instance, an InstanceKlass can be larger than 64K if its itable/vtable are large. For those cases, a chunk larger than a medium chunk was needed. And in order to not waste memory, it was made exactly as large as that one allocation which caused its creation.
+1) sometimes a Metaspace allocation happens to be larger than the largest possible homogenous chunk (medium chunks at 64K). For instance, an InstanceKlass can be larger than 64K if its itable/vtable are large. For those cases, a chunk larger than a medium chunk was needed. And in order to not waste memory, it was made exactly as large as that one allocation which caused its creation.
 
+With this proposal, (1) can be satisfied differently: when faced with a large Metaspace allocation request (e.g. 65K), one would give it a chunk large enought to fit the data, in this case 128K. Part of this proposal is to commit chunk memory only as needed, not pro-actively, so only first part of the chunk containing the metadata needs to be committed (in case of the example, with a 4K page size, 68K).
 
-b) 
+Described in a different sense, the penalty of handing out large chunks to class loaders is greatly reduced, so we can afford handing out larger chunks to callers (within reason).
 
-With this proposal, (a) can be satisfied differently: when faced with a large Metaspace allocation request, one could give it a large enough chunk, e.g. 4MB. Since part of this proposal is to commit chunk memory as needed, not pro-actively, this chunk does not necessarily have to be as large as the causing allocation. For example, if the allocation was 2.5MB, we only would commit the first 2.5MB of the chunk and leave the rest uncommitted. 
+2) Another reason Humongous chunks exist is that we try to minimize allocations from class loaders we already know will allocate a lot. For example, the bootstrap classloader gets handed a humongous chunk of 4MB in the beginning. That minimizes call backs into the metaspace allocator.
 
-In a different sense, the penalty of handing out large chunks to class loaders is greatly reduced.
+This technique would continue to work with this proposal: one would just give the bootstrap CL a large buddy chunk. Again, with the delayed-committing technique used we can 
+
+(Side note, with the advent of CDS most of the humongous chunk allocated for the bootstrap CL remains unused today.)
+
 
 
 
