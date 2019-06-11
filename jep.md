@@ -153,18 +153,24 @@ This technique would continue to work with this proposal: one would just give th
 
 ##### A new chunk-hand-out strategy toward class loaders
 
+We may want to have a new chunk-allotment strategy, since now, with the new chunk merging mechanism, we can have a multitude of chunks of all (13) sizes in the freelist. 
+
 - TBD -
 
 ##### VirtualSpaceNode can be simplified
 
-Let n be the size of the largest possible chunk - a root chunk, 4MB. VirtualSpaceNode should be sized in multiples of this size. Only root chunks can be directly allocated from the node. The root chunk then would be be added to the freelist and after that, allocation should proceed to happen from the freelist.
+VirtualSpaceNode coding can be greatly simplified by changing the allocation process a bit: Instead of carving out chunks of all sizes from the node, we only directly carve root chunks (4MB) from the node. Then we pass this root chunk to the freelist, where the next allocation will split it up into the needed chunk sizes.
 
-While not costing much, this simplifies VirtualSpaceNode coding a lot. For instance, we do not need a "retire" mechanism anymore. Currently, a node is "retired" when it cannot serve an outstanding metaspace allocation - the leftover space is hacked into chunks and added to the freelist. But with the new scheme, there will be no leftover space, since nodes are now sized in multiples of a root chunk, so either we still have space enogh for a root chunk (which is large enough for every possible allocation) or no space at all.
+Also, we take care that VirtualSpaceNode boundaries are aligned to root node size (4MB). 
+
+This simplifies VirtualSpaceNode coding a lot. For instance, we do not need a "retire" mechanism anymore, since there can never be any "leftover chunks": in the current implementation, a node is "retired" when it cannot serve an outstanding metaspace allocation, in which case the leftover space is hacked into smaller chunks and added to the freelist. But with the new scheme, there can be no leftover space since the node is sized to multiples of the largest chunk size, and we only ever allocate in units of the largest chunk size - so we either still have space enogh for a root chunk (which is large enough for every possible allocation) or no space at all.
 
 
-### The advantages of this proposal:
+### General advantages of this proposal:
 
 - the chance to combine free chunks is greatly increased. This reduces fragmentation of free chunks. It makes uncommitting free chunks easier and more effective, since the larger those chunks are the larger the portion which can be uncommitted, and the smaller the number of virtual memory segments created.
+
+- It would reduce fragmentation and thus increase chances to reuse a chunk.
 
 - It would give us more choices as to which chunk sizes to hand to class loaders.
 
