@@ -1,12 +1,13 @@
 Summary
 -------
 
-Metaspace allocator shall return unused memory to the OS more promptly, and make the CPU-to-memory-footprint tradeoff taken by the allocator adjustable.
+Metaspace allocator shall return unused memory to the OS more promptly. CPU-to-memory-footprint tradeoff taken by the allocator adjustable.
 
 Non-Goals
 ---------
 
-- Wholesale replacement of the Metaspace allocator with a different mechanism (e.g. raw malloc, dlmalloc etc).
+Wholesale replacement of the Metaspace allocator with a different mechanism (e.g. raw malloc, dlmalloc etc).
+
 
 Success Metrics
 ---------------
@@ -19,21 +20,23 @@ Motivation
 
 ### Reduce memory footprint and make Metaspace more elastic
 
-Allocating memory for class meta data from Metaspace incurs overhead. That is normal for any allocator. However, overhead-to-payload ratio can get excessive in certain pathological situations.
+Allocating memory for class meta data from Metaspace incurs overhead. That is normal for any allocator. However, overhead-to-payload ratio can get excessive in pathological situations.
 
 In particular, two waste areas stick out:
 
 _Intra-chunk waste for active allocations_
 
-When a class loader allocates Metaspace, it gets handed a memory chunk of a larger size than would be necessary to satisfy that single allocation, since it is assumed that the loader will continue loading classes and need more memory for metadata. And if that assumption is correct, giving the loader a memory chunk for exclusive use is a good decision since further allocations can be satisfied concurrently to other allocations from that chunk without bothering the global Metaspace allocator. In addition, the chunk serves as an arena for all allocations from that loader which can be bulk-released when the class loader is unloaded.
+When a class loader allocates Metaspace, it gets handed a memory chunk. That chunk should serve multiple follow-up allocations of that class loader, since it is assumed that the loader will continue loading classes and use up that chunk. This serves two purposes: for one, it reduces invocations of central - lock-protected - parts of the Metaspace. In addition, by releasing that chunk when the class loader gets unloaded we effectively bulk-release all allocations from that loader without the need to track single allocations.
 
-But a class loader usually stops class loading at some point. Any memory of that chunk not used up at that point stays unused and is wasted. The VM attempts to deal with that by guessing future loading behavior of a class loader and handing it what it thinks it will need - a loader known or suspected to load only few classes is given a small chunk, a loader assumed to go on loading for a while a big chunk. But that guess can be wrong and currently there is no recurse; the unused remainder of a chunk belonging to a loader which did stop loading classes is wasted.
+But a class loader usually stops class loading at some point. At that point, no memory will be allocated from the chunk anymore and therefore the rest of the chunk is wasted. 
+
+The VM attempts to minimize the effect of this by guessing future loading behavior of a class loader and handing it what it thinks it will need - a loader known or suspected to load only few classes is given a small chunk, a loader assumed to go on loading for a while a big chunk. But that guess can be wrong and currently there is no recurse; the unused remainder of a chunk belonging to a loader which did stop loading classes is wasted.
 
 _Waste in unused chunks_
 
 When a loader gets unloaded, all its chunks are returned to a free list. Those chunks may be reused for future allocation, but that may never happen or at least not in the immediate future. In the meantime that memory is wasted.
 
-Currently that memory is released to the OS when one of the underlying 2MB virtual memory regions happens to only contain free chunks; however that depends highly on fragmentation (how tightly interleaved allocations from live and dead class loaders are). In addition to that, memory in the Compressed Class Space is never returned. So in practice  freelist memory is often retained by the VM.
+Currently that memory is released to the OS when one of the underlying 2MB virtual memory regions happens to only contain free chunks; however that depends highly on fragmentation (how tightly interleaved allocations from live and dead class loaders are). In addition to that, memory in the Compressed Class Space is never returned. So in practice freelist memory is often retained by the VM.
 
 
 ### Better tunability
@@ -42,7 +45,7 @@ A lot of decisions the Metaspace allocator does are trade-offs between speed and
 
 ### Code clarity
 
-It is the intention of this proposal that, when implemented, code complexity should ideally go down. Or at least not increase by much. 
+It is the intention of this proposal that, when implemented, code complexity should actually go down.
 
 
 Description
@@ -54,29 +57,45 @@ The proposed implementation changes:
 
 Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in the nodes of the virtual space list. Each node is a memory mapping - an instance of ReservedSpace with a commit watermark. All chunks carved from that node are completely contained within the committed region.
 
-Proposed change: Let each chunk be responsible for maintaining its own commit watermark, committing its own pages and delay page commits to the point when caller requests memory from the chunk. Furthermore, let chunks which reside in the freelist uncommit their pages.
+Proposed change: Move committing/uncommitting memory to the chunk level. Let each chunk be responsible for maintaining its own commit watermark, commit its own pages. Pages can be committed when a caller requests memory from that chunk - not before. Furthermore, let chunks which reside in the freelist uncommit their pages.
+
+The effect this would have is twofold:
+
+For one, the penalty of handing a large chunk to a class loader and it not using the chunk up completely is reduced. Then, when a chunk is returned to the freelist, it can be uncommitted and therefore reduces the memory footprint up to the point where it is needed again.
 
 Notes:
-- Obviously, the page containing the chunk header cannot be uncommitted - unless one were to remove the chunk headers from the chunk and store them somewhere else, which is out of scope for this improvement. Only pages followin the header page can be uncommitted. This means only chunks which span multiple pages can uncommit.
-- fine granular committing/ucommitting comes with cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So instead of a naive approach where one would uncommit every single page a more controlled and tunable approach is needed where uncommitting would be limited to larger chunks and be done in units of multiple pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk.
+
+- Obviously, the page containing the chunk header cannot be uncommitted. Only pages followin the header page can be uncommitted. This means only chunks which span multiple pages can uncommit.
+- committing/ucommitting comes with cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So we may want to limit committing/uncommitting to a certain granularity and frequency.For example, uncommitting could be limited to larger chunks and be done in batches of multiple pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk.
  
 
 ### B) Replace hard-wired chunk geometry with a buddy-style allocation scheme
 
-Currently there exist three kinds of chunks,  called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exist of heterogenous sizes larger than a medium chunk. These odd ratios increase fragmentation and footprint unnecessarily:
+Currently there exist three kinds of chunks, called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exist of heterogenous sizes larger than a medium chunk. These odd ratios are not the ideal solution.
 
-- increased chunk-internal memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
+yy
+- Since the jump from - especially - small to medium chunks is very large, it unnecessarily increases the foot print it increases the chunk-internal memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
 - increased fragmentation since when chunks are merged upon return to the freelist: to form a 64K chunk we need 16 4K chunks happen to be free at just the right location.
 
 In addition to that, these odd ratios make the metaspace coding difficult to maintain and error-prone. When switching to a by-chunk-commit-scheme, it makes sense to rethink these.
+yy
 
-Proposal: Replace the hard-wired three-chunk-type scheme with a buddy-allocation scheme where chunks are sized in power-of-two steps from a minimum size to a maximum size. 
+Proposal: Replace the hard-wired three-chunk-type scheme with a standard buddy-allocation scheme where chunks are sized in power-of-two steps from a minimum size to a maximum size. 
 
-A chunk, when returned to the freelist, will be merged with its buddy (if free), the resulting merged chunk with its buddy (if free) and so forth, until either the largest chunk size is reached or a unfree buddy is encountered. This results in free chunks crystallizing and forming larger chunks. This reduces fragmentation and increased the effect of uncommitting free chunks (fewer and larger ranges to uncommit).
+A chunk, when returned to the freelist, would be merged with its buddy (if that is free), the resulting merged chunk with its buddy (if free) and so forth, until either the largest chunk size is reached or a unfree buddy is encountered. This results in free chunks crystallizing and forming larger chunks, which reduces fragmentation and increases the effect of uncommitting free chunks (fewer and larger ranges to uncommit).
 
-When a chunk would be requested from the freelist, if no free chunk of the requested size is found, a larger chunk will taken and be split. The resulting smaller chunks will be returned to the freelist.
+When a chunk would be requested from the freelist, if no free chunk of the requested size is found, a larger chunk will taken and be split. The resulting superfluous smaller chunks will be returned to the freelist.
 
 (_Note:_ Partly, this crystallizin-and-splitting happens in the current implementation too, but is hampered by the odd chunk geometry.)
+
+
+
+
+
+
+
+
+
 
 The proposed scheme would also be a prerequisite for parts (B) and (C) of the proposal, see below.
 
