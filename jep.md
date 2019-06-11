@@ -59,9 +59,7 @@ Currently memory is committed in a coarse-grained fashion in the lowest allocati
 
 Proposed change: Move committing/uncommitting memory to the chunk level. Let each chunk be responsible for maintaining its own commit watermark, commit its own pages. Pages can be committed when a caller requests memory from that chunk - not before. Furthermore, let chunks which reside in the freelist uncommit their pages.
 
-The effect this would have is twofold:
-
-For one, the penalty of handing a large chunk to a class loader and it not using the chunk up completely is reduced. Then, when a chunk is returned to the freelist, it can be uncommitted and therefore reduces the memory footprint up to the point where it is needed again.
+The effect this would have is twofold: for one, the penalty of handing a large chunk to a class loader and it not using the chunk up completely is reduced. Then, when a chunk is returned to the freelist, it can be uncommitted and therefore reduces the memory footprint up to the point where it is needed again.
 
 Notes:
 
@@ -69,29 +67,65 @@ Notes:
 - committing/ucommitting comes with cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So we may want to limit committing/uncommitting to a certain granularity and frequency.For example, uncommitting could be limited to larger chunks and be done in batches of multiple pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk.
  
 
-### B) Replace hard-wired chunk geometry with a buddy-style allocation scheme
+### B) Replace hard-wired chunk geometry with a buddy allocation scheme
 
 Currently there exist three kinds of chunks, called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exist of heterogenous sizes larger than a medium chunk. These odd ratios are not the ideal solution.
 
-yy
-- Since the jump from - especially - small to medium chunks is very large, it unnecessarily increases the foot print it increases the chunk-internal memory footprint since if a class loader allocates more than 4K we have to give it a full 64K chunk which may be way more than it ever needs.
-- increased fragmentation since when chunks are merged upon return to the freelist: to form a 64K chunk we need 16 4K chunks happen to be free at just the right location.
+Since JDK-8198423, we combine free chunks to form larger chunks - meaning, if e.g. a small chunk is returned to the free lists since its class loader died, it is attempted to combine it with neighboring free chunks to form a larger chunk. In turn, when a small chunk is needed but only a larger chunk found in the free lists, that chunk is split up into smaller chunks.
 
-In addition to that, these odd ratios make the metaspace coding difficult to maintain and error-prone. When switching to a by-chunk-commit-scheme, it makes sense to rethink these.
-yy
+However, due to the odd chunk geometry and the existence of humongous chunks the implementation is complicated and the effect may be limited. For example, to form a medium chunk, 16 adjacent small chunks have to happen to be free. So, in times of fragmentation, free lists may fill up with un-mergeable small chunks which are unsuited if a class loader needs a larger chunk.
 
-Proposal: Replace the hard-wired three-chunk-type scheme with a standard buddy-allocation scheme where chunks are sized in power-of-two steps from a minimum size to a maximum size. 
+#### Proposal: 
 
-A chunk, when returned to the freelist, would be merged with its buddy (if that is free), the resulting merged chunk with its buddy (if free) and so forth, until either the largest chunk size is reached or a unfree buddy is encountered. This results in free chunks crystallizing and forming larger chunks, which reduces fragmentation and increases the effect of uncommitting free chunks (fewer and larger ranges to uncommit).
+Replace the hard-wired three-chunk-sizee scheme with a more fluid scheme where chunks are sized in power-of-two steps from a minimum size (1K) to a maximum size (4M). This would be very similar to the standard buddy-allocation scheme [1]. Part of the proposal is to get rid of humongous chunks altogether, more about this below.
 
-When a chunk would be requested from the freelist, if no free chunk of the requested size is found, a larger chunk will taken and be split. The resulting superfluous smaller chunks will be returned to the freelist.
+##### Buddy-style chunk merging and splitting
 
-(_Note:_ Partly, this crystallizin-and-splitting happens in the current implementation too, but is hampered by the odd chunk geometry.)
+A chunk, when returned to the freelist, would be merged with its buddy (if free), the resulting merged chunk with its buddy (if free) and so forth, until either the largest chunk size is reached or a unfree buddy is encountered.
+
+In turn, when a chunk is requested from the freelist and no chunk of the requested size is found, a larger chunk can taken and be split. The resulting superfluous smaller chunks will be returned to the freelist.
+
+##### Chunk sizes
+
+In the new scheme, the minimum size of a chunk would be 1K (64bit) - large enough to hold 99% of InstanceKlass structures but small enough to not unnecessarily waste memory for class loaders which only ever load one class (e.g. Reflection- or Lambda-CL). This would correspond to the "specialized" chunk of today.
+
+The maximum size of a chunk should be large enough to hold the largest conceivable InstanceKlass structure, plus a healthy margin. I estimate this currently at 4MB. It should be limited upward since the larger this size is, the more expensive chunk splitting and merging becomes. But this would allow us to get rid of humongous chunks.
+
+##### Humongous chunks
+
+Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes chunk splitting and merging very complicated. I propose to just get rid of them since in this proposal they lost their purpose.
+
+Humongous chunks currently serve two needs:
+
+a) sometimes a Metaspace allocation happens to be larger than the largest possible homogenous chunk (medium chunks at 64K). For instance, an InstanceKlass can be larger than 64K if its itable/vtable are large. For those cases, a chunk larger than a medium chunk was needed. And in order to not waste memory, it was made exactly as large as that one allocation which caused its creation.
+
+
+b) 
+
+With this proposal, (a) can be satisfied differently: when faced with a large Metaspace allocation request, one could give it a large enough chunk, e.g. 4MB. Since part of this proposal is to commit chunk memory as needed, not pro-actively, this chunk does not necessarily have to be as large as the causing allocation. For example, if the allocation was 2.5MB, we only would commit the first 2.5MB of the chunk and leave the rest uncommitted. 
+
+In a different sense, the penalty of handing out large chunks to class loaders is greatly reduced.
 
 
 
 
 
+
+
+
+
+
+
+The advantages of such a scheme:
+
+- the chance to combine free chunks is greatly increased. This reduces fragmentation of free chunks. It makes uncommitting free chunks easier and more effective, since the larger those chunks are the larger the portion which can be uncommitted, and the smaller the number of virtual memory segments created.
+
+- It would give us more choices as to which chunk sizes to hand to class loaders.
+
+- It would simplify the current implementation by a great deal. Chunk merging and - splitting would be much simpler.
+
+
+In addition to that, it is proposed to get rid of the concept of humongous chunks. They are not needed anymore in this scheme. 
 
 
 
@@ -149,3 +183,8 @@ Dependencies
 -----------
 
 - TBD -
+
+
+
+[1] https://en.wikipedia.org/wiki/Buddy_memory_allocation
+
