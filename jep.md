@@ -91,7 +91,7 @@ In the new scheme, the minimum size of a chunk would be 1K (64bit) - large enoug
 
 The maximum size of a chunk should be large enough to hold the largest conceivable InstanceKlass structure, plus a healthy margin. I estimate this currently at 4MB. It should be limited upward since the larger this size is, the more expensive chunk splitting and merging becomes. But this would allow us to get rid of humongous chunks.
 
-##### Humongous chunks
+##### We do not need Humongous chunks anymore
 
 Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes chunk splitting and merging very complicated. I propose to just get rid of them since in this proposal they lost their purpose.
 
@@ -105,22 +105,18 @@ Described in a different sense, the penalty of handing out large chunks to class
 
 2) Another reason Humongous chunks exist is that we try to minimize allocations from class loaders we already know will allocate a lot. For example, the bootstrap classloader gets handed a humongous chunk of 4MB in the beginning. That minimizes call backs into the metaspace allocator.
 
-This technique would continue to work with this proposal: one would just give the bootstrap CL a large buddy chunk. Again, with the delayed-committing technique used we can 
+This technique would continue to work with this proposal: one would just give the bootstrap CL a large buddy chunk. Again, the delayed-committing of chunks would help to reduce real memory usage.
 
-(Side note, with the advent of CDS most of the humongous chunk allocated for the bootstrap CL remains unused today.)
-
-
+(Side note, with the advent of CDS most of the humongous chunk allocated for the bootstrap CL remains unused today, so delayed committing would help here.)
 
 
+##### A new chunk-hand-out strategy toward class loaders
 
-
-
+- TBD -
 
 
 
-
-
-The advantages of such a scheme:
+### The advantages of this proposal:
 
 - the chance to combine free chunks is greatly increased. This reduces fragmentation of free chunks. It makes uncommitting free chunks easier and more effective, since the larger those chunks are the larger the portion which can be uncommitted, and the smaller the number of virtual memory segments created.
 
@@ -133,34 +129,6 @@ In addition to that, it is proposed to get rid of the concept of humongous chunk
 
 
 
-
-
-The proposed scheme would also be a prerequisite for parts (B) and (C) of the proposal, see below.
-
-Note that such a change in chunk geometry needs to be coupled with a smarter chunk handout strategy which would be able to reuse free chunks of all sizes. For example, a class loader deemed worthy of large chunks, which normally would have handed a 64K chunk, may be given a 32K or 16K chunk instead if such a chunk happens to be free, before allocating a new 64K chunk from virtual memory.
-
-### B) Reduce intra-chunk waste for active allocations
-
-This could be done with two techniques. Both may be implemented independently from each other.
-
-_B1) Unused chunk space stealing_
-
-With Part (A) in place we may actually split a chunk into smaller ones much more efficiently. That means we could, for all live class loaders, periodically "prune" their current chunks: if a loader used less than half his current chunk, the unused part could be split off and used to form new chunks, which could be returned to the freelist.
-
-Example: A loader stopped loading after using up 12K of a 64K chunk. In that case, we could split that 64K chunk into three chunks sized 16K|16K|32K and return the latter two to the freelist.
-
-The assumption here is that the loader will not continue to load classes, at least not in the immediate future, and therefore the freed chunks will not immediately reallocated by it. A natural point to do this pruning would be when handling a Metaspace OOM. It also could happen independently from OOMs at certain periodic intervals. It could also be combined with a heuristic which tries to guess whether the loader stopped loading classes, e.g. a loader-specific timer.
-
-_B2) Lazily committing chunks_
-
-Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in the nodes of the virtual space list. Each node is an instance of ReservedSpace with a commit watermark; all allocated chunks are completely contained by the committed region.
-
-This could be changed: For chunks spanning multiple pages, each chunk could maintain its own commit watermark. The first page, containing the chunk header, would be committed from the start; later pages would be committed when the loader allocates memory from the chunk, but not before. The effect would be that intra-chunk waste would be largely prevented for multi-page-sized chunks since unused waste section would remain uncommitted.
-
-
-### C) Return memory for unused chunks more promptly to the OS
-
-Chunks in the free list are wasted as long as they are not reused, which may be never or not for a long time. Their memory can be uncommitted until they would be reused again. As with (B2), this can only be done for chunks spanning multiple pages, since the header needs to be kept alive. That is why it would benefit from part (A) too, since that would increase the chance of free chunks merging to larger chunks in the free list.
 
 Alternatives
 ------------
