@@ -87,15 +87,19 @@ Such a buddy-style chunk, when returned to the freelist, would be merged with it
 
 Example: let C1 be a used 4K chunk, c2 a free 4K chunk, c3 a free 8K chunk and C4 a used 16K chunk.
 
+```
 0   4   8   12  16  20  24  28  32 k
 |   |   |   |   |   |   |   |   |
 | C1| c2|   c3  |       C4      |
+```
 
 Returning C1 to the freelist will merge it with c2, then in turn with c3. It cannot be merged further since C4 is still in use:
 
+```
 0   4   8   12  16  20  24  28  32 k
 |   |   |   |   |   |   |   |   |
 |       c5      |       C4      |
+```
 
 Basically, chunks will "crystallize" around a freed chunk as far as possible.
 
@@ -107,15 +111,19 @@ Example:
 
 We have a single 32K free chunk but need a 4K chunk.
 
+```
 0   4   8   12  16  20  24  28  32 k
 |   |   |   |   |   |   |   |   |
 |               c1              |
+```
 
 The 32K chunk would be split into, respectively, one 16K, one 8K, and two 4K chunks. All but one of the 4K chunks are returned to the freelist, the one 4K chunk marked as in-use and given to the caller:
 
+```
 0   4   8   12  16  20  24  28  32 k
 |   |   |   |   |   |   |   |   |
 | C2| c3|   c4  |       c5      |
+```
 
 ##### New Chunk sizes
 
