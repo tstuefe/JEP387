@@ -26,7 +26,7 @@ In particular, two waste areas stick out:
 
 _Intra-chunk waste for active allocations_
 
-When a class loader allocates Metaspace, it gets handed a memory chunk. That chunk should serve multiple follow-up allocations of that class loader, since it is assumed that the loader will continue loading classes and use up that chunk. This serves two purposes: for one, it reduces invocations of central - lock-protected - parts of the Metaspace. In addition, by releasing that chunk when the class loader gets unloaded we effectively bulk-release all allocations from that loader without the need to track single allocations.
+When a class loader allocates Metaspace, it gets handed a memory chunk. That chunk is large enough to serve many follow-up allocations of that class loader, since it is assumed that the loader will continue loading classes and use up that chunk. This serves two purposes: for one, it reduces invocations of central - lock-protected - parts of the Metaspace. In addition, by releasing that chunk when the class loader gets unloaded we effectively bulk-release all allocations from that loader without the need to track single allocations.
 
 But a class loader usually stops class loading at some point. At that point, no memory will be allocated from the chunk anymore and therefore the rest of the chunk is wasted. 
 
@@ -109,10 +109,17 @@ This technique would continue to work with this proposal: one would just give th
 
 (Side note, with the advent of CDS most of the humongous chunk allocated for the bootstrap CL remains unused today, so delayed committing would help here.)
 
-
 ##### A new chunk-hand-out strategy toward class loaders
 
 - TBD -
+
+##### VirtualSpaceNode can be simplified
+
+Let n be the size of the largest chunk ("a root chunk") possible, 4MB. VirtualSpaceNode should be sized in multiples of this size. When carving out new chunks from a node, only root chunks should be allocated. The root chunk should be added to the freelist and after that, allocation should proceed to happen from the freelist.
+
+This drastically simplifies VirtualSpaceNode coding: We do not need a "retire" mechanism anymore where we add leftover space in a node to the chunk manager. That is because, since a VirtualSpaceNode should be a whole multiple of the largest chunk size, it can never happen that it cannot satisfy a metaspace allocation yet contain left over unused space.
+
+
 
 
 
