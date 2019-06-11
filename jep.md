@@ -115,9 +115,9 @@ This technique would continue to work with this proposal: one would just give th
 
 ##### VirtualSpaceNode can be simplified
 
-Let n be the size of the largest chunk ("a root chunk") possible, 4MB. VirtualSpaceNode should be sized in multiples of this size. When carving out new chunks from a node, only root chunks should be allocated. The root chunk should be added to the freelist and after that, allocation should proceed to happen from the freelist.
+Let n be the size of the largest possible chunk ("a root chunk", 4MB). VirtualSpaceNode should be sized in multiples of this size. When carving out new chunks from a node, only root chunks should be allocated from the node. The root chunk then would be be added to the freelist and after that, allocation should proceed to happen from the freelist.
 
-This drastically simplifies VirtualSpaceNode coding: We do not need a "retire" mechanism anymore where we add leftover space in a node to the chunk manager. That is because, since a VirtualSpaceNode should be a whole multiple of the largest chunk size, it can never happen that it cannot satisfy a metaspace allocation yet contain left over unused space.
+While not costing much, this simplifies VirtualSpaceNode coding a lot. For instance, we do not need a "retire" mechanism anymore. A node is "retired" when it cannot serve an outstanding metaspace allocation, so the leftover space is hacked into chunks and added to the freelist. But if a node is always sized to multiples of the root chunk size, there cannot be leftover space smaller than an outstanding metaspace allocation.
 
 
 
