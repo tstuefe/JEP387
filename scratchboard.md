@@ -1,4 +1,4 @@
-# WIP
+# Notes
 
 - chunksizes:
 	
@@ -68,3 +68,47 @@
   - occupancy map
   - chunkindex
   - humongous chunks
+
+
+--------------------------
+
+We move the chunk header out of the vs area. That reduces fragmentation on the memory mapping level a lot when uncommiting chunks, and it makes splitting chunks easier and cheaper since we do not have to commit the start of the split-off chunks to place the chunk headers.
+
+The chunk headers are not independent structures organized in a binary tree. Each root node area has one assigned binary tree. The tree describes how the root node is splintered.
+
+The tree itself can get large, so take care to keep the tree nodes small. That can be done by not using pointers but indices.
+
+A tree node has:
+- link to parent unless root
+- link to sib
+- link to firstborn child (leader buddy) unless leaf
+- link to the metachunk structure if leaf
+
+chunk headers are allocated from a global array. We can use 32bit ints to adress a chunk. When a node is merged, we have one chunk header left, it is kept in a global freelist.
+
+A chunk has a reference to 
+
+Chunk merging:
+- get sibling chunk via chunk-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+- We 
+
+
+
+
