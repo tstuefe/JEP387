@@ -1,0 +1,88 @@
+Vitals:
+------------system------------
+           avail: Memory available without swapping (>=3.14)
+            swap: Swap space used
+              si: Number of pages swapped in [delta]
+              so: Number of pages pages swapped out [delta]
+              pr: Number of tasks running
+              pb: Number of tasks blocked
+          cpu-us: Global cpu user time
+          cpu-sy: Global cpu system time
+          cpu-id: Global cpu idle time
+          cpu-wa: Global cpu time spent waiting for IO
+          cpu-st: Global cpu time stolen
+          cpu-gu: Global cpu time spent on guest
+-----------process------------
+            virt: Virtual size
+         rss-all: Resident set size, total
+        rss-anon: Resident set size, anonymous memory (>=4.5)
+        rss-file: Resident set size, file mappings (>=4.5)
+         rss-shm: Resident set size, shared memory (>=4.5)
+            swdo: Memory swapped out
+          cpu-us: Process cpu user time
+          cpu-sy: Process cpu system time
+           io-of: Number of open files
+           io-rd: IO bytes read from storage or cache [delta]
+           io-wr: IO bytes written [delta]
+             thr: Number of native threads
+-------------jvm--------------
+       heap-comm: Java Heap Size, committed
+       heap-used: Java Heap Size, used
+       meta-comm: Meta Space Size (class+nonclass), committed
+       meta-used: Meta Space Size (class+nonclass), used
+        meta-csc: Class Space Size, committed
+        meta-csu: Class Space Size, used
+       meta-gctr: GC threshold
+            code: Code cache, committed
+             mlc: Memory malloced by hotspot (requires NMT)
+        jthr-num: Number of java threads
+         jthr-nd: Number of non-demon java threads
+         jthr-cr: Threads created [delta]
+         jthr-st: Total reserved size of java thread stacks
+        cldg-num: Classloader Data
+       cldg-anon: Anonymous CLD
+         cls-num: Classes (instance + array)
+          cls-ld: Class loaded [delta]
+         cls-uld: Classes unloaded [delta]
+
+[delta] values refer to the previous measurement.
+
+Short Term Values:
+                      -----------------system------------------ ----------------------process---------------------- ---------------------------------------jvm---------------------------------------
+                                             -------cpu--------      -------rss--------      -cpu- -----io-----     --heap--- ---------meta---------          -----jthr------ --cldg-- -----cls------
+                      avail swap si so pr pb us sy id  wa st gu virt all  anon file shm swdo us sy of  rd   wr  thr comm used comm used csc csu gctr code mlc num nd  cr st   num anon num   ld   uld 
+
+2019-10-08 10:10:04    9,4g   0k        4  0                    4,5g  39m  12m  26m  0k   0k         2           18 186m   2m 448k 398k 64k 37k  21m   7m  0k   9   1     16m  20   17   646          
+2019-10-08 10:10:05    9,4g   0k  0  0  5  0 70  3  26  0  0  0 4,5g 104m  76m  28m  0k   0k 69  3  62   8m <1k  23 186m  14m  12m  12m  1m  1m  21m   8m  0k  11   1  2  22m 207  184  3151 2505   0 
+2019-10-08 10:10:06    9,3g   0k  0  0  8  0 78  5  16  0  0  0 4,6g 158m 129m  29m  0k   0k 79  5 255   9m  4k  57 117m  37m  23m  22m  3m  3m  36m   9m  0k  45  34 35  57m 398  322  5052 1904   3 
+2019-10-08 10:10:07    9,2g   0k  0  0  4  0 87  4   9  0  0  0 4,6g 258m 229m  29m  0k   0k 86  4 283   4m <1k  62  99m  27m  34m  33m  5m  4m  46m  10m  0k  50  39  5  62m 608  492  7617 2565   0 
+2019-10-08 10:10:08    9,2g   0k  0  0 16  0 90  6   3  0  0  0 4,7g 283m 254m  29m  0k   0k 83  4 337   4m 10k 123  99m  38m  46m  45m  6m  6m  46m  11m  0k 111  98 61 123m 813  651  9823 2206   0 
+2019-10-08 10:10:09    9,1g   0k  0  0  5  0 91  4   5  0  0  0 4,8g 359m 330m  29m  0k   0k 88  3 421   6m  4k 130 149m  99m  54m  53m  8m  7m  78m  12m  0k 118 100  7 130m 914  732 11422 1622  23 
+2019-10-08 10:10:10    9,1g   0k  0  0  1  0 31  2  67  0  0  0 4,8g 362m 333m  29m  0k   0k 30  1 431 716k 60k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  1 129m 919  734 11575  193  40 
+2019-10-08 10:10:11    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11575    0   0 
+2019-10-08 10:10:12    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11575    0   0 
+2019-10-08 10:10:13    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11575    0   0 
+2019-10-08 10:10:14    9,1g   0k  0  0  1  0  1  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  1  0 431  18k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11579    4   0 
+2019-10-08 10:10:15    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11579    0   0 
+2019-10-08 10:10:16    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11579    0   0 
+2019-10-08 10:10:17    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  55m  55m  8m  7m  92m  13m  0k 118 100  0 129m 919  734 11579    0   0 
+2019-10-08 10:10:18    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 131 149m  51m  55m  55m  8m  7m  92m  13m  0k 119 101  1 131m 919  734 11579    0   0 
+2019-10-08 10:10:19    9,1g   0k  0  0  1  0  1  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  1  0 431  13k  0k 131 149m  51m  55m  55m  8m  7m  92m  13m  0k 119 101  0 131m 919  734 11579    0   0 
+2019-10-08 10:10:20    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 131 149m  51m  55m  55m  8m  7m  92m  13m  0k 119 101  0 131m 919  734 11579    0   0 
+2019-10-08 10:10:21    9,1g   0k  0  0  1  0  1  1  99  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 131 149m  51m  55m  55m  8m  7m  92m  13m  0k 119 101  0 131m 919  734 11579    0   0 
+2019-10-08 10:10:22    9,1g   0k  0  0  1  0  2  2  98  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 131 149m  51m  55m  55m  8m  7m  92m  13m  0k 119 101  0 131m 919  734 11579    0   0 
+2019-10-08 10:10:23    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 131 149m  51m  55m  55m  8m  7m  92m  13m  0k 119 101  0 131m 919  734 11579    0   0 
+2019-10-08 10:10:24    9,1g   0k  0  0  1  0  2  1  98  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431  10k  0k 130 149m  51m  56m  55m  8m  7m  92m  13m  0k 118 101  0 130m 919  734 11579    0   0 
+2019-10-08 10:10:25    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  56m  55m  8m  7m  92m  13m  0k 118 101  0 130m 919  734 11579    0   0 
+2019-10-08 10:10:26    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  56m  55m  8m  7m  92m  13m  0k 118 101  0 130m 919  734 11579    0   0 
+2019-10-08 10:10:27    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   7k  0k 130 149m  51m  56m  55m  8m  7m  92m  13m  0k 118 101  0 130m 919  734 11579    0   0 
+2019-10-08 10:10:28    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431   9k  0k 131 149m  51m  56m  55m  8m  7m  92m  13m  0k 119 102  1 131m 919  734 11579    0   0 
+2019-10-08 10:10:29    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 362m 333m  29m  0k   0k  0  0 431  11k  0k 131 149m  51m  56m  55m  8m  7m  92m  13m  0k 119 102  0 131m 919  734 11579    0   0 
+2019-10-08 10:10:30    9,2g   0k  0  0  1  0  1  1  98  0  0  0 4,7g 358m 330m  29m  0k   0k  1  0 431  11k  0k  60 149m  51m  56m  55m  8m  7m  92m  13m  0k  48  31  0  60m 919  734 11579    0   0 
+
+Mid Term Values:
+(no records)
+
+Long Term Values:
+(no records)
+

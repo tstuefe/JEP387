@@ -1,0 +1,94 @@
+Vitals:
+------------system------------
+           avail: Memory available without swapping (>=3.14)
+            swap: Swap space used
+              si: Number of pages swapped in [delta]
+              so: Number of pages pages swapped out [delta]
+              pr: Number of tasks running
+              pb: Number of tasks blocked
+          cpu-us: Global cpu user time
+          cpu-sy: Global cpu system time
+          cpu-id: Global cpu idle time
+          cpu-wa: Global cpu time spent waiting for IO
+          cpu-st: Global cpu time stolen
+          cpu-gu: Global cpu time spent on guest
+-----------process------------
+            virt: Virtual size
+         rss-all: Resident set size, total
+        rss-anon: Resident set size, anonymous memory (>=4.5)
+        rss-file: Resident set size, file mappings (>=4.5)
+         rss-shm: Resident set size, shared memory (>=4.5)
+            swdo: Memory swapped out
+          cpu-us: Process cpu user time
+          cpu-sy: Process cpu system time
+           io-of: Number of open files
+           io-rd: IO bytes read from storage or cache [delta]
+           io-wr: IO bytes written [delta]
+             thr: Number of native threads
+-------------jvm--------------
+       heap-comm: Java Heap Size, committed
+       heap-used: Java Heap Size, used
+       meta-comm: Meta Space Size (class+nonclass), committed
+       meta-used: Meta Space Size (class+nonclass), used
+        meta-csc: Class Space Size, committed
+        meta-csu: Class Space Size, used
+       meta-gctr: GC threshold
+            code: Code cache, committed
+             mlc: Memory malloced by hotspot (requires NMT)
+        jthr-num: Number of java threads
+         jthr-nd: Number of non-demon java threads
+         jthr-cr: Threads created [delta]
+         jthr-st: Total reserved size of java thread stacks
+        cldg-num: Classloader Data
+       cldg-anon: Anonymous CLD
+         cls-num: Classes (instance + array)
+          cls-ld: Class loaded [delta]
+         cls-uld: Classes unloaded [delta]
+
+[delta] values refer to the previous measurement.
+
+Short Term Values:
+                      -----------------system------------------ ----------------------process---------------------- ----------------------------------------jvm----------------------------------------
+                                             -------cpu--------      -------rss--------      -cpu- -----io-----     --heap--- ----------meta----------          -----jthr------ --cldg-- -----cls------
+                      avail swap si so pr pb us sy id  wa st gu virt all  anon file shm swdo us sy of  rd   wr  thr comm used comm used csc  csu  gctr code mlc num nd  cr st   num anon num   ld   uld 
+
+2019-10-08 10:07:54    9,4g   0k        3  0                    4,5g  39m  12m  26m  0k   0k         2           18 186m   2m   5m 401k 512k  37k  21m   7m  0k   9   1     16m  20   17   646          
+2019-10-08 10:07:55    9,3g   0k  0  0  4  1 58  4  36  0  0  0 4,5g  98m  70m  28m  0k   0k 58  4  62   7m <1k  23 186m  23m  10m   9m   1m 975k  21m   8m  0k  11   1  2  22m 153  139  2703 2057   0 
+2019-10-08 10:07:56    9,2g   0k  0  0 11  0 72  3  25  0  0  0 4,6g 219m 190m  28m  0k   0k 73  3 206   8m  5k  54 224m  22m  22m  20m   3m   2m  35m   9m  0k  41  30 31  54m 304  250  4653 1952   2 
+2019-10-08 10:07:57    9,2g   0k  0  0  8  0 87  5   8  0  0  0 4,6g 197m 168m  28m  0k   0k 86  5 283   6m  1k  63 110m  37m  37m  32m   5m   4m  60m  10m  0k  49  38  8  62m 611  495  7699 3048   2 
+2019-10-08 10:07:58    9,1g   0k  0  0 12  0 91  6   2  0  0  0 4,7g 296m 267m  28m  0k   0k 87  5 390   5m 11k 125 110m  55m  53m  46m   8m   6m  86m  11m  0k 113  98 64 125m 841  673 10337 2638   0 
+2019-10-08 10:07:59    9,1g   0k  0  0  5  0 89  4   6  0  0  0 4,8g 349m 320m  28m  0k   0k 86  3 431   5m  4k 131 176m  81m  60m  53m   9m   7m  86m  13m  0k 119 101  6 131m 928  744 11586 1268  19 
+2019-10-08 10:08:00    9,1g   0k  0  0  1  0 11  1  88  0  0  0 4,8g 351m 323m  28m  0k   0k 10  0 431 176k 58k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11605   19   0 
+2019-10-08 10:08:01    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 351m 323m  28m  0k   0k  0  0 431   7k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11605    0   0 
+2019-10-08 10:08:02    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 351m 323m  28m  0k   0k  0  0 431   7k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11605    0   0 
+2019-10-08 10:08:03    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,8g 351m 323m  28m  0k   0k  0  0 431   7k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11605    0   0 
+2019-10-08 10:08:04    9,1g   0k  0  0  1  0  1  0  99  0  0  0 4,8g 352m 323m  28m  0k   0k  1  0 431  18k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11609    4   0 
+2019-10-08 10:08:05    9,1g   0k  0  0  1  0  2  0  97  0  0  0 4,8g 352m 323m  28m  0k   0k  0  0 431   7k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:06    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 323m  28m  0k   0k  0  0 431   7k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:07    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 323m  28m  0k   0k  0  0 431   7k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 100  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:08    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   8k  0k 130 176m  84m  61m  53m   9m   7m  86m  13m  0k 118 101  1 129m 928  744 11609    0   0 
+2019-10-08 10:08:09    9,1g   0k  0  0  1  0  1  0  99  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431  12k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:10    9,1g   0k  0  0  1  0  1  0  99  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:11    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:12    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:13    9,1g   0k  0  0  1  0  2  0  96  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:14    9,1g   0k  0  0  1  0  2  1  96  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   9k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:15    9,1g   0k  0  0  1  0  1  0  99  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:16    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:17    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   7k  0k 130 176m  85m  61m  53m   9m   7m  86m  13m  0k 118 101  0 129m 928  744 11609    0   0 
+2019-10-08 10:08:18    9,1g   0k  0  0  1  0  0  0 100  0  0  0 4,8g 352m 324m  28m  0k   0k  0  0 431   8k  0k 131 176m  85m  61m  53m   9m   7m  86m  13m  0k 119 102  1 131m 928  744 11609    0   0 
+2019-10-08 10:08:19    9,1g   0k  0  0  1  0  2  1  95  0  0  0 4,7g 353m 325m  28m  0k   0k  1  1 431  17k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:20    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431   7k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:21    9,1g   0k  0  0  1  0  3  2  96  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431   7k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:22    9,1g   0k  0  0  1  0  0  0  99  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431   7k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:23    9,1g   0k  0  0  1  0  1  0  97  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431   7k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:24    9,1g   0k  0  0  1  0  1  0  98  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431  10k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:25    9,1g   0k  0  0  2  0  1  1  97  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431   7k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+2019-10-08 10:08:26    9,1g   0k  0  0  1  0  2  0  97  0  0  0 4,7g 353m 325m  28m  0k   0k  0  0 431   7k  0k  60 176m  85m  61m  53m   9m   7m  86m  13m  0k  48  31  0  60m 928  744 11609    0   0 
+
+Mid Term Values:
+(no records)
+
+Long Term Values:
+(no records)
+
