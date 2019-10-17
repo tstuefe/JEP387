@@ -1,51 +1,67 @@
+ Elastic Metaspace
+
 Summary
 -------
 
-Metaspace allocator shall return unused memory to the OS more promptly. CPU-to-memory-footprint tradeoff taken by the allocator adjustable.
+Promptly return unused Metaspace memory to the OS and reduce Metaspace memory footprint.
+
+
+Goals
+-----
+
+- A more elastic Metaspace
+- Reduced Metaspace memory footprint
+- A cleaner implementation which is cheaper to maintain
+
 
 Non-Goals
 ---------
 
-Wholesale replacement of the Metaspace allocator with a different mechanism (e.g. raw malloc, dlmalloc etc).
+- Getting rid of the class space.
+- Changing the way Metaspace is allocated (caller code should not have to change)
+- Changing the lifetime of Metaspace objects
 
 
 Success Metrics
 ---------------
 
-Memory footprint for active Metaspace allocations should go down. Less memory should be retained for released allocations, so Metaspace should behave in a more elastic manner.
+- Metaspace shall recover from allocation spikes much more readily: we should see a significant reduction in unused-but-committed memory after Metaspace memory is released.
+
+- In scenarios not involving class unloading we should see a small to moderate decrease in committed Metaspace. Under no circumstances should we require more Metaspace.
+
 
 
 Motivation
 ----------
 
-## Reduce memory footprint and make Metaspace more elastic
+## Make Metaspace more elastic
 
-Allocating memory for class meta data from Metaspace incurs overhead. That is normal for any allocator. However, overhead-to-payload ratio can get excessive in pathological situations.
+Allocating memory for class metadata from Metaspace incurs overhead. With the current Metaspace allocator the overhead-to-payload ratio can get excessive.
 
-In particular, two waste areas stick out:
+Two waste areas stick out:
+
+_Waste in free lists_
+
+When a loader gets unloaded, all its chunks are returned to a free list. The may be reused for later allocations, but those may never happen, and for now that space is wasted. A reclaim mechanism is currently in place which will attempt to return unused space to the OS, but it is not very effective and easily defeated by Metaspace fragmentation.
+
+Memory wasted this way can get excessive; we have seen ratios up to 70% waste (close to 70% of committed Metaspace idling in free lists).
 
 _Intra-chunk waste for active allocations_
 
-When a class loader allocates Metaspace, it gets handed a memory chunk. That chunk is large enough to serve many follow-up allocations of that class loader, since it is assumed that the loader will continue loading classes and use up that chunk. This serves two purposes: for one, it reduces invocations of central - lock-protected - parts of the Metaspace. In addition, by releasing that chunk when the class loader gets unloaded we effectively bulk-release all allocations from that loader; this frees us from the need to track individual allocations.
+Class loaders get assigned a chunk of Metaspace memory; they allocate from it via pointer-bump allocation. At some point the class loader will stop loading classes and has no further need for Metaspace memory; the remaining space in its current chunk is wasted.
 
-But a class loader usually stops class loading at some point. From that point on, the still unsused portion of the current chunk is wasted.
+A second waste point is leftover space in retired chunks: when the free space left in a chunk is too small to satisfy an allocation, the class loader requests a new chunk; attempts is made to reuse the leftover space of the old chunk, but they are currently not very effective. 
 
-_Waste in unused chunks_
+The smaller the chunk, the worse the ratio between the leftover and the used area of the chunk; hence, this is typically a problem with class loaders which only load a few classes, or only one - anonymous (hidden) classes or reflection delegator loaders.
 
-When a loader gets unloaded, all its chunks are returned to a free list. Those chunks may be reused for future allocation, but that may never happen or at least not in the immediate future. In the meantime that memory is wasted.
+This is normally not a large problems, since the total memory used by those class loaders is small. But if there is a huge number of them, the waste can get significant.
 
-Currently that memory is released to the OS when the underlying VirtualSpaceNode only consists of free chunks; however the chance of that happening depends highly on fragmentation (how tightly interleaved allocations from live and dead class loaders are). To make matters worse, memory in the Compressed Class Space is never returned. So in practice freelist memory is often retained by the VM.
+Under normal circumstances we see 5-12% waste of this type.
 
-
-## Better tunability
-
-A lot of decisions the Metaspace allocator does are trade-offs between speed and memory footprint. This is in particular true for chunk allotment: deciding when a class loader is handed a chunk of which size. Many of these decisions are currently hard wired and cannot be influenced easily. 
-
-It may be advantageous to influence them with an outside switch, e.g. to shift emphasis to memory footprint in situations where we care more about footprint than about startup time.
 
 ## Code clarity
 
-It is the intention of this proposal that, when implemented, code complexity should go down.
+Metaspace code has grown over time in complexity; a complete overhaul would be very beneficial, bringing maintenance costs down and making the code more malleable.
 
 
 Description
@@ -53,143 +69,110 @@ Description
 
 The proposed implementation changes:
 
-## A) Commit in-use chunks lazily and uncommit free chunks
+## A) Commit chunks on demand and uncommit free chunks
 
-Currently memory is committed in a coarse-grained fashion in the lowest allocation layer, in the nodes of the virtual space list. Each node is a memory mapping - an instance of ReservedSpace with a commit watermark. All chunks carved from that node are completely contained within the committed region.
+Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk lives in committed memory and remains committed for its whole life time, regardless whether it is in use or not.
 
-Proposed change: Move committing/uncommitting memory to the chunk level. Let each chunk be responsible for maintaining its own commit watermark and commit its own pages. Pages would be committed when a caller requests memory from that chunk - not before. 
+Proposed change: Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists could be uncommitted and would not count toward the working set size of the VM process.
 
-Furthermore, let chunks which are put into the freelist uncommit their pages.
+Chunks in use by a class loader could be committed lazily - only the portion needed for housing metadata. That way large chunks can get handed to class loaders but the full price would not have to be payed up front.
 
-The effect this would have is two-fold: for one, the penalty of handing a large chunk to a class loader and it not using the chunk up completely is reduced. Then, when a chunk is returned to the freelist, it can be uncommitted and therefore reduces the memory footprint up to the point where it is needed again.
+A consideration is the virtual memory fragmentation. While we could commit/uncommit memory with page granularity, this may be counter productive, since we would fragment the virtual memory space and potentially hit OS specific limits (e.g. vm.max_map_count on Linux). Committing and uncommitting should happen only for larger ranges.
 
-Notes:
+### Commit granules
 
-- Obviously, the page containing the chunk header cannot be uncommitted. Only pages following the page containing the chunk header can be uncommitted. This means that this technique can only be used for chunks which span multiple pages.
-- committing/ucommitting comes with a cost: first, runtime costs of the associated mmap calls; then, on the OS layer, fragmentation of the virtual memory into many small segments. So we may want to limit committing/uncommitting to a certain granularity and frequency. For example, uncommitting should be limited to larger chunks and be done in batches of n pages. Also, additional logic may be needed to prevent commit/uncommit "flickering" of a single chunk (e.g. caching).
- 
+Where today Metaspace is committed bottom-to-top with a high water mark, in this proposal the Metaspace would become "checkered", consisting of committed and uncommitted ranges. 
+
+The proposal is to split the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). The size of these units shall be tunable and by default large enough to keep virtual memory fragmentation at bay. 
+
+A commit granule can only be committed and uncommitted as a whole. The VirtualSpaceNode shall keep track the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
+
 
 ## B) Replace hard-wired chunk geometry with a buddy allocation scheme
 
-Currently there exist three kinds of chunks, called "specialized", "small" and "medium" for historical reasons, sized (64bit, non-class case) 1K/4K/64K. In addition to that, "humongous" chunks exist; they are of heterogenous size, larger than a medium chunk. These odd ratios are not the ideal solution.
+The current chunk allocation scheme knows three kind of chunks, sized 1K/4K/64K respectively, and so called humongous chunks which are individually sized and larger than 64K. Since JDK-8198423 chunks can be combined and split (e.g. 16 4K chunks can form one 64K chunk). 
 
-Since JDK-8198423, we combine free chunks to form larger chunks - meaning, if e.g. a small chunk is returned to the free lists since its class loader died, we attempt to combine it with neighboring free chunks to form a larger chunk. In turn, when a small chunk is needed but only a larger chunk found in the free lists, that chunk is split up into smaller chunks.
-
-However, due to the odd chunk geometry and the existence of humongous chunks that implementation is complicated and not as efficient in preventing fragmentation as it could be. Free lists may still fill up with un-mergeable small chunks which are unsuited if a class loader needs a larger chunk.
+The current allocation scheme has a number of disadvantages:
+- Ideally, upon returning a chunk to the free list, the chunk should be combined with free neighbors as much as possible to form large contiguous free memory ranges which then could get uncommitted. However, due to the odd chunk geometry, this remains difficult even after JDK-8198423.
+- Since there are only three chunk sizes to choose from (disregarding humongous chunks) there is a higher chance of intra-chunk waste. For example, a class loader needing to store a data item of 5K size will require a 64K chunk.
+- Chunks have headers, and these headers precede the chunk payload area. They must be present even if the chunk is in a free list. Hence, the page containing the chunk header cannot be uncommitted. This means even if we were to uncommit chunk payload areas, they always would be preceded by a single committed page, increasing virtual memory fragmentation and wasting memory.
 
 Proposal: 
 
-Replace the hard-wired three-chunk-size scheme with a more fluid scheme where chunks are sized in power-of-two steps from a minimum size to a maximum size. This would be very similar to a standard buddy-allocation scheme [1]. Part of the proposal is to get rid of humongous chunks altogether, more about this below.
+Replace the current scheme with a traditional power-2-based buddy allocator.
 
-### Buddy-style chunk merging
+In this scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
 
-Such a buddy-style chunk, when returned to the freelist, would be merged with its buddy (if that is free), the resulting merged chunk with its buddy (if that is free) and so forth, until either the largest chunk size ("root chunk") is reached or an unfree buddy is encountered.
+Let the maximum size be large enough to serve any possible Metaspace allocation ("root chunk"). 
+The memory range of a VirtualSpaceNode would consist of a series of n root chunks. Its borders would be aligned to root chunk size.
 
-Example: let C1 be a used 4K chunk, c2 a free 4K chunk, c3 a free 8K chunk and C4 a used 16K chunk.
+Let the minimum chunk size be small enough to house a single InstanceKlass in class space (1K for a 64bit VM.)
 
-```
-0   4   8   12  16  20  24  28  32 k
-|   |   |   |   |   |   |   |   |
-| C1| c2|   c3  |       C4      |
-```
+### Humongous chunks
 
-Returning C1 to the freelist will merge it with c2, then in turn with c3. It cannot be merged further since C4 is still in use:
-
-```
-0   4   8   12  16  20  24  28  32 k
-|   |   |   |   |   |   |   |   |
-|       c5      |       C4      |
-```
-
-Basically, chunks will "crystallize" around a freed chunk as far as possible.
-
-### Buddy-style chunk splitting
-
-When a chunk is requested from the freelist and no chunk of exactly the requested size is found, a larger chunk can  be taken and be split. The resulting superfluous smaller chunks would be returned to the freelist.
-
-Example: 
-
-We have a single 32K free chunk but need a 4K chunk.
-
-```
-0   4   8   12  16  20  24  28  32 k
-|   |   |   |   |   |   |   |   |
-|               c1              |
-```
-
-The 32K chunk would be split into, respectively, one 16K, one 8K, and two 4K chunks. All but one of the 4K chunks are returned to the freelist, the one 4K chunk marked as in-use and given to the caller:
-
-```
-0   4   8   12  16  20  24  28  32 k
-|   |   |   |   |   |   |   |   |
-| C2| c3|   c4  |       c5      |
-```
-
-##### New Chunk sizes
-
-In the new scheme, the minimum size of a chunk would be 1K (64bit) - large enough to hold 99% of InstanceKlass structures but small enough to not unnecessarily waste memory for class loaders which only ever load one class (e.g. Reflection- or Lambda-CL). This would correspond to the "specialized" chunk of today.
-
-The maximum size of a chunk should be large enough to hold the largest conceivable InstanceKlass structure, plus a healthy margin. I estimate this currently at 4MB. It should be limited upward since the larger this size is, the (slightly) more expensive chunk splitting and merging becomes.
-
-Note that even with this large size - much larger than todays 64K medium chunks, chunk merging and splitting would still be faster: We need 12 operations to form the largest possible chunk (4M) from the smallest possible chunk (1K) whereas today we need 16 operations to form a 64K medium chunk from 16 4K small chunks.
-
-### We do not need Humongous chunks anymore
-
-Humongous chunks have been a major hindrance in JDK-8198423. Their existence makes the chunk splitting and merging code very complex. I propose to get rid of them since with this proposal they will loose their purpose.
-
-Humongous chunks are currently needed because:
-
-1) sometimes a Metaspace allocation happens to be larger than the largest possible homogenous chunk (medium chunks at 64K). For instance, an InstanceKlass can be larger than 64K if its itable/vtable are large. For those cases, a chunk larger than a medium chunk was needed. And in order to not waste memory, it was made exactly as large as that allocation which caused its creation.
-
-With this proposal, (1) can be achieved differently: when faced with a large Metaspace allocation request (e.g. 65K), one would give it a chunk large enough to fit the data, in this case 128K. Part of this proposal is to commit chunk memory only as needed, not pro-actively, so only the first part of the chunk containing the metadata needs to be committed (in case of the example, on a platform with 4K page size, 68K).
-
-In other words, since the penalty of handing out large chunks to class loaders will be greatly reduced, so we can afford handing out larger chunks to callers which previously would get a hand-crafted humongous chunk.
-
-2) Another reason Humongous chunks exist is that we try to minimize allocations from class loaders which we know will allocate a lot. For example, the bootstrap classloader gets handed humongous chunks in the beginning. That minimizes call backs into the metaspace allocator.
-
-This technique would continue to work with this proposal: one would just give the bootstrap CL a large buddy-style chunk. Again, the delayed-committing of chunks would help to reduce real memory usage.
-
-(Side note, with the advent of CDS most of the humongous chunk allocated for the bootstrap CL remains unused today, so delayed committing would help here.)
-
-### A new chunk-hand-out strategy toward class loaders
-
-We may want to have a new chunk-allotment strategy, since now, with the new chunk merging mechanism, we can have a multitude of chunks of all (13) sizes in the freelist. 
-
-- TBD -
-
-### VirtualSpaceNode can be simplified
-
-VirtualSpaceNode coding can be greatly simplified by changing the allocation process a bit: Instead of carving out chunks of all sizes from the node, we only directly carve root chunks (4MB) from the node. Then we pass this root chunk to the freelist, where the next allocation will split it up into the needed chunk sizes.
-
-Also, we take care that VirtualSpaceNode boundaries are aligned to root node size (4MB). 
-
-This simplifies VirtualSpaceNode coding a lot. For instance, we do not need a "retire" mechanism anymore, since there can never be any "leftover chunks": in the current implementation, a node is "retired" when it cannot serve an outstanding metaspace allocation, in which case the leftover space is hacked into smaller chunks and added to the freelist. But with the new scheme, there can be no leftover space since the node is sized to multiples of the largest chunk size, and we only ever allocate in units of the largest chunk size - so we either still have space enogh for a root chunk (which is large enough for every possible allocation) or no space at all.
+Get rid of humongous chunks. Since root chunks would be large enough for the largest possible metadata allocation, and chunks can get committed on demand, there is no need for them anymore.
 
 
-## General advantages of this proposal:
+### Chunk headers
 
-- the chance to combine free chunks is greatly increased. This reduces fragmentation of free chunks. It makes uncommitting free chunks easier and more effective, since the larger those chunks are the larger the portion which can be uncommitted, and the smaller the number of virtual memory segments created.
+Remove chunk headers from their payload area. House them in a separate chunk header pool. This results in chunks which can get now be fully uncommitted, and two neighboring uncommitted chunks would form a single contiguous memory mapping on the OS layer.
 
-- It would reduce fragmentation and thus increase chances to reuse a chunk.
+### Chunks grow in place if possible
 
-- It would give us more choices as to which chunk sizes to hand to class loaders.
+In a power-2 buddy allocation scheme, chunks have a good chance to be able to grow in place if they are too small to house a new Metaspace allocation: if the chunk is followed by an empty buddy chunk, it can get melded into it. 
 
-- It would simplify the current implementation by a great deal. For example, the new chunk geometry covers both of the current class- and non-class chunk geometries, so at many places we do not need to distinguish between class- and non-class-space anymore. We can get rid of the OccupancyMap, since it will not be needed anymore. The removal of humongous chunks alone will save a lot of code.
+
+Advantages:
+
+- Good defragmentation, also on long runs with many load/unload cycles. More efficient "fusing" of free chunks, emphasizing larger contiguous memory ranges. Together with the removal of chunk headers from their payload this is a good preparation for uncommitting larger memory areas while keeping virtual memory fragmentation to a minimum.
+
+- More chunk sizes to choose from would result in less intrachunk waste. The fact that chunks can grow in place is a nice bonus.
+
+- Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood.
+
+## How allocation would work
+
+- A class loader requests n words of Metaspace memory
+- The SpaceManager attempts to allocate from its current chunk. 
+    - This may lead to committing memory, if the allocation were to spread over to an uncommitted commit granule. 
+    - If committing memory fails (hitting limit or GC threshold), allocation fails
+- If the chunk is too small to house the allocation, a new chunk is requested from the chunk manager.
+    - An attempt is made to grow the chunk in-place.
+    - Failing that, an attempt is made to take a new chunk from the free lists.
+        - If only larger chunks are available, they a split in a buddy style fashion to produce the output chunk. The splinter chunks are re-added to the freelist.
+    - If the free lists are empty, a new root chunk is retrieved from the underlying VirtualSpaceNode. Note that this chunk does not necessarily have to be committed. This chunk is split in a buddy style fashion to produce the result chunk, and splinter chunks are added to the free list.
+
+## How bulk-deallocation works
+- A class loader is collected, its metadata to be released
+    - All chunks owned by this class loader are returned to the global free lists.
+    - Chunks are melded buddy-style fashion to its buddies, producing larger free chunks.
+    - Chunks surpassing a certain tunable threshold will be uncommitted. Obviously, only chunks equal or larger than a commit granule can be uncommitted.
+    - Alternatively, or in combination, when a Metaspace is purged after a GC, free chunks larger than a given threshold can be uncommitted.
+
+## Tunable parameters
+
+- Commit granule size
+    - Defaults to 64K
+- Whether new root chunks should be fully committed
+- To what extend new chunks given to class loaders should be committed
+- The threshold beyond which free chunks are to be uncommitted
+
 
 
 Alternatives
 ------------
 
-A recurring idea popping up is to get rid of the Metaspace allocator and replace it with a simple malloc() based one. That has obvious drawbacks, since
+A recurring idea popping up is to get rid of the Metaspace allocator altogether and replace it with a simple malloc() based one. That has obvious drawbacks, since
 
 - we would not be able to allocate contiguous space for Compressed Class Space
 - we would be highly dependent on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap.
-- we would potentially be slower and/or increase memory footprint since the malloc allocator is geared toward general purpose, random-free allocations whereas the Metaspace allocator can cut corners knowing e.g. that memory is bulk-freed.
+- A custom Metaspace allocator can be specifically geared toward metadata allocation - e.g. use the fact that metadata are bulk-deleted on class loader death.
 
 Testing
 -------
 
-- TBD -
+A side effect of a new Metaspace implementation should be better testability, which will result in more and better gtests.
+
 
 Risks and Assumptions
 ---------------------
