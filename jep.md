@@ -1,5 +1,3 @@
- Elastic Metaspace
-
 Summary
 -------
 
@@ -34,17 +32,23 @@ Success Metrics
 Motivation
 ----------
 
+## Background
+
+When the VM loads a class, meta information about the class (things like constant pool, class descriptor, byte code etc.) are stored in native, non-java-heap memory. This area is called the Metaspace. This memory is owned by the class loader loading the class. Its life time is bound to the class loader - it is released when the class loader is unloaded.
+
+Metaspace memory is allocated by the Metaspace allocator, a custom written allocator for native memory. This proposal is about improving its efficiency.
+
 ## Make Metaspace more elastic
 
-Allocating memory for class metadata from Metaspace incurs overhead. With the current Metaspace allocator the overhead-to-payload ratio can get excessive.
+Allocating memory for from Metaspace incurs overhead. With the current Metaspace allocator the overhead-to-payload ratio can get excessive.
 
 Two waste areas stick out:
 
 _Waste in free lists_
 
-When a loader gets unloaded, all its chunks are returned to a free list. The may be reused for later allocations, but those may never happen, and for now that space is wasted. A reclaim mechanism is currently in place which will attempt to return unused space to the OS, but it is not very effective and easily defeated by Metaspace fragmentation.
+When a class loader gets unloaded, all the chunks it owns (slabs of metaspace memory) are returned to the Metaspace allocator and added to a freelist. They may be reused for later allocations, but those allocations may never happen, and for now that space is wasted. A mechanism to reclaim this space is in place which will attempt to return unused space to the OS, but it is not very effective and easily defeated by Metaspace fragmentation.
 
-Memory wasted this way can get excessive; we have seen ratios up to 70% waste (close to 70% of committed Metaspace idling in free lists).
+Memory wasted this way can get excessive; we have seen ratios up to 70% waste (close to 70% of committed Metaspace storage idling in free lists).
 
 _Intra-chunk waste for active allocations_
 
@@ -73,7 +77,9 @@ The proposed implementation changes:
 
 Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk lives in committed memory and remains committed for its whole life time, regardless whether it is in use or not.
 
-Proposed change: Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists could be uncommitted and would not count toward the working set size of the VM process.
+### Proposal 
+
+Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists could be uncommitted and would not count toward the working set size of the VM process.
 
 Chunks in use by a class loader could be committed lazily - only the portion needed for housing metadata. That way large chunks can get handed to class loaders but the full price would not have to be payed up front.
 
@@ -93,13 +99,14 @@ A commit granule can only be committed and uncommitted as a whole. The VirtualSp
 The current chunk allocation scheme knows three kind of chunks, sized 1K/4K/64K respectively, and so called humongous chunks which are individually sized and larger than 64K. Since JDK-8198423 chunks can be combined and split (e.g. 16 4K chunks can form one 64K chunk). 
 
 The current allocation scheme has a number of disadvantages:
+
 - Ideally, upon returning a chunk to the free list, the chunk should be combined with free neighbors as much as possible to form large contiguous free memory ranges which then could get uncommitted. However, due to the odd chunk geometry, this remains difficult even after JDK-8198423.
 - Since there are only three chunk sizes to choose from (disregarding humongous chunks) there is a higher chance of intra-chunk waste. For example, a class loader needing to store a data item of 5K size will require a 64K chunk.
 - Chunks have headers, and these headers precede the chunk payload area. They must be present even if the chunk is in a free list. Hence, the page containing the chunk header cannot be uncommitted. This means even if we were to uncommit chunk payload areas, they always would be preceded by a single committed page, increasing virtual memory fragmentation and wasting memory.
 
-Proposal: 
+### Proposal: 
 
-Replace the current scheme with a traditional power-2-based buddy allocator.
+_Replace the current scheme with a traditional power-2-based buddy allocator._
 
 In this scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
 
@@ -108,27 +115,20 @@ The memory range of a VirtualSpaceNode would consist of a series of n root chunk
 
 Let the minimum chunk size be small enough to house a single InstanceKlass in class space (1K for a 64bit VM.)
 
-### Humongous chunks
+_Remove humongous chunks:_ since root chunks would be large enough for the largest possible metadata allocation, and chunks can get committed on demand, there is no need for them anymore.
 
-Get rid of humongous chunks. Since root chunks would be large enough for the largest possible metadata allocation, and chunks can get committed on demand, there is no need for them anymore.
+_Remove chunk headers from payload:_ house them in a separate chunk header pool. This results in chunks which can get now be fully uncommitted, and two neighboring uncommitted chunks would form a single contiguous memory mapping on the OS layer.
 
-
-### Chunk headers
-
-Remove chunk headers from their payload area. House them in a separate chunk header pool. This results in chunks which can get now be fully uncommitted, and two neighboring uncommitted chunks would form a single contiguous memory mapping on the OS layer.
-
-### Chunks grow in place if possible
-
-In a power-2 buddy allocation scheme, chunks have a good chance to be able to grow in place if they are too small to house a new Metaspace allocation: if the chunk is followed by an empty buddy chunk, it can get melded into it. 
+_Let Chunks grow in place if possible:_ in a power-2 buddy allocation scheme, chunks have a good chance to be able to grow in place if they are too small to house a new Metaspace allocation: if the chunk is followed by an empty buddy chunk, it can get melded into it. 
 
 
 Advantages:
 
-- Good defragmentation, also on long runs with many load/unload cycles. More efficient "fusing" of free chunks, emphasizing larger contiguous memory ranges. Together with the removal of chunk headers from their payload this is a good preparation for uncommitting larger memory areas while keeping virtual memory fragmentation to a minimum.
+- Much better defragmentation, also on long runs with many load/unload cycles. More efficient "fusing" of free chunks, allowing for larger contiguous memory ranges. Together with the removal of chunk headers from their payload this is a good preparation for uncommitting larger memory areas while keeping virtual memory fragmentation to a minimum.
 
 - More chunk sizes to choose from would result in less intrachunk waste. The fact that chunks can grow in place is a nice bonus.
 
-- Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood.
+- Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood. It is also cheap to implement.
 
 ## How allocation would work
 
@@ -187,4 +187,5 @@ Dependencies
 
 
 [1] https://en.wikipedia.org/wiki/Buddy_memory_allocation
+
 
