@@ -1,0 +1,2868 @@
+# HG changeset patch
+# User Thomas Stuefe <thomas.stuefe@gmail.com>
+# Date 1551445166 -3600
+#      Fri Mar 01 13:59:26 2019 +0100
+# Branch stuefe-new-metaspace-branch
+# Node ID b3afb91dba975aff961b342a1bfe19ddb06046db
+# Parent  e18d2d9d15154b7151b07c1b7803abb99fdbaefd
+From a5f47351c16725452ea8ff5cc26cdc33fa16d42d Mon Sep 17 00:00:00 2001
+[PATCH] SapMachine #241: Initial implementation of a low-cost, always
+From a5f47351c16725452ea8ff5cc26cdc33fa16d42d Mon Sep 17 00:00:00 2001
+ on statistical value history (JDK-8212618)
+---
+ src/hotspot/os/aix/stathist_aix.cpp                |   43 +
+ src/hotspot/os/bsd/stathist_bsd.cpp                |   43 +
+ src/hotspot/os/linux/stathist_linux.cpp            |  415 +++++++
+ src/hotspot/os/solaris/stathist_solaris.cpp        |   44 +
+ src/hotspot/os/windows/stathist_windows.cpp        |   89 ++
+ .../classfile/classLoaderDataGraph.inline.hpp      |   20 +
+ src/hotspot/share/runtime/globals.hpp              |   10 +
+ src/hotspot/share/runtime/thread.cpp               |   11 +
+ src/hotspot/share/services/diagnosticCommand.cpp   |    4 +
+ src/hotspot/share/services/stathist.cpp            | 1192 ++++++++++++++++++++
+ src/hotspot/share/services/stathist.hpp            |   67 ++
+ src/hotspot/share/services/stathistDCmd.cpp        |   95 ++
+ src/hotspot/share/services/stathistDCmd.hpp        |   65 ++
+ src/hotspot/share/services/stathist_internals.hpp  |  181 +++
+ src/hotspot/share/utilities/vmError.cpp            |   16 +
+ test/hotspot/jtreg/TEST.groups                     |    8 +
+ .../jtreg/serviceability/dcmd/vm/StatHistTest.java |   59 +
+ 17 files changed, 2362 insertions(+)
+ create mode 100644 src/hotspot/os/aix/stathist_aix.cpp
+ create mode 100644 src/hotspot/os/bsd/stathist_bsd.cpp
+ create mode 100644 src/hotspot/os/linux/stathist_linux.cpp
+ create mode 100644 src/hotspot/os/solaris/stathist_solaris.cpp
+ create mode 100644 src/hotspot/os/windows/stathist_windows.cpp
+ create mode 100644 src/hotspot/share/services/stathist.cpp
+ create mode 100644 src/hotspot/share/services/stathist.hpp
+ create mode 100644 src/hotspot/share/services/stathistDCmd.cpp
+ create mode 100644 src/hotspot/share/services/stathistDCmd.hpp
+ create mode 100644 src/hotspot/share/services/stathist_internals.hpp
+ create mode 100644 test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java
+* * *
+[PATCH] SapMachine #321: Minor fixes for statistical history
+From 641c0b96a5b9408bab1f3d1edcdae09e9790ae7a Mon Sep 17 00:00:00 2001
+- possible misprint for CPU values in long term table due to overflow
+- possible issues when printing the statistics table with code printing
+  in parallel due to temp. change of print locale
+- Fix issue which caused RSS details not to be shown even if available.
+---
+ src/hotspot/os/linux/stathist_linux.cpp | 19 ++++++++-----------
+ src/hotspot/share/services/stathist.cpp | 18 ------------------
+ 2 files changed, 8 insertions(+), 29 deletions(-)
+* * *
+[PATCH] Rename external representation of Statistical History (#421)
+From 7fc8c42184d7279a145f81146a12ce879ecd2ca2 Mon Sep 17 00:00:00 2001
+Rename "Statistical History" to "Vitals" with a minimum of fuss:
+
+rename command: VM.stathist -> VM.vitals
+rename switches: "EnableStatHist" -> "EnableVitals" etc.
+fixes #420
+---
+ src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp |  8 ++++----
+ src/hotspot/share/runtime/globals.hpp                       | 13 +++++++------
+ src/hotspot/share/runtime/thread.cpp                        |  2 +-
+ src/hotspot/share/services/stathist.cpp                     | 10 +++++-----
+ src/hotspot/share/services/stathistDCmd.hpp                 |  4 ++--
+ src/hotspot/share/utilities/vmError.cpp                     |  4 ++--
+ test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java |  4 ++--
+ 7 files changed, 23 insertions(+), 22 deletions(-)
+* * *
+[PATCH] Sapmachine #492: Various improvements to vitals (#493)
+From edf4899dcafbee27bc1aba67d635dfda0ace15e4 Mon Sep 17 00:00:00 2001
+SapMachine #492: Various improvements to vitals
+---
+ src/hotspot/share/runtime/globals.hpp              |   6 +-
+ src/hotspot/share/runtime/java.cpp                 |  12 +
+ src/hotspot/share/services/stathist.cpp            | 243 +++++++++++++++++----
+ src/hotspot/share/services/stathist.hpp            |  13 +-
+ src/hotspot/share/services/stathistDCmd.cpp        |  21 +-
+ src/hotspot/share/services/stathistDCmd.hpp        |   5 +-
+ src/hotspot/share/utilities/vmError.cpp            |  18 +-
+ .../jtreg/serviceability/dcmd/vm/StatHistTest.java |  32 ++-
+ 8 files changed, 285 insertions(+), 65 deletions(-)
+
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/aix/stathist_aix.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/os/aix/stathist_aix.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#include "precompiled.hpp"
++
++#include "runtime/os.hpp"
++#include "services/stathist_internals.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++namespace StatisticsHistory {
++
++bool platform_columns_initialize() {
++  return true;
++}
++
++void sample_platform_values(record_t* record) {
++}
++
++} // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/bsd/stathist_bsd.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/os/bsd/stathist_bsd.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,43 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#include "precompiled.hpp"
++
++#include "runtime/os.hpp"
++#include "services/stathist_internals.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++namespace StatisticsHistory {
++
++bool platform_columns_initialize() {
++  return true;
++}
++
++void sample_platform_values(record_t* record) {
++}
++
++} // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/linux/stathist_linux.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/os/linux/stathist_linux.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,412 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#include "precompiled.hpp"
++#include "runtime/os.hpp"
++#include "services/stathist_internals.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++#include <fcntl.h>
++#include <string.h>
++#include <errno.h>
++
++namespace StatisticsHistory {
++
++class ProcFile {
++  char* _buf;
++
++  // To keep the code simple, I just use a fixed sized buffer.
++  enum { bufsize = 4*K };
++
++public:
++
++  ProcFile() : _buf(NULL) {
++    _buf = (char*)os::malloc(bufsize, mtInternal);
++  }
++
++  ~ProcFile () {
++    os::free(_buf);
++  }
++
++  bool read(const char* filename) {
++
++    FILE* f = ::fopen(filename, "r");
++    if (f == NULL) {
++      return false;
++    }
++
++    size_t bytes_read = ::fread(_buf, 1, bufsize, f);
++    _buf[bufsize - 1] = '\0';
++
++    ::fclose(f);
++
++    return bytes_read > 0 && bytes_read < bufsize;
++  }
++
++  const char* text() const { return _buf; }
++
++  const char* get_prefixed_line(const char* prefix) const {
++    return ::strstr(_buf, prefix);
++  }
++
++  value_t parsed_prefixed_value(const char* prefix, size_t scale = 1) const {
++    value_t value = INVALID_VALUE;
++    const char* const s = get_prefixed_line(prefix);
++    if (s != NULL) {
++      errno = 0;
++      const char* p = s + ::strlen(prefix);
++      char* endptr = NULL;
++      value = (value_t)::strtoll(p, &endptr, 10);
++      if (p == endptr || errno != 0) {
++        value = INVALID_VALUE;
++      } else {
++        value *= scale;
++      }
++    }
++    return value;
++  }
++
++};
++
++struct cpu_values_t {
++  value_t user;
++  value_t nice;
++  value_t system;
++  value_t idle;
++  value_t iowait;
++  value_t steal;
++  value_t guest;
++  value_t guest_nice;
++};
++
++void parse_proc_stat_cpu_line(const char* line, cpu_values_t* out) {
++  // Note: existence of some of these values depends on kernel version
++  out->user = out->nice = out->system = out->idle = out->iowait = out->steal = out->guest = out->guest_nice =
++      INVALID_VALUE;
++  int user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice;
++  int num = ::sscanf(line,
++      "cpu %d %d %d %d %d %d %d %d %d %d",
++      &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal, &guest, &guest_nice);
++  if (num >= 4) {
++    out->user = user;
++    out->nice = nice;
++    out->system = system;
++    out->idle = idle;
++    if (num >= 5) { // iowait (5) (since Linux 2.5.41)
++      out->iowait = iowait;
++      if (num >= 8) { // steal (8) (since Linux 2.6.11)
++        out->steal = steal;
++        if (num >= 9) { // guest (9) (since Linux 2.6.24)
++          out->guest = guest;
++          if (num >= 10) { // guest (9) (since Linux 2.6.33)
++            out->guest_nice = guest_nice;
++          }
++        }
++      }
++    }
++  }
++}
++
++
++/////// Columns ////////
++
++// A special class to display cpu time
++class CPUTimeColumn: public Column {
++
++  long _clk_tck;
++  int _num_cores;
++
++  int do_print(outputStream* st, value_t value, value_t last_value,
++      int last_value_age, const print_info_t* pi) const {
++    // CPU values may overflow, so the delta may be negative.
++    if (last_value > value) {
++      return 0;
++    }
++    int l = 0;
++    if (value != INVALID_VALUE && last_value != INVALID_VALUE) {
++
++      // If the last sample is less than one second old, we omit calculating the cpu
++      // usage.
++      if (last_value_age > 0) {
++
++        // Values are in ticks. Convert to ms.
++        const uint64_t value_ms = (value * 1000) / _clk_tck;
++        const uint64_t last_value_ms = (last_value * 1000) / _clk_tck;
++        const uint64_t delta_ms = value_ms - last_value_ms;
++
++        // Calculate the number of wallclock milliseconds for the delta interval...
++        const uint64_t age_ms = last_value_age * 1000;
++
++        // times number of available cores.
++        const uint64_t total_cpu_time_ms = age_ms * _num_cores;
++
++        // Put the spent cpu time in reference to the total available cpu time.
++        const double percentage = (100.0f * delta_ms) / total_cpu_time_ms;
++
++        char buf[32];
++        l = jio_snprintf(buf, sizeof(buf), "%.0f", percentage);
++        if (st != NULL) {
++          st->print_raw(buf);
++        }
++      }
++    }
++    return l;
++  }
++
++public:
++  CPUTimeColumn(const char* category, const char* header, const char* name, const char* description)
++    : Column(category, header, name, description)
++  {
++    _clk_tck = ::sysconf(_SC_CLK_TCK);
++    _num_cores = os::active_processor_count();
++  }
++
++};
++
++//static Column* g_col_system_memtotal = NULL;
++static Column* g_col_system_memfree = NULL;
++static Column* g_col_system_memavail = NULL;
++static Column* g_col_system_swap = NULL;
++
++static Column* g_col_system_pages_swapped_in = NULL;
++static Column* g_col_system_pages_swapped_out = NULL;
++
++static Column* g_col_system_num_procs_running = NULL;
++static Column* g_col_system_num_procs_blocked = NULL;
++
++static Column* g_col_system_cpu_user = NULL;
++static Column* g_col_system_cpu_system = NULL;
++static Column* g_col_system_cpu_idle = NULL;
++static Column* g_col_system_cpu_waiting = NULL;
++static Column* g_col_system_cpu_steal = NULL;
++static Column* g_col_system_cpu_guest = NULL;
++
++static Column* g_col_process_virt = NULL;
++static Column* g_col_process_rss = NULL;
++static Column* g_col_process_rssanon = NULL;
++static Column* g_col_process_rssfile = NULL;
++static Column* g_col_process_rssshmem = NULL;
++static Column* g_col_process_swapped_out = NULL;
++
++static Column* g_col_process_cpu_user = NULL;
++static Column* g_col_process_cpu_system = NULL;
++
++static Column* g_col_process_num_of = NULL;
++static Column* g_col_process_io_bytes_read = NULL;
++static Column* g_col_process_io_bytes_written = NULL;
++
++static Column* g_col_process_num_threads = NULL;
++
++bool platform_columns_initialize() {
++
++  // Order matters!
++//  g_col_system_memtotal = new MemorySizeColumn("system", NULL, "total", "Total physical memory.");
++
++  // Since free and avail are kind of redundant, only display free if avail is not available (very old kernels)
++  bool have_avail = false;
++  {
++    ProcFile bf;
++    if (bf.read("/proc/meminfo")) {
++      have_avail = (bf.parsed_prefixed_value("MemAvailable:", 1) != INVALID_VALUE);
++    }
++  }
++
++  if (have_avail) {
++    g_col_system_memavail = new MemorySizeColumn("system", NULL, "avail", "Memory available without swapping (>=3.14)");
++  } else {
++    g_col_system_memfree = new MemorySizeColumn("system", NULL, "free", "Unused memory");
++  }
++
++  g_col_system_swap = new MemorySizeColumn("system", NULL, "swap", "Swap space used");
++
++  g_col_system_pages_swapped_in = new DeltaValueColumn("system", NULL, "si", "Number of pages swapped in");
++
++  g_col_system_pages_swapped_out = new DeltaValueColumn("system", NULL, "so", "Number of pages pages swapped out");
++
++  g_col_system_num_procs_running = new PlainValueColumn("system", NULL, "pr", "Number of tasks running");
++  g_col_system_num_procs_blocked = new PlainValueColumn("system", NULL, "pb", "Number of tasks blocked");
++
++  g_col_system_cpu_user =     new CPUTimeColumn("system", "cpu", "us", "Global cpu user time");
++  g_col_system_cpu_system =   new CPUTimeColumn("system", "cpu", "sy", "Global cpu system time");
++  g_col_system_cpu_idle =     new CPUTimeColumn("system", "cpu", "id", "Global cpu idle time");
++  g_col_system_cpu_waiting =  new CPUTimeColumn("system", "cpu", "wa", "Global cpu time spent waiting for IO");
++  g_col_system_cpu_steal =    new CPUTimeColumn("system", "cpu", "st", "Global cpu time stolen");
++  g_col_system_cpu_guest =    new CPUTimeColumn("system", "cpu", "gu", "Global cpu time spent on guest");
++
++  g_col_process_virt = new MemorySizeColumn("process", NULL, "virt", "Virtual size");
++
++  bool have_rss_detail_info = false;
++  {
++    ProcFile bf;
++    if (bf.read("/proc/self/status")) {
++      have_rss_detail_info = bf.parsed_prefixed_value("RssAnon:", 1) != INVALID_VALUE;
++    }
++  }
++  if (have_rss_detail_info) {
++    // Linux 4.5 ++
++    g_col_process_rss = new MemorySizeColumn("process", "rss", "all", "Resident set size, total");
++    g_col_process_rssanon = new MemorySizeColumn("process", "rss", "anon", "Resident set size, anonymous memory (>=4.5)");
++    g_col_process_rssfile = new MemorySizeColumn("process", "rss", "file", "Resident set size, file mappings (>=4.5)");
++    g_col_process_rssshmem = new MemorySizeColumn("process", "rss", "shm", "Resident set size, shared memory (>=4.5)");
++  } else {
++    g_col_process_rss = new MemorySizeColumn("process", NULL, "rss", "Resident set size, total");
++  }
++
++  g_col_process_swapped_out = new MemorySizeColumn("process", NULL, "swdo", "Memory swapped out");
++
++  g_col_process_cpu_user = new CPUTimeColumn("process", "cpu", "us", "Process cpu user time");
++
++  g_col_process_cpu_system = new CPUTimeColumn("process", "cpu", "sy", "Process cpu system time");
++
++  g_col_process_num_of = new PlainValueColumn("process", "io", "of", "Number of open files");
++
++  g_col_process_io_bytes_read = new DeltaMemorySizeColumn("process", "io", "rd", "IO bytes read from storage or cache");
++
++  g_col_process_io_bytes_written = new DeltaMemorySizeColumn("process", "io", "wr", "IO bytes written");
++
++  g_col_process_num_threads = new PlainValueColumn("process", NULL, "thr", "Number of native threads");
++
++
++  return true;
++}
++
++static void set_value_in_record(Column* col, record_t* record, value_t val) {
++  if (col != NULL) {
++    int index = col->index();
++    record->values[index] = val;
++  }
++}
++
++void sample_platform_values(record_t* record) {
++
++  int idx = 0;
++  value_t v = 0;
++
++  ProcFile bf;
++  if (bf.read("/proc/meminfo")) {
++
++    // All values in /proc/meminfo are in KB
++    const size_t scale = K;
++
++    set_value_in_record(g_col_system_memfree, record,
++        bf.parsed_prefixed_value("MemFree:", scale));
++
++    set_value_in_record(g_col_system_memavail, record,
++        bf.parsed_prefixed_value("MemAvailable:", scale));
++
++    value_t swap_total = bf.parsed_prefixed_value("SwapTotal:", scale);
++    value_t swap_free = bf.parsed_prefixed_value("SwapFree:", scale);
++    if (swap_total != INVALID_VALUE && swap_free != INVALID_VALUE) {
++      set_value_in_record(g_col_system_swap, record, swap_total - swap_free);
++    }
++
++  }
++
++  if (bf.read("/proc/vmstat")) {
++    set_value_in_record(g_col_system_pages_swapped_in, record, bf.parsed_prefixed_value("pswpin"));
++    set_value_in_record(g_col_system_pages_swapped_out, record, bf.parsed_prefixed_value("pswpout"));
++  }
++
++  if (bf.read("/proc/stat")) {
++    // Read and parse global cpu values
++    cpu_values_t values;
++    const char* line = bf.get_prefixed_line("cpu");
++    parse_proc_stat_cpu_line(line, &values);
++
++    set_value_in_record(g_col_system_cpu_user, record, values.user + values.nice);
++    set_value_in_record(g_col_system_cpu_system, record, values.system);
++    set_value_in_record(g_col_system_cpu_idle, record, values.idle);
++    set_value_in_record(g_col_system_cpu_waiting, record, values.iowait);
++    set_value_in_record(g_col_system_cpu_steal, record, values.steal);
++    set_value_in_record(g_col_system_cpu_guest, record, values.guest + values.guest_nice);
++
++    set_value_in_record(g_col_system_num_procs_running, record,
++        bf.parsed_prefixed_value("procs_running"));
++    set_value_in_record(g_col_system_num_procs_blocked, record,
++        bf.parsed_prefixed_value("procs_blocked"));
++  }
++
++  if (bf.read("/proc/self/status")) {
++
++    set_value_in_record(g_col_process_virt, record, bf.parsed_prefixed_value("VmSize:", K));
++    set_value_in_record(g_col_process_swapped_out, record, bf.parsed_prefixed_value("VmSwap:", K));
++    set_value_in_record(g_col_process_rss, record, bf.parsed_prefixed_value("VmRSS:", K));
++
++    set_value_in_record(g_col_process_rssanon, record, bf.parsed_prefixed_value("RssAnon:", K));
++    set_value_in_record(g_col_process_rssfile, record, bf.parsed_prefixed_value("RssFile:", K));
++    set_value_in_record(g_col_process_rssshmem, record, bf.parsed_prefixed_value("RssShmem:", K));
++
++    set_value_in_record(g_col_process_num_threads, record,
++        bf.parsed_prefixed_value("Threads:"));
++
++  }
++
++  // Number of open files: iterate over /proc/self/fd and count.
++  {
++    DIR* d = ::opendir("/proc/self/fd");
++    if (d != NULL) {
++      value_t v = 0;
++      struct dirent* en = NULL;
++      do {
++        en = ::readdir(d);
++        if (en != NULL) {
++          if (::strcmp(".", en->d_name) == 0 || ::strcmp("..", en->d_name) == 0 ||
++              ::strcmp("0", en->d_name) == 0 || ::strcmp("1", en->d_name) == 0 || ::strcmp("2", en->d_name) == 0) {
++            // omit
++          } else {
++            v ++;
++          }
++        }
++      } while(en != NULL);
++      ::closedir(d);
++      set_value_in_record(g_col_process_num_of, record, v);
++    }
++  }
++
++  if (bf.read("/proc/self/io")) {
++    set_value_in_record(g_col_process_io_bytes_read, record,
++        bf.parsed_prefixed_value("rchar:"));
++    set_value_in_record(g_col_process_io_bytes_written, record,
++        bf.parsed_prefixed_value("wchar:"));
++  }
++
++  if (bf.read("/proc/self/stat")) {
++    const char* text = bf.text();
++    // See man proc(5)
++    // (14) utime  %lu
++    // (15) stime  %lu
++
++    long unsigned cpu_utime = 0;
++    long unsigned cpu_stime = 0;
++    ::sscanf(text, "%*d %*s %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu", &cpu_utime, &cpu_stime);
++    set_value_in_record(g_col_process_cpu_user, record, cpu_utime);
++    set_value_in_record(g_col_process_cpu_system, record, cpu_stime);
++  }
++
++}
++
++} // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/solaris/stathist_solaris.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/os/solaris/stathist_solaris.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,44 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#include "precompiled.hpp"
++
++#include "runtime/os.hpp"
++#include "services/stathist_internals.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++
++namespace StatisticsHistory {
++
++bool platform_columns_initialize() {
++  return true;
++}
++
++void sample_platform_values(record_t* record) {
++}
++
++} // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/windows/stathist_windows.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/os/windows/stathist_windows.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,89 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#include "precompiled.hpp"
++
++#include "runtime/os.hpp"
++#include "services/stathist_internals.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++#include <psapi.h>
++
++
++namespace StatisticsHistory {
++
++static Column* g_col_system_memoryload = NULL;
++static Column* g_col_system_avail_phys = NULL;
++static Column* g_col_process_working_set_size = NULL;
++static Column* g_col_process_commit_charge = NULL;
++
++bool platform_columns_initialize() {
++  g_col_system_memoryload = new PlainValueColumn("system", NULL, "mload",
++      "Approximate percentage of physical memory that is in use.");
++
++  // MEMORYSTATUSEX ullAvailPhys
++  g_col_system_avail_phys = new MemorySizeColumn("system", NULL, "avail-phys",
++      "Amount of physical memory currently available.");
++
++  // PROCESS_MEMORY_COUNTERS_EX WorkingSetSize
++  g_col_process_working_set_size = new MemorySizeColumn("process", NULL, "wset",
++      "Working set size");
++
++  // PROCESS_MEMORY_COUNTERS_EX PrivateUsage
++  g_col_process_commit_charge = new MemorySizeColumn("process", NULL, "comch",
++      "Commit charge");
++
++
++  return true;
++}
++
++static void set_value_in_record(Column* col, record_t* record, value_t val) {
++  if (col != NULL) {
++    int index = col->index();
++    record->values[index] = val;
++  }
++}
++
++void sample_platform_values(record_t* record) {
++
++  MEMORYSTATUSEX mse;
++  mse.dwLength = sizeof(mse);
++  if (::GlobalMemoryStatusEx(&mse)) {
++    set_value_in_record(g_col_system_memoryload, record, mse.dwMemoryLoad);
++    set_value_in_record(g_col_system_avail_phys, record, mse.ullAvailPhys);
++  }
++
++  PROCESS_MEMORY_COUNTERS cnt;
++  cnt.cb = sizeof(cnt);
++  if (::GetProcessMemoryInfo(::GetCurrentProcess(), &cnt, sizeof(cnt))) {
++    set_value_in_record(g_col_process_working_set_size, record, cnt.WorkingSetSize);
++    set_value_in_record(g_col_process_commit_charge, record, cnt.PagefileUsage);
++  }
++
++}
++
++} // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp
+--- a/src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp	Fri Nov 01 11:09:18 2019 +0100
++++ b/src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -28,7 +28,11 @@
+ #include "classfile/classLoaderDataGraph.hpp"
+ #include "classfile/javaClasses.hpp"
+ #include "oops/oop.inline.hpp"
++// SapMachine 2019-02-20 : stathist
++#include "runtime/globals.hpp"
+ #include "runtime/atomic.hpp"
++// SapMachine 2019-02-20 : stathist
++#include "services/stathist.hpp"
+ 
+ inline ClassLoaderData *ClassLoaderDataGraph::find_or_create(Handle loader) {
+   guarantee(loader() != NULL && oopDesc::is_oop(loader()), "Loader must be oop");
+@@ -51,20 +55,36 @@
+ 
+ void ClassLoaderDataGraph::inc_instance_classes(size_t count) {
+   Atomic::add(count, &_num_instance_classes);
++  // SapMachine 2019-02-20 : stathist
++  if (EnableVitals) {
++    StatisticsHistory::counters::inc_classes_loaded(count);
++  }
+ }
+ 
+ void ClassLoaderDataGraph::dec_instance_classes(size_t count) {
+   assert(count <= _num_instance_classes, "Sanity");
+   Atomic::sub(count, &_num_instance_classes);
++  // SapMachine 2019-02-20 : stathist
++  if (EnableVitals) {
++    StatisticsHistory::counters::inc_classes_unloaded(count);
++  }
+ }
+ 
+ void ClassLoaderDataGraph::inc_array_classes(size_t count) {
+   Atomic::add(count, &_num_array_classes);
++  // SapMachine 2019-02-20 : stathist
++  if (EnableVitals) {
++    StatisticsHistory::counters::inc_classes_loaded(count);
++  }
+ }
+ 
+ void ClassLoaderDataGraph::dec_array_classes(size_t count) {
+   assert(count <= _num_array_classes, "Sanity");
+   Atomic::sub(count, &_num_array_classes);
++  // SapMachine 2019-02-20 : stathist
++  if (EnableVitals) {
++    StatisticsHistory::counters::inc_classes_unloaded(count);
++  }
+ }
+ 
+ bool ClassLoaderDataGraph::should_clean_metaspaces_and_reset() {
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/globals.hpp
+--- a/src/hotspot/share/runtime/globals.hpp	Fri Nov 01 11:09:18 2019 +0100
++++ b/src/hotspot/share/runtime/globals.hpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -501,6 +501,26 @@
+   develop(bool, Verbose, false,                                             \
+           "Print additional debugging information from other modes")        \
+                                                                             \
++  /* SapMachine 2019-02-20 : vitals */                                      \
++  product(bool, EnableVitals, true,                                         \
++          "Enable sampling of vitals: memory, cpu utilization and various " \
++          "VM core statistics; display via jcmd \"VM.vitals\".")            \
++                                                                            \
++  product(uintx, VitalsSampleInterval, 0,                                   \
++          "Vitals sample rate interval (0=use default sample rate)")        \
++                                                                            \
++  experimental(bool, VitalsLockFreeSampling, false,                         \
++          "When sampling vitals, omit any actions which require locking.")  \
++                                                                            \
++  product(bool, DumpVitalsAtExit, false,                                    \
++	        "Dump vitals at VM exit into two files, by default called "       \
++	        "sapmachine_vitals_<pid>.txt and sapmachine_vitals_<pid>.csv. "   \
++	        "Use -XX:VitalsFile option to change the file names.")            \
++                                                                            \
++  product(ccstr, VitalsFile, NULL,                                          \
++          "When DumpVitalsAtExit is set, the file name prefix for the "     \
++          "output files (default is sapmachine_vitals_<pid>).")             \
++                                                                            \
+   develop(bool, PrintMiscellaneous, false,                                  \
+           "Print uncategorized debugging information (requires +Verbose)")  \
+                                                                             \
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/java.cpp
+--- a/src/hotspot/share/runtime/java.cpp	Fri Nov 01 11:09:18 2019 +0100
++++ b/src/hotspot/share/runtime/java.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -71,6 +71,8 @@
+ #include "runtime/timer.hpp"
+ #include "runtime/vmOperations.hpp"
+ #include "services/memTracker.hpp"
++// SapMachine 2019-09-01: vitals.
++#include "services/stathist.hpp"
+ #include "utilities/dtrace.hpp"
+ #include "utilities/globalDefinitions.hpp"
+ #include "utilities/histogram.hpp"
+@@ -346,6 +348,11 @@
+     MemTracker::final_report(tty);
+   }
+ 
++  // SapMachine 2019-09-01: vitals.
++  if (DumpVitalsAtExit) {
++    StatisticsHistory::dump_reports();
++  }
++
+   ThreadsSMRSupport::log_statistics();
+ }
+ 
+@@ -388,6 +395,11 @@
+     MemTracker::final_report(tty);
+   }
+ 
++  // SapMachine 2019-09-01: vitals.
++  if (DumpVitalsAtExit) {
++    StatisticsHistory::dump_reports();
++  }
++
+   if (LogTouchedMethods && PrintTouchedMethodsAtExit) {
+     Method::print_touched_methods(tty);
+   }
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/thread.cpp
+--- a/src/hotspot/share/runtime/thread.cpp	Fri Nov 01 11:09:18 2019 +0100
++++ b/src/hotspot/share/runtime/thread.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -107,6 +107,8 @@
+ #include "services/attachListener.hpp"
+ #include "services/management.hpp"
+ #include "services/memTracker.hpp"
++// SapMachine 2019-02-20 : stathist
++#include "services/stathist.hpp"
+ #include "services/threadService.hpp"
+ #include "utilities/align.hpp"
+ #include "utilities/copy.hpp"
+@@ -4021,6 +4023,11 @@
+   StatSampler::engage();
+   if (CheckJNICalls)                  JniPeriodicChecker::engage();
+ 
++  // SapMachine 2019-02-20 : stathist
++  if (EnableVitals) {
++    StatisticsHistory::initialize();
++  }
++
+   BiasedLocking::init();
+ 
+ #if INCLUDE_RTM_OPT
+@@ -4447,6 +4454,10 @@
+   p->set_on_thread_list();
+ 
+   _number_of_threads++;
++
++  // SapMachine 2019-02-20 : stathist
++  StatisticsHistory::counters::inc_threads_created(1);
++
+   oop threadObj = p->threadObj();
+   bool daemon = true;
+   // Bootstrapping problem: threadObj can be null for initial
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/diagnosticCommand.cpp
+--- a/src/hotspot/share/services/diagnosticCommand.cpp	Fri Nov 01 11:09:18 2019 +0100
++++ b/src/hotspot/share/services/diagnosticCommand.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -46,6 +46,8 @@
+ #include "services/diagnosticFramework.hpp"
+ #include "services/heapDumper.hpp"
+ #include "services/management.hpp"
++// SapMachine 2019-02-20 : stathist
++#include "services/stathistDCmd.hpp"
+ #include "services/writeableFlags.hpp"
+ #include "utilities/debug.hpp"
+ #include "utilities/events.hpp"
+@@ -87,6 +89,8 @@
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<RunFinalizationDCmd>(full_export, true, false));
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<HeapInfoDCmd>(full_export, true, false));
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<FinalizerInfoDCmd>(full_export, true, false));
++  // SapMachine 2019-02-20 : stathist
++  DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<StatisticsHistory::StatHistDCmd>(full_export, true, false));
+ #if INCLUDE_SERVICES
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<HeapDumpDCmd>(DCmd_Source_Internal | DCmd_Source_AttachAPI, true, false));
+   DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<ClassHistogramDCmd>(full_export, true, false));
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/share/services/stathist.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,1350 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#include "precompiled.hpp"
++
++
++#include "gc/shared/collectedHeap.hpp"
++#include "classfile/classLoaderDataGraph.inline.hpp"
++#include "code/codeCache.hpp"
++#include "memory/allocation.hpp"
++#include "memory/metaspace/metaspaceEnums.hpp"
++#include "memory/universe.hpp"
++#include "runtime/os.hpp"
++#include "runtime/thread.hpp"
++#include "services/memTracker.hpp"
++#include "services/stathist.hpp"
++#include "services/stathist_internals.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++#include "utilities/ostream.hpp"
++
++
++#include <locale.h>
++#include <time.h>
++
++
++// Define this switch to limit sampling to those values which can be obtained without locking.
++#undef NEVER_LOCK_WHEN_SAMPLING
++
++namespace StatisticsHistory {
++
++namespace counters {
++
++// These are counters for the statistics history. Ideally, they would live
++// inside their thematical homes, e.g. thread.cpp or classLoaderDataGraph.cpp,
++// however since this is unlikely ever to be brought upstream we keep them separate
++// from central coding to ease maintenance.
++static volatile size_t g_classes_loaded = 0;
++static volatile size_t g_classes_unloaded = 0;
++static volatile size_t g_threads_created = 0;
++
++void inc_classes_loaded(size_t count) {
++  Atomic::add(count, &g_classes_loaded);
++}
++
++void inc_classes_unloaded(size_t count) {
++  Atomic::add(count, &g_classes_unloaded);
++}
++
++void inc_threads_created(size_t count) {
++  Atomic::add(count, &g_threads_created);
++}
++
++} // namespace counters
++
++// helper function for the missing outputStream::put(int c, int repeat)
++static void ostream_put_n(outputStream* st, int c, int repeat) {
++  for (int i = 0; i < repeat; i ++) {
++    st->put(c);
++  }
++}
++
++static size_t record_size_in_bytes() {
++  const int num_columns = ColumnList::the_list()->num_columns();
++  return sizeof(record_t) + sizeof(value_t) * (num_columns - 1);
++}
++
++static void print_text_with_dashes(outputStream* st, const char* text, int width) {
++  assert(width > 0, "Sanity");
++  // Print the name centered within the width like this
++  // ----- system ------
++  int extra_space = width - (int)strlen(text);
++  if (extra_space > 0) {
++    int left_space = extra_space / 2;
++    int right_space = extra_space - left_space;
++    ostream_put_n(st, '-', left_space);
++    st->print_raw(text);
++    ostream_put_n(st, '-', right_space);
++  } else {
++    ostream_put_n(st, '-', width);
++  }
++}
++
++// Helper function for printing:
++// Print to ostream, but only if ostream is given. In any case return number ofcat_process = 10,
++// characters printed (or which would have been printed).
++static
++ATTRIBUTE_PRINTF(2, 3)
++int printf_helper(outputStream* st, const char *fmt, ...) {
++  // We only print numbers, so a small buffer is fine.
++  char buf[64];
++  va_list args;
++  int len = 0;
++  va_start(args, fmt);
++  len = jio_vsnprintf(buf, sizeof(buf), fmt, args);
++  va_end(args);
++  assert((size_t)len < sizeof(buf), "Truncation. Increase bufsize.");
++  if (st != NULL) {
++    st->print_raw(buf);
++  }
++  return len;
++}
++
++// length of time stamp
++#define TIMESTAMP_LEN 19
++// number of spaces after time stamp
++#define TIMESTAMP_DIVIDER_LEN 3
++static void print_timestamp(outputStream* st, time_t t) {
++  struct tm _tm;
++  if (os::localtime_pd(&t, &_tm) == &_tm) {
++    char buf[32];
++    ::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &_tm);
++    st->print("%*s", TIMESTAMP_LEN, buf);
++  }
++}
++
++////// class ColumnList methods ////
++
++ColumnList* ColumnList::_the_list = NULL;
++
++bool ColumnList::initialize() {
++  _the_list = new ColumnList();
++  return _the_list != NULL;
++}
++
++void ColumnList::add_column(Column* c) {
++  assert(c->index() == -1, "Do not add twice.");
++  Column* c_last = _last;
++  if (_last != NULL) {
++    _last->_next = c;
++    _last = c;
++  } else {
++    _first = _last = c;
++  }
++  // fix indices (describe position of column within table/category/header
++  c->_idx = c->_idx_cat = c->_idx_hdr = 0;
++  if (c_last != NULL) {
++    c->_idx = c_last->_idx + 1;
++    if (::strcmp(c->category(), c_last->category()) == 0) { // same category as last column?
++      c->_idx_cat = c_last->_idx_cat + 1;
++    }
++    if (c->header() != NULL && c_last->header() != NULL &&
++        ::strcmp(c_last->header(), c->header()) == 0) { // have header and same as last column?
++      c->_idx_hdr = c_last->_idx_hdr + 1;
++    }
++  }
++  _num_columns ++;
++}
++
++////////////////////
++
++// At various places we need a scratch buffer of ints with one element per column; since
++// after initialization the number of columns is fixed, we pre-create this.
++static int* g_widths = NULL;
++
++bool initialize_widths_buffer() {
++  assert(ColumnList::the_list() != NULL && g_widths == NULL, "Initialization order problem.");
++  g_widths = (int*)os::malloc(sizeof(int) * ColumnList::the_list()->num_columns(), mtInternal);
++  return g_widths != NULL;
++}
++
++// pre-allocated space for a single record used to take current values when printing via dcmd.
++static record_t* g_record_now = NULL;
++
++bool initialize_space_for_now_record() {
++  assert(ColumnList::the_list() != NULL && g_record_now == NULL, "Initialization order problem.");
++  g_record_now = (record_t*) os::malloc(record_size_in_bytes(), mtInternal);
++  return g_record_now != NULL;
++}
++
++////////////////////
++
++static void print_category_line(outputStream* st, int widths[], const print_info_t* pi) {
++
++  assert(pi->csv == false, "Not in csv mode");
++  ostream_put_n(st, ' ', TIMESTAMP_LEN + TIMESTAMP_DIVIDER_LEN);
++
++  const Column* c = ColumnList::the_list()->first();
++  assert(c != NULL, "no columns?");
++  const char* last_category_text = NULL;
++  int width = 0;
++
++  while(c != NULL) {
++    if (c->index_within_category_section() == 0) {
++      if (width > 0) {
++        // Print category label centered over the last n columns, surrounded by dashes.
++        print_text_with_dashes(st, last_category_text, width - 1);
++        st->put(' ');
++      }
++      width = 0;
++    }
++    width += widths[c->index()];
++    width += 1; // divider between columns
++    last_category_text = c->category();
++    c = c->next();
++  }
++  print_text_with_dashes(st, last_category_text, width - 1);
++  st->cr();
++}
++
++static void print_header_line(outputStream* st, int widths[], const print_info_t* pi) {
++
++  assert(pi->csv == false, "Not in csv mode");
++  ostream_put_n(st, ' ', TIMESTAMP_LEN + TIMESTAMP_DIVIDER_LEN);
++
++  const Column* c = ColumnList::the_list()->first();
++  assert(c != NULL, "no columns?");
++  const char* last_header_text = NULL;
++  int width = 0;
++
++  while(c != NULL) {
++    if (c->index_within_header_section() == 0) { // First in header section
++      if (width > 0) {
++        if (last_header_text != NULL) {
++          // Print header label centered over the last n columns, surrounded by dashes.
++          print_text_with_dashes(st, last_header_text, width - 1);
++          st->put(' '); // divider
++        } else {
++          // the last n columns had no header. Just fill with blanks.
++          ostream_put_n(st, ' ', width);
++        }
++      }
++      width = 0;
++    }
++    width += widths[c->index()];
++    width += 1; // divider between columns
++    last_header_text = c->header();
++    c = c->next();
++  }
++  if (width > 0 && last_header_text != NULL) {
++    print_text_with_dashes(st, last_header_text, width - 1);
++  }
++  st->cr();
++}
++
++static void print_column_names(outputStream* st, int widths[], const print_info_t* pi) {
++
++  // Leave space for timestamp column
++  if (pi->csv == false) {
++    ostream_put_n(st, ' ', TIMESTAMP_LEN + TIMESTAMP_DIVIDER_LEN);
++  } else {
++    st->put(',');
++  }
++
++  const Column* c = ColumnList::the_list()->first();
++  const Column* previous = NULL;
++  while (c != NULL) {
++    if (pi->csv == false) {
++      st->print("%-*s ", widths[c->index()], c->name());
++    } else { // csv mode
++      // csv: use comma as delimiter, don't pad, and precede name with header if there is one.
++      if (c->header() != NULL) {
++        st->print("%s-", c->header());
++      }
++      st->print("%s,", c->name());
++    }
++    previous = c;
++    c = c->next();
++  }
++  st->cr();
++}
++
++static void print_legend(outputStream* st, const print_info_t* pi) {
++  const Column* c = ColumnList::the_list()->first();
++  const Column* c_prev = NULL;
++  while (c != NULL) {
++    // Print category label.
++    if (c->index_within_category_section() == 0) {
++      print_text_with_dashes(st, c->category(), 30);
++      st->cr();
++    }
++    // print column name and description
++    const int min_width_column_label = 16;
++    char buf[32];
++    if (c->header() != NULL) {
++      jio_snprintf(buf, sizeof(buf), "%s-%s", c->header(), c->name());
++    } else {
++      jio_snprintf(buf, sizeof(buf), "%s", c->name());
++    }
++    st->print("%*s: %s", min_width_column_label, buf, c->description());
++
++    // If memory units are not dynamic (otion scale), print out the unit as well.
++    if (c->is_memory_size() && pi->scale != 0) {
++      st->print_raw(" [mem]");
++    }
++
++    // If column is a delta value, indicate so
++    if (c->is_delta()) {
++      st->print_raw(" [delta]");
++    }
++
++    st->cr();
++
++    c_prev = c;
++    c = c->next();
++  }
++  st->cr();
++  st->print_cr("[delta] values refer to the previous measurement.");
++  if (pi->scale != 0) {
++    const char* display_unit = NULL;
++    switch (pi->scale) {
++      case 1: display_unit = "  "; break;
++      case K: display_unit = "KB"; break;
++      case M: display_unit = "MB"; break;
++      case G: display_unit = "GB"; break;
++      default: ShouldNotReachHere();
++    }
++    st->print_cr("[mem] values are in %s.", display_unit);
++  }
++}
++
++// Print a human readable size.
++// byte_size: size, in bytes, to be printed.
++// scale: K,M,G or 0 (dynamic)
++// width: printing width.
++static int print_memory_size(outputStream* st, size_t byte_size, size_t scale)  {
++
++  // If we forced a unit via scale=.. argument, we suppress display of the unit
++  // since we already know which unit is used. That saves horizontal space and
++  // makes automatic processing of the data easier.
++  bool dynamic_mode = false;
++
++  if (scale == 0) {
++    dynamic_mode = true;
++    // Dynamic mode. Choose scale for this value.
++    if (byte_size == 0) {
++      scale = K;
++    } else {
++      if (byte_size >= G) {
++        scale = G;
++      } else if (byte_size >= M) {
++        scale = M;
++      } else {
++        scale = K;
++      }
++    }
++  }
++
++  const char* display_unit = "";
++  if (dynamic_mode) {
++    switch(scale) {
++      case K: display_unit = "k"; break;
++      case M: display_unit = "m"; break;
++      case G: display_unit = "g"; break;
++      default:
++        ShouldNotReachHere();
++    }
++  }
++
++  // How we display stuff:
++  // scale=1 (manually set)          - print exact byte values without unit
++  // scale=0 (default, dynamic mode) - print values < 1024KB as "..k", <1024MB as "..m", "..g" above that
++  //                                 - to distinguish between 0 and "almost 0" print very small values as "<1K"
++  //                                 - print "k", "m" values with precision 0, "g" values with precision 1.
++  // scale=k,m or g (manually set)   - print value divided by scale and without unit. No smart printing.
++  //                                   Used mostly for automated processing, lets keep parsing simple.
++
++  int l = 0;
++  if (scale == 1) {
++    // scale = 1 - print exact bytes
++    l = printf_helper(st, SIZE_FORMAT, byte_size);
++
++  } else {
++    const float display_value = (float) byte_size / scale;
++    if (dynamic_mode) {
++      // dynamic scale
++      const int precision = scale >= G ? 1 : 0;
++      if (byte_size > 0 && byte_size < 1 * K) {
++        // very small but not zero.
++        assert(scale == K, "Sanity");
++        l = printf_helper(st, "<1%s", display_unit);
++      } else {
++        l = printf_helper(st, "%.*f%s", precision, display_value, display_unit);
++      }
++    } else {
++      // fixed scale K, M or G
++      const int precision = 0;
++      l = printf_helper(st, "%.*f%s", precision, display_value, display_unit);
++    }
++  }
++
++  return l;
++
++}
++
++///////// class Column and childs ///////////
++
++Column::Column(const char* category, const char* header, const char* name, const char* description)
++  : _category(category),
++    _header(header), // may be NULL
++    _name(name),
++    _description(description),
++    _next(NULL), _idx(-1),
++    _idx_cat(-1), _idx_hdr(-1)
++{
++  ColumnList::the_list()->add_column(this);
++}
++
++void Column::print_value(outputStream* st, value_t value, value_t last_value,
++    int last_value_age, int min_width, const print_info_t* pi) const {
++
++  if (pi->raw) {
++    printf_helper(st, UINT64_FORMAT, value);
++    return;
++  }
++
++  // We print all values right aligned.
++  int needed = calc_print_size(value, last_value, last_value_age, pi);
++  if (pi->csv == false && min_width > needed) {
++    // In ascii (non csv) mode, pad to minimum width
++    ostream_put_n(st, ' ', min_width - needed);
++  }
++  // csv values shall be enclosed in quotes.
++  if (pi->csv) {
++    st->put('"');
++  }
++  do_print(st, value, last_value, last_value_age, pi);
++  if (pi->csv) {
++    st->put('"');
++  }
++}
++
++// Returns the number of characters this value needs to be printed.
++int Column::calc_print_size(value_t value, value_t last_value,
++    int last_value_age, const print_info_t* pi) const {
++  return do_print(NULL, value, last_value, last_value_age, pi);
++}
++
++int PlainValueColumn::do_print(outputStream* st, value_t value,
++    value_t last_value, int last_value_age, const print_info_t* pi) const
++{
++  int l = 0;
++  if (value != INVALID_VALUE) {
++    l = printf_helper(st, UINT64_FORMAT, value);
++  }
++  return l;
++}
++
++int DeltaValueColumn::do_print(outputStream* st, value_t value,
++    value_t last_value, int last_value_age, const print_info_t* pi) const {
++  if (_show_only_positive && last_value > value) {
++    // we assume the underlying value to be monotonically raising, and that
++    // any negative delta would be just a fluke (e.g. counter overflows)
++    // we do not want to show
++    return 0;
++  }
++  int l = 0;
++  if (value != INVALID_VALUE && last_value != INVALID_VALUE) {
++    l = printf_helper(st, INT64_FORMAT, (int64_t)(value - last_value));
++  }
++  return l;
++}
++
++int MemorySizeColumn::do_print(outputStream* st, value_t value,
++    value_t last_value, int last_value_age, const print_info_t* pi) const {
++  int l = 0;
++  if (value != INVALID_VALUE) {
++    l = print_memory_size(st, value, pi->scale);
++  }
++  return l;
++}
++
++int DeltaMemorySizeColumn::do_print(outputStream* st, value_t value,
++    value_t last_value, int last_value_age, const print_info_t* pi) const {
++  int l = 0;
++  if (value != INVALID_VALUE && last_value != INVALID_VALUE) {
++    l = print_memory_size(st, value - last_value, pi->scale);
++  }
++  return l;
++}
++
++////////////// Record printing ///////////////////////////
++
++// Print one record.
++static void print_one_record(outputStream* st, const record_t* record,
++    const record_t* last_record, const int widths[], const print_info_t* pi) {
++
++  // Print timestamp and divider
++  if (record->timestamp == 0) {
++    st->print("%*s", TIMESTAMP_LEN, "Now");
++  } else {
++    print_timestamp(st, record->timestamp);
++  }
++
++  if (pi->csv == false) {
++    ostream_put_n(st, ' ', TIMESTAMP_DIVIDER_LEN);
++  } else {
++    st->put(',');
++  }
++
++  const Column* c = ColumnList::the_list()->first();
++  while (c != NULL) {
++    const int idx = c->index();
++    const value_t v = record->values[idx];
++    value_t v2 = INVALID_VALUE;
++    int age = -1;
++    if (last_record != NULL) {
++      v2 = last_record->values[idx];
++      age = record->timestamp - last_record->timestamp;
++    }
++    const int min_width = widths[idx];
++    c->print_value(st, v, v2, age, min_width, pi);
++    st->put(pi->csv ? ',' : ' ');
++    c = c->next();
++  }
++  st->cr();
++}
++
++// For each value in record, update the width in the widths array if it is smaller than
++// the value printing width
++static void update_widths_from_one_record(const record_t* record, const record_t* last_record, int widths[],
++    const print_info_t* pi) {
++  const Column* c = ColumnList::the_list()->first();
++  while (c != NULL) {
++    const int idx = c->index();
++    const value_t v = record->values[idx];
++    value_t v2 = INVALID_VALUE;
++    int age = -1;
++    if (last_record != NULL) {
++      v2 = last_record->values[idx];
++      age = record->timestamp - last_record->timestamp;
++    }
++    int needed = c->calc_print_size(v, v2, age, pi);
++    if (widths[idx] < needed) {
++      widths[idx] = needed;
++    }
++    c = c->next();
++  }
++}
++
++////////////// Class RecordTable /////////////////////////
++
++class RecordTable : public CHeapObj<mtInternal> {
++
++  const int _num_records;
++
++  record_t* _records;
++
++  // _pos: index of next slot to write to. If we did not yet wrap,
++  //  this position is invalid, otherwise this is the position of the oldest slot.
++  //
++  // Valid ranges: not yet wrapped:    [0 .. _pos)
++  //               wrapped:            [_pos ... (_num_records-1 -> 0) ... _pos)
++  int _pos;
++  bool _did_wrap;
++
++  RecordTable* const _follower;
++  const int _follower_ratio;
++  int _follower_countdown;
++
++  #ifdef ASSERT
++    bool valid_pos(int pos) const           { return pos >= 0 && pos < _num_records; }
++    bool valid_pos_or_null(int pos) const   { return pos == -1 || valid_pos(pos); }
++  #endif
++
++  // Returns the position of the last slot we wrote to.
++  // -1 if this table is empty.
++  int youngest_pos() const {
++    int pos = _pos - 1;
++    if (pos == -1) {
++      if (_did_wrap) {
++        pos = _num_records - 1;
++      }
++    }
++    return pos;
++  }
++
++  // Returns the position of the oldest slot we wrote to.
++  // -1 if this table is empty.
++  int oldest_pos() const {
++    if (_did_wrap) {
++      return _pos;
++    } else {
++      return _pos > 0 ? 0 : -1;
++    }
++  }
++
++  // Return the position following pos.
++  //  Input position must be a valid position.
++  //  Returns -1 if there is no following slot.
++  int following_pos(int pos) const {
++    assert(valid_pos(pos), "Sanity");
++    int p2 = pos + 1;
++    if (_did_wrap) {
++      if (p2 == _num_records) {
++        p2 = 0;
++      }
++    }
++    if (p2 == _pos) {
++      p2 = -1;
++    }
++    assert(valid_pos_or_null(p2), "Sanity");
++    return p2;
++  }
++
++  int preceeding_pos(int pos) const {
++    assert(valid_pos(pos), "Sanity");
++    int p2 = pos - 1;
++    if (p2 == -1) {
++      if (_did_wrap) {
++        p2 = _num_records - 1;
++      }
++    } else if (p2 == _pos) {
++      assert(_did_wrap, "Sanity");
++      p2 = -1;
++    }
++    assert(valid_pos_or_null(p2), "Sanity");
++    return p2;
++  }
++
++  record_t* at(int pos) const {
++    assert(valid_pos(pos), "Sanity");
++    return (record_t*) ((address)_records + (record_size_in_bytes() * pos));
++  }
++
++  // May return NULL
++  const record_t* preceeding(int pos) const {
++    int p2 = preceeding_pos(pos);
++    if (p2 != -1) {
++      return at(p2);
++    }
++    return NULL;
++  }
++
++  class ConstIterator {
++    const RecordTable* const _rt;
++    const bool _reverse;
++    int _p;
++
++    void move_to_oldest() {
++      _p = _rt->oldest_pos();
++    }
++
++    void move_to_youngest() {
++      _p = _rt->youngest_pos();
++    }
++
++    void step_forward() {
++      if (valid()) {
++        _p = _rt->following_pos(_p);
++      }
++    }
++
++    void step_back() {
++      if (valid()) {
++        _p = _rt->preceeding_pos(_p);
++      }
++    }
++
++  public:
++
++    ConstIterator(const RecordTable* rt, bool reverse = false)
++      : _rt(rt), _reverse(reverse), _p(-1)
++    {
++      if (_reverse) {
++        move_to_oldest();
++      } else {
++        move_to_youngest();
++      }
++    }
++
++    bool valid() const { return _p != -1; }
++
++    void step() {
++      if (_reverse) {
++        step_forward();
++      } else {
++        step_back();
++      }
++    }
++
++    const record_t* get() const {
++      assert(valid(), "Sanity");
++      return _rt->at(_p);
++    }
++
++    // Returns the record directly preceding, age-wise, the current
++    // record. This has nothing to do with iteratore
++    // May return NULL
++    const record_t* get_preceeding() const {
++      return _rt->preceeding(_p);
++    }
++
++  }; // end ConstReverseIterator
++
++
++  void add_record(const record_t* record) {
++    ::memcpy(current_record(), record, record_size_in_bytes());
++    finish_current_record();
++  }
++
++  // This "dry-prints" all records just to calculate the maximum print width, per column, needed to
++  // display the values.
++  void update_widths_from_all_records(int widths[], const print_info_t* pi) const {
++
++    // reset widths - note: minimum width is the length of the name of the column.
++    const Column* c = ColumnList::the_list()->first();
++    while (c != NULL) {
++      widths[c->index()] = (int)::strlen(c->name());
++      c = c->next();
++    }
++
++    ConstIterator it(this);
++    while(it.valid()) {
++      const record_t* record = it.get();
++      const record_t* previous_record = it.get_preceeding();
++      update_widths_from_one_record(record, previous_record, widths, pi);
++      it.step();
++    }
++  }
++
++  // Print all records.
++  void print_all_records(outputStream* st, const int widths[], const print_info_t* pi) const {
++    ConstIterator it(this, pi->reverse_ordering);
++    while(it.valid()) {
++      const record_t* record = it.get();
++      const record_t* previous_record = it.get_preceeding();
++      print_one_record(st, record, previous_record, widths, pi);
++      it.step();
++    }
++  }
++
++  bool is_empty() const {
++    return _pos == 0 && _did_wrap == false;
++  }
++
++public:
++
++  RecordTable(int num_records, RecordTable* follower = NULL, int follower_ratio = -1)
++    : _num_records(num_records),
++      _records(NULL), _pos(0), _did_wrap(false),
++      _follower(follower), _follower_ratio(follower_ratio),
++      _follower_countdown(0)
++  {}
++
++  bool initialize() {
++    _records = (record_t*) os::malloc(record_size_in_bytes() * _num_records, mtInternal);
++    return _records != NULL;
++  }
++
++  // returns the pointer to the current, unfinished record.
++  record_t* current_record() {
++    return at(_pos);
++  }
++
++  // finish the current record: advances the write position in the FIFO buffer by one.
++  // Should that cause a record to fall out of the FIFO end, it propagates the record to
++  // the follower table if needed.
++  void finish_current_record() {
++    _pos ++;
++    if (_pos == _num_records) {
++      _pos = 0;
++      _did_wrap = true;
++    }
++    if (_did_wrap) {
++      // propagate old record if needed.
++      if (_follower != NULL && _follower_countdown == 0) {
++        _follower->add_record(current_record());
++        _follower_countdown = _follower_ratio; // reset countdown.
++      }
++      _follower_countdown --; // count down.
++    }
++  }
++
++  void print_table(outputStream* st, const print_info_t* pi, const record_t* values_now = NULL) const {
++
++    if (is_empty() && values_now == NULL) {
++      st->print_cr("(no records)");
++      return;
++    }
++
++    const record_t* const youngest_in_table = preceeding(_pos);
++
++    // Before actually printing, lets calculate the printing widths
++    // (if now-values are given, they are part of the table too, so include them in the widths calculation)
++    update_widths_from_all_records(g_widths, pi);
++    if (values_now != NULL) {
++      update_widths_from_one_record(values_now, youngest_in_table, g_widths, pi);
++    }
++
++    // Print headers (not in csv mode)
++    if (pi->csv == false) {
++      print_category_line(st, g_widths, pi);
++      print_header_line(st, g_widths, pi);
++    }
++    print_column_names(st, g_widths, pi);
++    st->cr();
++
++    // Now print the actual values. We preceede the table values with the now value
++    //  (if printing order is youngest-to-oldest) or write it last (if printing order is oldest-to-youngest).
++    if (values_now != NULL && pi->reverse_ordering == false) {
++      print_one_record(st, values_now, youngest_in_table, g_widths, pi);
++    }
++    print_all_records(st, g_widths, pi);
++    if (values_now != NULL && pi->reverse_ordering == true) {
++      print_one_record(st, values_now, youngest_in_table, g_widths, pi);
++    }
++
++  }
++};
++
++class RecordTables: public CHeapObj<mtInternal> {
++
++  enum {
++    // short term: 15 seconds per sample, 240 samples or 60 minutes total
++    short_term_interval_default = 15,
++    short_term_num_samples = 240,
++
++    // mid term: 15 minutes per sample (aka 60 short term samples), 96 samples or 24 hours in total
++    mid_term_interval_ratio = 60,
++    mid_term_num_samples = 96,
++
++    // long term history: 2 hour intervals (aka 8 mid term samples), 120 samples or 10 days in total
++    long_term_interval_ratio = 8,
++    long_term_num_samples = 120
++  };
++
++  int _short_term_interval;
++
++  RecordTable* _short_term_table;
++  RecordTable* _mid_term_table;
++  RecordTable* _long_term_table;
++
++  static RecordTables* _the_tables;
++
++  // Call this after column list has been initialized.
++  bool initialize(int short_term_interval) {
++
++    // Calculate intervals
++    _short_term_interval = short_term_interval;
++
++    // Initialize tables, oldest first (since it has no follower)
++    _long_term_table = new RecordTable(long_term_num_samples);
++    if (_long_term_table == NULL || !_long_term_table->initialize()) {
++      return false;
++    }
++    _mid_term_table = new RecordTable(mid_term_num_samples,
++      _long_term_table, long_term_interval_ratio);
++    if (_mid_term_table == NULL || !_mid_term_table->initialize()) {
++      return false;
++    }
++    _short_term_table = new RecordTable(short_term_num_samples,
++        _mid_term_table, mid_term_interval_ratio);
++    if (_short_term_table == NULL || !_short_term_table->initialize()) {
++      return false;
++    }
++
++    return true;
++
++  }
++
++public:
++
++  static RecordTables* the_tables() { return _the_tables; }
++
++  // Call this after column list has been initialized.
++  static bool initialize() {
++
++    _the_tables = new RecordTables();
++    if (_the_tables == NULL) {
++      return false;
++    }
++
++    const int short_term_interval = VitalsSampleInterval != 0 ?
++        VitalsSampleInterval : (int)short_term_interval_default;
++    return _the_tables->initialize(short_term_interval);
++
++  }
++
++  void print_all(outputStream* st, const print_info_t* pi, const record_t* values_now = NULL) const {
++
++    st->print_cr("Short Term Values:");
++    // At the start of the short term table we print the current (now) values. The intent is to be able
++    // to see very short term developments (e.g. a spike in heap usage in the last n seconds)
++    _short_term_table->print_table(st, pi, values_now);
++    st->cr();
++
++    st->print_cr("Mid Term Values:");
++    _mid_term_table->print_table(st, pi);
++    st->cr();
++
++    st->print_cr("Long Term Values:");
++    _long_term_table->print_table(st, pi);
++    st->cr();
++
++  }
++
++  RecordTable* first_table() const {
++    return _short_term_table;
++  }
++
++  int short_term_interval() const {
++    return _short_term_interval;
++  }
++
++};
++
++RecordTables* RecordTables::_the_tables = NULL;
++
++static void sample_values(record_t* record, bool avoid_locking) {
++
++  // reset all values to be invalid.
++  const ColumnList* clist = ColumnList::the_list();
++  for (int colno = 0; colno < clist->num_columns(); colno ++) {
++    record->values[colno] = INVALID_VALUE;
++  }
++
++  // sample...
++  sample_jvm_values(record, avoid_locking);
++  sample_platform_values(record);
++}
++
++class SamplerThread: public NamedThread {
++
++  bool _stop;
++
++  void take_sample() {
++
++    const ColumnList* clist = ColumnList::the_list();
++    RecordTable* record_table = RecordTables::the_tables()->first_table();
++    record_t* record = record_table->current_record();
++
++    ::time(&record->timestamp);
++
++    sample_values(record, VitalsLockFreeSampling);
++
++    // After sampling, finish record.
++    record_table->finish_current_record();
++
++  }
++
++  void do_sleep(int ms) {
++    while (ms > 0) {
++      int n = MIN2(999, ms);
++      os::naked_short_sleep(n);
++      ms -= n;
++    }
++  }
++
++public:
++
++  SamplerThread()
++    : NamedThread()
++    , _stop(false)
++  {
++    this->set_name("vitals sampler thread");
++  }
++
++  virtual void run() {
++    record_stack_base_and_size();
++    for (;;) {
++      take_sample();
++      do_sleep(RecordTables::the_tables()->short_term_interval() * 1000);
++      if (_stop) {
++        break;
++      }
++    }
++  }
++
++  void stop() {
++    _stop = true;
++  }
++
++};
++
++static SamplerThread* g_sampler_thread = NULL;
++
++static bool initialize_sampler_thread() {
++  g_sampler_thread = new SamplerThread();
++  if (g_sampler_thread != NULL) {
++    if (os::create_thread(g_sampler_thread, os::os_thread)) {
++      os::start_thread(g_sampler_thread);
++    }
++    return true;
++  }
++  return false;
++}
++
++
++/////// JVM-specific columns //////////
++
++static Column* g_col_heap_committed = NULL;
++static Column* g_col_heap_used = NULL;
++
++static Column* g_col_metaspace_committed = NULL;
++static Column* g_col_metaspace_used = NULL;
++static Column* g_col_classspace_committed = NULL;
++static Column* g_col_classspace_used = NULL;
++static Column* g_col_metaspace_cap_until_gc = NULL;
++
++static Column* g_col_codecache_committed = NULL;
++
++static Column* g_col_nmt_malloc = NULL;
++
++static Column* g_col_number_of_java_threads = NULL;
++static Column* g_col_number_of_java_threads_non_demon = NULL;
++static Column* g_col_size_thread_stacks = NULL;
++static Column* g_col_number_of_java_threads_created = NULL;
++
++static Column* g_col_number_of_clds = NULL;
++static Column* g_col_number_of_anon_clds = NULL;
++
++static Column* g_col_number_of_classes = NULL;
++static Column* g_col_number_of_class_loads = NULL;
++static Column* g_col_number_of_class_unloads = NULL;
++
++//...
++
++static bool add_jvm_columns() {
++  // Order matters!
++
++  g_col_heap_committed = new MemorySizeColumn("jvm",
++      "heap", "comm", "Java Heap Size, committed");
++  g_col_heap_used = new MemorySizeColumn("jvm",
++      "heap", "used", "Java Heap Size, used");
++
++  g_col_metaspace_committed = new MemorySizeColumn("jvm",
++      "meta", "comm", "Meta Space Size (class+nonclass), committed");
++
++  g_col_metaspace_used = new MemorySizeColumn("jvm",
++      "meta", "used", "Meta Space Size (class+nonclass), used");
++
++  if (Metaspace::using_class_space()) {
++    g_col_classspace_committed = new MemorySizeColumn("jvm",
++        "meta", "csc", "Class Space Size, committed");
++    g_col_classspace_used = new MemorySizeColumn("jvm",
++        "meta", "csu", "Class Space Size, used");
++  }
++
++  g_col_metaspace_cap_until_gc = new MemorySizeColumn("jvm",
++      "meta", "gctr", "GC threshold");
++
++  g_col_codecache_committed = new MemorySizeColumn("jvm",
++      NULL, "code", "Code cache, committed");
++
++  g_col_nmt_malloc = new MemorySizeColumn("jvm",
++      NULL, "mlc", "Memory malloced by hotspot (requires NMT)");
++
++  g_col_number_of_java_threads = new PlainValueColumn("jvm",
++      "jthr", "num", "Number of java threads");
++
++  g_col_number_of_java_threads_non_demon = new PlainValueColumn("jvm",
++      "jthr", "nd", "Number of non-demon java threads");
++
++  g_col_number_of_java_threads_created = new DeltaValueColumn("jvm",
++      "jthr", "cr", "Threads created");
++
++  g_col_size_thread_stacks = new MemorySizeColumn("jvm",
++      "jthr", "st", "Total reserved size of java thread stacks");
++
++  g_col_number_of_clds = new PlainValueColumn("jvm",
++      "cldg", "num", "Classloader Data");
++
++  g_col_number_of_anon_clds = new PlainValueColumn("jvm",
++      "cldg", "anon", "Anonymous CLD");
++
++  g_col_number_of_classes = new PlainValueColumn("jvm",
++      "cls", "num", "Classes (instance + array)");
++
++  g_col_number_of_class_loads = new DeltaValueColumn("jvm",
++      "cls", "ld", "Class loaded");
++
++  g_col_number_of_class_unloads = new DeltaValueColumn("jvm",
++      "cls", "uld", "Classes unloaded");
++
++  return true;
++}
++
++
++////////// class ValueSampler and childs /////////////////
++
++template <typename T>
++static void set_value_in_record(const Column* col, record_t* r, T t) {
++  if (col != NULL) {
++    int idx = col->index();
++    assert(ColumnList::the_list()->is_valid_column_index(idx), "Invalid column index");
++    r->values[idx] = (value_t)t;
++  }
++}
++
++class AddStackSizeThreadClosure: public ThreadClosure {
++  size_t _l;
++public:
++  AddStackSizeThreadClosure() : ThreadClosure(), _l(0) {}
++  void do_thread(Thread* thread) {
++    _l += thread->stack_size();
++  }
++  size_t get() const { return _l; }
++};
++
++static size_t accumulate_thread_stack_size() {
++#if defined(LINUX) || defined(__APPLE__)
++  // Do not iterate thread list and query stack size until 8212173 is completely solved. It is solved
++  // for BSD and Linux; on the other platforms, one runs a miniscule but real risk of triggering
++  // the assert in Thread::stack_size().
++  size_t l = 0;
++  AddStackSizeThreadClosure tc;
++  {
++    MutexLocker ml(Threads_lock);
++    Threads::threads_do(&tc);
++  }
++  return tc.get();
++#else
++  return INVALID_VALUE;
++#endif
++}
++
++// Count CLDs
++class CLDCounterClosure: public CLDClosure {
++public:
++  int _cnt;
++  int _anon_cnt;
++  CLDCounterClosure() : _cnt(0), _anon_cnt(0) {}
++  void do_cld(ClassLoaderData* cld) {
++    _cnt ++;
++    if (cld->is_unsafe_anonymous()) {
++      _anon_cnt ++;
++    }
++  }
++};
++
++void sample_jvm_values(record_t* record, bool avoid_locking) {
++
++  // Heap
++  if (!avoid_locking) {
++    size_t heap_cap = 0;
++    size_t heap_used = 0;
++    const CollectedHeap* const heap = Universe::heap();
++    if (heap != NULL) {
++      MutexLocker hl(Heap_lock);
++      heap_cap = Universe::heap()->capacity();
++      heap_used = Universe::heap()->used();
++    }
++    set_value_in_record(g_col_heap_committed, record, heap_cap);
++    set_value_in_record(g_col_heap_used, record, heap_used);
++  }
++
++  // Metaspace
++  set_value_in_record(g_col_metaspace_committed, record, MetaspaceUtils::committed_bytes());
++  set_value_in_record(g_col_metaspace_used, record, MetaspaceUtils::used_bytes());
++
++  if (Metaspace::using_class_space()) {
++    set_value_in_record(g_col_classspace_committed, record, MetaspaceUtils::committed_bytes(metaspace::ClassType));
++    set_value_in_record(g_col_classspace_used, record, MetaspaceUtils::used_bytes(metaspace::ClassType));
++  }
++
++  set_value_in_record(g_col_metaspace_cap_until_gc, record, MetaspaceGC::capacity_until_GC());
++
++  // Code cache
++  const size_t codecache_committed = CodeCache::capacity();
++  set_value_in_record(g_col_codecache_committed, record, codecache_committed);
++
++  // NMT
++  if (!avoid_locking) {
++    size_t malloc_footprint = 0;
++    if (MemTracker::tracking_level() != NMT_off) {
++      MutexLocker locker(MemTracker::query_lock());
++      malloc_footprint = MallocMemorySummary::as_snapshot()->total();
++    }
++    set_value_in_record(g_col_nmt_malloc, record, malloc_footprint);
++  }
++
++  // Java threads
++  set_value_in_record(g_col_number_of_java_threads, record, Threads::number_of_threads());
++  set_value_in_record(g_col_number_of_java_threads_non_demon, record, Threads::number_of_non_daemon_threads());
++  set_value_in_record(g_col_number_of_java_threads_created, record, counters::g_threads_created);
++
++  // Java thread stack size
++  if (!avoid_locking) {
++    set_value_in_record(g_col_size_thread_stacks, record, accumulate_thread_stack_size());
++  }
++
++  // CLDG
++  if (!avoid_locking) {
++    CLDCounterClosure cl;
++    {
++      MutexLocker lck(ClassLoaderDataGraph_lock);
++      ClassLoaderDataGraph::cld_do(&cl);
++    }
++    set_value_in_record(g_col_number_of_clds, record, cl._cnt);
++    set_value_in_record(g_col_number_of_anon_clds, record, cl._anon_cnt);
++  }
++
++  // Classes
++  set_value_in_record(g_col_number_of_classes, record,
++      ClassLoaderDataGraph::num_instance_classes() + ClassLoaderDataGraph::num_array_classes());
++  set_value_in_record(g_col_number_of_class_loads, record, counters::g_classes_loaded);
++  set_value_in_record(g_col_number_of_class_unloads, record, counters::g_classes_unloaded);
++}
++
++bool initialize() {
++
++  if (!ColumnList::initialize()) {
++    return false;
++  }
++
++  // Order matters. First platform columns, then jvm columns.
++  if (!platform_columns_initialize()) {
++    return false;
++  }
++
++  if (!add_jvm_columns()) {
++    return false;
++  }
++
++  // -- Now the number of columns is known (and fixed). --
++
++  if (!initialize_widths_buffer()) {
++    return false;
++  }
++
++  if (!initialize_space_for_now_record()) {
++    return false;
++  }
++
++  if (!RecordTables::initialize()) {
++    return false;
++  }
++
++  if (!initialize_sampler_thread()) {
++    return false;
++  }
++
++  return true;
++
++}
++
++void cleanup() {
++  if (g_sampler_thread != NULL) {
++    g_sampler_thread->stop();
++  }
++}
++
++void print_report(outputStream* st, const print_info_t* pi) {
++
++  st->print("Vitals:");
++
++  if (ColumnList::the_list() == NULL) {
++    st->print_cr(" (unavailable)");
++    return;
++  }
++
++  st->cr();
++
++  static const print_info_t default_settings = {
++      false, // raw
++      false, // csv
++      false, // omit_legend
++      true   // avoid_sampling
++  };
++
++  if (pi == NULL) {
++    pi = &default_settings;
++  }
++
++  // Print legend at the top (omit if suppressed on command line, or in csv mode).
++  if (pi->no_legend == false && pi->csv == false) {
++    print_legend(st, pi);
++    st->cr();
++  }
++
++  record_t* values_now = NULL;
++  if (!pi->avoid_sampling) {
++    // Sample the current values (not when reporting errors, since we do not want to risk secondary errors).
++    values_now = g_record_now;
++    values_now->timestamp = 0; // means "Now"
++    sample_values(values_now, true);
++  }
++
++  RecordTables::the_tables()->print_all(st, pi, values_now);
++
++}
++
++// Dump both textual and csv style reports to two files, "sapmachine_vitals_<pid>.txt" and "sapmachine_vitals_<pid>.csv".
++// If these files exist, they are overwritten.
++void dump_reports() {
++
++  static const char* file_prefix = "sapmachine_vitals_";
++  char vitals_file_name[1024];
++
++  if (VitalsFile != NULL) {
++    os::snprintf(vitals_file_name, sizeof(vitals_file_name), "%s.txt", VitalsFile);
++  } else {
++    os::snprintf(vitals_file_name, sizeof(vitals_file_name), "%s%d.txt", file_prefix, os::current_process_id());
++  }
++  ::printf("Dumping Vitals to %s\n", vitals_file_name);
++  print_info_t pi;
++  memset(&pi, 0, sizeof(pi));
++  pi.avoid_sampling = true; // this is called during exit, so lets be a bit careful.
++  {
++    fileStream fs(vitals_file_name);
++    static const StatisticsHistory::print_info_t settings = {
++        false, // raw
++        false, // csv
++        false, // no_legend
++        true,  // avoid_sampling
++        true,  // reverse_ordering
++        0      // scale
++    };
++    print_report(&fs, &settings);
++  }
++
++  if (VitalsFile != NULL) {
++    os::snprintf(vitals_file_name, sizeof(vitals_file_name), "%s.csv", VitalsFile);
++  } else {
++    os::snprintf(vitals_file_name, sizeof(vitals_file_name), "%s%d.csv", file_prefix, os::current_process_id());
++  }
++  ::printf("Dumping Vitals csv to %s\n", vitals_file_name);
++  pi.csv = true;
++  pi.scale = 1 * K;
++  pi.reverse_ordering = true;
++  {
++    fileStream fs(vitals_file_name);
++    static const StatisticsHistory::print_info_t settings = {
++        false, // raw
++        true,  // csv
++        false, // no_legend
++        true,  // avoid_sampling
++        true,  // reverse_ordering
++        1 * K  // scale
++    };
++    print_report(&fs, &settings);
++  }
++
++}
++
++} // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.hpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/share/services/stathist.hpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,74 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#ifndef HOTSPOT_SHARE_SERVICES_STATHIST_HPP
++#define HOTSPOT_SHARE_SERVICES_STATHIST_HPP
++
++#include "utilities/globalDefinitions.hpp"
++
++class outputStream;
++
++namespace StatisticsHistory {
++
++  bool initialize();
++  void cleanup();
++
++  struct print_info_t {
++    bool raw;
++    bool csv;
++    // Omit printing a legend.
++    bool no_legend;
++    // Normally, when we print a report, we sample the current values too and print it atop of the table.
++    // We may want to avoid that, e.g. during error handling.
++    bool avoid_sampling;
++    // Reverse printing order (default: youngest-to-oldest; reversed: oldest-to-youngest)
++    bool reverse_ordering;
++
++    size_t scale;
++
++  };
++
++
++  void print_report(outputStream* st, const print_info_t* print_info);
++
++  // Dump both textual and csv style reports to two files, "vitals_<pid>.txt" and "vitals_<pid>.csv".
++  // If these files exist, they are overwritten.
++  void dump_reports();
++
++  // These are counters for the statistics history. Ideally, they would live
++  // inside their thematical homes, e.g. thread.cpp or classLoaderDataGraph.cpp,
++  // however since this is unlikely ever to be brought upstream we keep this separate
++  // to easy maintenance.
++
++  namespace counters {
++    void inc_classes_loaded(size_t count);
++    void inc_classes_unloaded(size_t count);
++    void inc_threads_created(size_t count);
++  };
++
++};
++
++#endif /* HOTSPOT_SHARE_SERVICES_STATHIST_HPP */
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.cpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/share/services/stathistDCmd.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,98 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++
++#include "precompiled.hpp"
++
++#include "memory/resourceArea.hpp"
++#include "services/stathist.hpp"
++#include "services/stathistDCmd.hpp"
++#include "utilities/ostream.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++namespace StatisticsHistory {
++
++StatHistDCmd::StatHistDCmd(outputStream* output, bool heap)
++  : DCmdWithParser(output, heap),
++    _scale("scale", "Memory usage in which to scale. Valid values are: k, m, g (fixed scale) "
++           "or \"dynamic\" for a dynamically chosen scale.",
++           "STRING", false, "dynamic"),
++    _csv("csv", "csv format.", "BOOLEAN", false, "false"),
++    _no_legend("no-legend", "Omit legend.", "BOOLEAN", false, "false"),
++    _reverse("reverse", "Reverse printing order.", "BOOLEAN", false, "false"),
++    _raw("raw", "Print raw values.", "BOOLEAN", false, "false")
++{
++  _dcmdparser.add_dcmd_option(&_scale);
++  _dcmdparser.add_dcmd_option(&_no_legend);
++  _dcmdparser.add_dcmd_option(&_reverse);
++  _dcmdparser.add_dcmd_option(&_raw);
++  _dcmdparser.add_dcmd_option(&_csv);
++}
++
++int StatHistDCmd::num_arguments() {
++  ResourceMark rm;
++  StatHistDCmd* dcmd = new StatHistDCmd(NULL, false);
++  if (dcmd != NULL) {
++    DCmdMark mark(dcmd);
++    return dcmd->_dcmdparser.num_arguments();
++  } else {
++    return 0;
++  }
++}
++
++static bool scale_from_name(const char* scale, size_t* out) {
++  if (strcasecmp(scale, "dynamic") == 0) {
++    *out = 0;
++  } else if (strcasecmp(scale, "1") == 0 || strcasecmp(scale, "b") == 0) {
++    *out = 1;
++  } else if (strcasecmp(scale, "kb") == 0 || strcasecmp(scale, "k") == 0) {
++    *out = K;
++  } else if (strcasecmp(scale, "mb") == 0 || strcasecmp(scale, "m") == 0) {
++    *out = M;
++  } else if (strcasecmp(scale, "gb") == 0 || strcasecmp(scale, "g") == 0) {
++    *out = G;
++  } else {
++    return false; // Invalid value
++  }
++  return true;
++}
++
++void StatHistDCmd::execute(DCmdSource source, TRAPS) {
++  print_info_t pi;
++  if (!scale_from_name(_scale.value(), &(pi.scale))) {
++    output()->print_cr("Invalid scale: \"%s\".", _scale.value());
++    return;
++  }
++  pi.raw = _raw.value();
++  pi.csv = _csv.value();
++  pi.no_legend = _no_legend.value();
++  pi.reverse_ordering = _reverse.value();
++  pi.avoid_sampling = false;
++
++  StatisticsHistory::print_report(output(), &pi);
++}
++
++}; // namespace StatisticsHistory
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.hpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/share/services/stathistDCmd.hpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,64 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++
++#ifndef HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP
++#define HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP
++
++#include "services/diagnosticCommand.hpp"
++
++namespace StatisticsHistory {
++
++class StatHistDCmd : public DCmdWithParser {
++protected:
++  DCmdArgument<char*> _scale;
++  DCmdArgument<bool> _csv;
++  DCmdArgument<bool> _no_legend;
++  DCmdArgument<bool> _reverse;
++  DCmdArgument<bool> _raw;
++public:
++  StatHistDCmd(outputStream* output, bool heap);
++  static const char* name() {
++    return "VM.vitals";
++  }
++  static const char* description() {
++    return "Print Vitals.";
++  }
++  static const char* impact() {
++    return "Low.";
++  }
++  static const JavaPermission permission() {
++    JavaPermission p = {"java.lang.management.ManagementPermission",
++                        "monitor", NULL};
++    return p;
++  }
++  static int num_arguments();
++  virtual void execute(DCmdSource source, TRAPS);
++};
++
++}; // namespace StatisticsHistory
++
++#endif /* HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP */
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist_internals.hpp
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/hotspot/share/services/stathist_internals.hpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,181 @@
++/*
++ * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE.
++ *
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#ifndef HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP
++#define HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP
++
++#include "memory/allocation.hpp"
++#include "services/stathist.hpp"
++#include "utilities/globalDefinitions.hpp"
++
++
++namespace StatisticsHistory {
++
++  typedef uint64_t value_t;
++#define INVALID_VALUE   ((value_t)UINT64_MAX)
++
++  struct record_t {
++    time_t timestamp;
++    value_t values[1]; // var sized
++  };
++
++  class ColumnList;
++
++  class Column: public CHeapObj<mtInternal> {
++    friend class ColumnList;
++
++    const char* const _category;
++    const char* const _header; // optional. May be NULL.
++    const char* const _name;
++    const char* const _description;
++
++    // The following members are fixed by ColumnList when the Column is added to it.
++    Column* _next;  // next column in table
++    int _idx;       // position in table
++    int _idx_cat;   // position in category
++    int _idx_hdr;   // position under its header (if any, 0 otherwise)
++
++  protected:
++
++    Column(const char* category, const char* header, const char* name, const char* description);
++
++    // Child classes implement this.
++    // output stream can be NULL; in that case, method shall return number of characters it would have printed.
++    virtual int do_print(outputStream* os, value_t value,
++        value_t last_value, int last_value_age, const print_info_t* pi) const = 0;
++
++  public:
++
++    const char* category() const      { return _category; }
++    const char* header() const        { return _header; }
++    const char* name() const          { return _name; }
++    const char* description() const   { return _description; }
++
++    void print_value(outputStream* os, value_t value, value_t last_value,
++        int last_value_age, int min_width, const print_info_t* pi) const;
++
++    // Returns the number of characters this value needs to be printed.
++    int calc_print_size(value_t value, value_t last_value,
++        int last_value_age, const print_info_t* pi) const;
++
++    // Returns the index (the position in the table) of this column.
++    int index() const                 { return _idx; }
++    int index_within_category_section() const { return _idx_cat; }
++    int index_within_header_section() const   { return _idx_hdr; }
++
++    const Column* next () const       { return _next; }
++
++    virtual bool is_memory_size() const { return false; }
++    virtual bool is_delta() const { return false; }
++
++
++  };
++
++  // Some standard column types
++
++  class PlainValueColumn: public Column {
++    int do_print(outputStream* os, value_t value, value_t last_value,
++        int last_value_age, const print_info_t* pi) const;
++  public:
++    PlainValueColumn(const char* category, const char* header, const char* name, const char* description)
++      : Column(category, header, name, description)
++    {}
++  };
++
++  class DeltaValueColumn: public Column {
++    const bool _show_only_positive;
++    int do_print(outputStream* os, value_t value, value_t last_value,
++        int last_value_age, const print_info_t* pi) const;
++  public:
++    // only_positive: only positive deltas are shown, negative deltas are supressed
++    DeltaValueColumn(const char* category, const char* header, const char* name, const char* description,
++        bool show_only_positive = true)
++      : Column(category, header, name, description)
++      , _show_only_positive(show_only_positive)
++    {}
++    bool is_delta() const { return true; }
++  };
++
++  class MemorySizeColumn: public Column {
++    int do_print(outputStream* os, value_t value, value_t last_value,
++        int last_value_age, const print_info_t* pi) const;
++  public:
++    MemorySizeColumn(const char* category, const char* header, const char* name, const char* description)
++      : Column(category, header, name, description)
++    {}
++    bool is_memory_size() const { return true; }
++  };
++
++  class DeltaMemorySizeColumn: public Column {
++    int do_print(outputStream* os, value_t value, value_t last_value,
++        int last_value_age, const print_info_t* pi) const;
++  public:
++    DeltaMemorySizeColumn(const char* category, const char* header, const char* name, const char* description)
++      : Column(category, header, name, description)
++    {}
++    bool is_memory_size() const { return true; }
++    bool is_delta() const { return true; }
++  };
++
++  class ColumnList: public CHeapObj<mtInternal> {
++
++    Column* _first, *_last;
++    int _num_columns;
++
++    static ColumnList* _the_list;
++
++  public:
++
++    ColumnList()
++      : _first(NULL), _last(NULL), _num_columns(0)
++    {}
++
++    const Column* first() const { return _first; }
++    int num_columns() const     { return _num_columns; }
++
++    void add_column(Column* column);
++
++    static ColumnList* the_list () { return _the_list; }
++
++    static bool initialize();
++
++#ifdef ASSERT
++    bool is_valid_column_index(int idx) {
++      return idx >= 0 && idx < _num_columns;
++    }
++#endif
++
++  };
++
++  // Implemented by platform specific
++  bool platform_columns_initialize();
++
++  void sample_platform_values(record_t* record);
++  void sample_jvm_values(record_t* record, bool avoid_locking);
++
++}; // namespace StatisticsHistory
++
++#endif /* HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP */
+diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/utilities/vmError.cpp
+--- a/src/hotspot/share/utilities/vmError.cpp	Fri Nov 01 11:09:18 2019 +0100
++++ b/src/hotspot/share/utilities/vmError.cpp	Fri Mar 01 13:59:26 2019 +0100
+@@ -45,6 +45,8 @@
+ #include "runtime/vmOperations.hpp"
+ #include "runtime/vm_version.hpp"
+ #include "runtime/flags/jvmFlag.hpp"
++// SapMachine 2019-02-20 : stathist
++#include "services/stathist.hpp"
+ #include "services/memTracker.hpp"
+ #include "utilities/debug.hpp"
+ #include "utilities/decoder.hpp"
+@@ -103,6 +105,16 @@
+   (const char *)0
+ };
+ 
++// SapMachine 2019-09-16: Vitals
++static const StatisticsHistory::print_info_t vitals_print_settings = {
++    false, // raw
++    false, // csv
++    false, // no_legend
++    true,  // avoid_sampling
++    false, // reverse_ordering
++    0      // scale
++};
++
+ // A simple parser for -XX:OnError, usage:
+ //  ptr = OnError;
+ //  while ((cmd = next_OnError_command(buffer, sizeof(buffer), &ptr) != NULL)
+@@ -1002,6 +1014,12 @@
+        MemTracker::error_report(st);
+      }
+ 
++  // SapMachine 2019-02-20 : stathist
++  STEP("Vitals")
++     if (_verbose) {
++       StatisticsHistory::print_report(st, &vitals_print_settings);
++     }
++
+   STEP("printing system")
+ 
+      if (_verbose) {
+@@ -1173,6 +1191,10 @@
+ 
+   MemTracker::error_report(st);
+ 
++  // SapMachine 2019-02-20 : stathist
++  // STEP("Vitals")
++  StatisticsHistory::print_report(st, &vitals_print_settings);
++
+   // STEP("printing system")
+ 
+   st->cr();
+diff -r e18d2d9d1515 -r b3afb91dba97 test/hotspot/jtreg/TEST.groups
+--- a/test/hotspot/jtreg/TEST.groups	Fri Nov 01 11:09:18 2019 +0100
++++ b/test/hotspot/jtreg/TEST.groups	Fri Mar 01 13:59:26 2019 +0100
+@@ -311,6 +311,11 @@
+  -:tier1_runtime_appcds_exclude \
+  -runtime/signal
+ 
++# SapMachine 2019-02-24 : Add tests where SAPMachine has different behavior to tier1,
++#  or which tests downstream-only features.
++tier1_sapmachine = \
++  serviceability/dcmd/vm/StatHistTest.java
++
+ hotspot_cds = \
+   runtime/cds/ \
+   runtime/CompressedOops/
+@@ -375,7 +380,10 @@
+   -serviceability/sa/TestJmapCore.java \
+   -serviceability/sa/TestJmapCoreMetaspace.java
+ 
++# SapMachine 2019-02-24 : Add tests where SAPMachine has different behavior to tier1,
++#  or which tests downstream-only features.
+ tier1 = \
++  :tier1_sapmachine \
+   :tier1_common \
+   :tier1_compiler \
+   :tier1_gc \
+diff -r e18d2d9d1515 -r b3afb91dba97 test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java	Fri Mar 01 13:59:26 2019 +0100
+@@ -0,0 +1,89 @@
++/*
++ * Copyright (c) 2014, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2019, SAP SE. All rights reserved.
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ */
++
++/*
++ * @test
++ * @summary Test of diagnostic command VM.stathist
++ * @library /test/lib
++ * @modules java.base/jdk.internal.misc
++ *          java.compiler
++ *          java.management
++ *          jdk.internal.jvmstat/sun.jvmstat.monitor
++ * @run testng StatHistTest
++ */
++
++import org.testng.Assert;
++import org.testng.annotations.Test;
++
++import jdk.test.lib.process.OutputAnalyzer;
++import jdk.test.lib.dcmd.CommandExecutor;
++import jdk.test.lib.dcmd.JMXExecutor;
++
++public class StatHistTest {
++
++    public void run(CommandExecutor executor) {
++        OutputAnalyzer output = executor.execute("VM.vitals");
++        output.shouldContain("--jvm--");
++        output.shouldContain("--heap--");
++        output.shouldContain("--meta--");
++
++        output = executor.execute("VM.vitals reverse");
++        output.shouldContain("--jvm--");
++        output.shouldContain("--heap--");
++        output.shouldContain("--meta--");
++
++        output = executor.execute("VM.vitals scale=m");
++        output.shouldContain("--jvm--");
++        output.shouldContain("--heap--");
++        output.shouldContain("--meta--");
++
++        output = executor.execute("VM.vitals scale=1");
++        output.shouldContain("--jvm--");
++        output.shouldContain("--heap--");
++        output.shouldContain("--meta--");
++
++        output = executor.execute("VM.vitals raw");
++        output.shouldContain("--jvm--");
++        output.shouldContain("--heap--");
++        output.shouldContain("--meta--");
++
++        output = executor.execute("VM.vitals csv");
++        output.shouldContain("heap-comm,heap-used,meta-comm,meta-used");
++
++        output = executor.execute("VM.vitals csv");
++        output.shouldContain("heap-comm,heap-used,meta-comm,meta-used");
++
++        output = executor.execute("VM.vitals csv reverse");
++        output.shouldContain("heap-comm,heap-used,meta-comm,meta-used");
++
++        output = executor.execute("VM.vitals csv reverse raw");
++        output.shouldContain("heap-comm,heap-used,meta-comm,meta-used");
++    }
++
++    @Test
++    public void jmx() {
++        run(new JMXExecutor());
++    }
++
++}
