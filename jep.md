@@ -1,7 +1,7 @@
 Summary
 -------
 
-Promptly return unused Metaspace memory to the OS and reduce Metaspace memory footprint.
+Promptly return unused Metaspace memory to the Operating System and reduce Metaspace memory footprint.
 
 
 Goals
@@ -32,27 +32,34 @@ Success Metrics
 Motivation
 ----------
 
-## Background
+## Preface
 
-When the VM loads a class, meta information about the class (things like constant pool, class descriptor, byte code etc.) are stored in native, non-java-heap memory. This area is called the Metaspace. This memory is owned by the class loader loading the class. Its life time is bound to the class loader - it is released when the class loader is unloaded.
+Class metadata live in non-java-heap, native memory. Their lifetime is bound to the that of the loading class loader.
 
-Metaspace memory is allocated by the Metaspace allocator, a custom written allocator for native memory. This proposal is about improving its efficiency.
+At the lowest level, memory is reserved from the OS, piecemeal committed and handed out in chunks of varying sizes to the class loader. From that point on, these chunks are owned by the class loader. From that chunk the class loader does simple pointer bump allocation to serve metadata allocation requests.
 
-## Make Metaspace more elastic
+If the current chunk is exhausted - its leftover space too small to serve an incoming metadata allocation - a new chunk is handed to the class loader allocation continues. The current chunk is "retired" - an attempt is made to store the leftover space for later reuse.
 
-Allocating memory for from Metaspace incurs overhead. With the current Metaspace allocator the overhead-to-payload ratio can get excessive.
+When the class loader is unloaded and the metaspace it accrued over its lifetime can be freed, all its chunks are returned to the Metaspace allocator; they are added to a freelist and may be reused for future class loading. It is attempted to return memory to the OS; however, this heavily depends on Metaspace fragmentation and rarely works.
+
+
+## Goal: make Metaspace more elastic
+
+Allocating memory for class metadata from Metaspace incurs overhead. With the current Metaspace allocator the overhead-to-payload ratio can get excessive.
 
 Two waste areas stick out:
 
 _Waste in free lists_
 
-When a class loader gets unloaded, all the chunks it owns (slabs of metaspace memory) are returned to the Metaspace allocator and added to a freelist. They may be reused for later allocations, but those allocations may never happen, and for now that space is wasted. A mechanism to reclaim this space is in place which will attempt to return unused space to the OS, but it is not very effective and easily defeated by Metaspace fragmentation.
+The size of the free lists can get very excessive. We have seen ratios of up to 70% waste (70% of committed Metaspace memory idling in free lists) after class unloading. Even though there is a mechanism in place to reclaim free metaspace memory and return it to the OS, it is largely ineffective and easily defeated by metaspace fragmentation. Metaspace fragmentation in this case means interleaved placement of chunks from class loaders which have different life spans.
 
-Memory wasted this way can get excessive; we have seen ratios up to 70% waste (close to 70% of committed Metaspace storage idling in free lists).
+Since anonymous classes and reflection classes get their own class loaders, Metaspace fragmentation can even happen when there are not many user class loaders active: for instance, a Lamda inside the JDK may cause creation of an anonymous class loader which in turn can prevent reclamation of memory allocated by user class loaders.
 
 _Intra-chunk waste for active allocations_
 
-Class loaders get assigned a chunk of Metaspace memory; they allocate from it via pointer-bump allocation. At some point the class loader will stop loading classes and has no further need for Metaspace memory; the remaining space in its current chunk is wasted.
+Class loaders get assigned a chunk of Metaspace memory; they allocate from it via pointer-bump allocation. Typically, at some point the class loader will stop loading classes and has no further need for Metaspace memory; the remaining space in its current chunk is wasted.
+
+Space wasted this way typically makes for about 
 
 A second waste point is leftover space in retired chunks: when the free space left in a chunk is too small to satisfy an allocation, the class loader requests a new chunk; attempts is made to reuse the leftover space of the old chunk, but they are currently not very effective. 
 
