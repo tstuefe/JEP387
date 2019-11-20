@@ -27,7 +27,7 @@ Success Metrics
 
 - In scenarios not involving class unloading we should see a small to moderate decrease in committed Metaspace. Under no circumstances should we require more Metaspace.
 
-
+- Memory overhead caused by the changed Metaspace allocator should be smaller than what is saved in committed Metaspace.
 
 Motivation
 ----------
@@ -76,11 +76,11 @@ The proposed implementation changes:
 
 ## A) Commit chunks on demand and uncommit free chunks
 
-Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk lives in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
+Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk is liveing in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
 
 ### Proposal 
 
-Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists could be uncommitted and would not count towards the working set size of the VM process.
+Chunks shall be individually committable - also partwise where it makes sense - and uncommittable. Chunks in free lists could be uncommitted and would not count towards the working set size of the VM process.
 
 Chunks in use by a class loader could be committed lazily and in parts. That way large chunks can get handed to class loaders but the full price would not have to be payed up front.
 
@@ -90,14 +90,14 @@ Where today Metaspace is committed bottom-to-top with a high water mark, in this
 
 A consideration is fragmentation of virtual memory resulting from this. In order to keep virtual memory fragmentation at bay, memory needs to be committed and uncommitted in a sufficiently coarse - and tunable - granularity.
 
-The proposal is to split the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The VirtualSpaceNode shall keep track the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
+This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
 
 The size of these commit granules shall be tunable and by default large enough to keep virtual memory fragmentation manageable. 
 
 
 ## B) Replace hard-wired chunk geometry with a buddy allocation scheme
 
-The current chunk allocation scheme knows three kind of chunks, sized 1K/4K/64K respectively, and so-called humongous chunks which are individually sized and larger than 64K. Since JDK-8198423 chunks can be combined and split (e.g. 16 4K chunks can form one 64K chunk). 
+The current chunk allocation scheme knows three kinds of chunks, sized 1K/4K/64K respectively, and so-called humongous chunks which are individually sized and larger than 64K. Since JDK-8198423 chunks can be combined and split (e.g. 16 4K chunks can form one 64K chunk). 
 
 The current allocation scheme has a number of disadvantages:
 
@@ -109,7 +109,7 @@ The current allocation scheme has a number of disadvantages:
 
 _Replace the current scheme with a traditional power-2-based buddy allocator._
 
-In this scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
+Within such a scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
 
 The maximum size shall be large enough to serve any possible Metaspace allocation ("root chunk"). 
 The memory range of a VirtualSpaceNode would consist of a series of n root chunks. Its borders would be aligned to root chunk size.
@@ -131,15 +131,16 @@ Advantages:
 
 - Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood. It is also cheap to implement.
 
-## How allocation works
 
-- A class loader requests n words of Metaspace memory
-- The SpaceManager attempts to allocate from its current chunk. 
-    - This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. 
-    - If committing memory fails (hitting limit or GC threshold), allocation fails
-- If the chunk is too small to house the allocation, a new chunk is requested from the chunk manager.
-    - An attempt is made to grow the chunk in-place.
-    - Failing that, an attempt is made to take a new chunk from the free lists.
+## How allocation would work, step-by-step
+
+A class loader requests n words of Metaspace memory. 
+
+The SpaceManager first attempts to allocate from its current chunk. This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. If committing memory fails (hitting limit or GC threshold), allocation fails.
+
+If the chunk is too small to house the allocation, first an attempt is made to grow it in-place by fusing it with its buddy, if that buddy is free.
+
+Failing that, an attempt is made to take a new chunk from the free lists.
         - If only a larger chunk is available, it is taken from its free list and split in buddy style fashion to produce the output chunk. The resulting splinter chunks are re-added to the freelist.
     - If no free chunk is found in the free lists, a new root chunk is retrieved from the underlying VirtualSpaceNode. Note that this chunk does not necessarily have to be committed. Again, this chunk is split in buddy style fashion to produce the result chunk, and splinter chunks are added to the free list.
 
@@ -149,6 +150,23 @@ Advantages:
     - Chunks are combined in buddy-style fashion with its buddies, producing larger free chunks.
     - Chunks surpassing a certain - tunable - threshold will be uncommitted. Obviously, only chunks equal or larger than a commit granule can be uncommitted.
     - Alternatively, or in combination, when a Metaspace is purged after a GC, free chunks larger than a given threshold can be uncommitted.
+
+## Overhead of data structures
+
+The proposed mechanisms - as currently implemented in the prototype accompanying the proposal - come with the following overhead:
+
+1) A bitmap per memory region storing the state of commit granules, each bit covers the size of a commit granule, which by default is 64 KB. For a 1 GB range, this would amount to 2 KB.
+
+2) Chunk headers move out of Metaspace and are kept in a chunk header pool which ultimately is allocated from C-heap. Since this leaves extra space to be used in the chunks this does not really count as overhead, since the net memory cost is zero. However, it has to be kept in mind when comparing committed Metaspace size.
+
+The size of the chunk header pool depends on the number of chunks which, for standard applications, range from 5000-10000 chunks. For example, a VM running Eclipse, with a committed Metaspace size of about 130 MB, causes about 10000 Metaspace chunks to be created, amounting to about 700 KB.
+
+3) The buddy allocator needs to keep state; the prototype implements this by keeping Metaspace chunks in an extra list according to their order in the underlying memory region. This causes extra overhead of two pointers per Metaspace chunk.
+
+## Savings due to removed data structures.
+
+Compared to the old allocator, the prototype does away with the Occupancy Bitmap, which saves 1 bit per 1KB of memory range, or 128 KB per GB.
+
 
 ## Tunable parameters
 
@@ -173,6 +191,9 @@ Testing
 -------
 
 A side effect of a new Metaspace implementation should be better testability, which will result in more and better gtests.
+
+A working prototype of this new allocator exists in jdk-sandbox, branch "stuefe-new-metaspace-branch". Due to the reworked Metaspace coding, better isolation of the sub components has been achieved and used to write a new set of extended gtests.
+
 
 
 Risks and Assumptions
