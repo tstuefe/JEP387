@@ -72,17 +72,17 @@ Metaspace code has grown over time in complexity; an overhaul would be very bene
 Description
 -----------
 
-The proposed implementation changes:
+We propose the following implementation changes (which are already implemented as a prototype [1]):
 
 ## A) Commit chunks on demand and uncommit free chunks
 
-Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk is liveing in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
+Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk is living in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
 
 ### Proposal 
 
-Chunks shall be individually committable - also partwise where it makes sense - and uncommittable. Chunks in free lists could be uncommitted and would not count towards the working set size of the VM process.
+Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists could be uncommitted and would not count towards the working set size of the VM process.
 
-Chunks in use by a class loader could be committed lazily and in parts. That way large chunks can get handed to class loaders but the full price would not have to be payed up front.
+Chunks in use by a class loader could be committed lazily and in parts. That way large chunks can get handed to class loaders but the full price would not have to be paid up front.
 
 ### Commit granules
 
@@ -90,7 +90,7 @@ Where today Metaspace is committed bottom-to-top with a high water mark, in this
 
 A consideration is fragmentation of virtual memory resulting from this. In order to keep virtual memory fragmentation at bay, memory needs to be committed and uncommitted in a sufficiently coarse - and tunable - granularity.
 
-This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
+This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track of the commit state of the granules it covers. Upper layers can request committing and uncommitting ranges of commit granules.
 
 The size of these commit granules shall be tunable and by default large enough to keep virtual memory fragmentation manageable. 
 
@@ -101,15 +101,15 @@ The current chunk allocation scheme knows three kinds of chunks, sized 1K/4K/64K
 
 The current allocation scheme has a number of disadvantages:
 
-- Ideally, upon returning a chunk to the free list, the chunk should be combined with free neighbors as much as possible to form large contiguous free memory ranges which then could get uncommitted. However, due to the odd chunk geometry, this remains difficult even after JDK-8198423.
+- Ideally, upon returning a chunk to the free list, the chunk would be combined with free neighbors as much as possible to form large contiguous free memory ranges which then could get uncommitted. However, due to the odd chunk geometry, this remains difficult even after JDK-8198423.
 - Since there are only three chunk sizes to choose from (disregarding humongous chunks) there is a higher chance of intra-chunk waste. For example, a class loader needing to store a data item of 5K size will require a 64K chunk.
 - Chunks have headers, and these headers precede the chunk payload area. They must be present even if the chunk is in a free list. Hence, the page containing the chunk header cannot be uncommitted. This means even if we were to uncommit chunk payload areas, they always would be preceded by a single committed page, increasing virtual memory fragmentation and wasting memory.
 
 ### Proposal: 
 
-_Replace the current scheme with a traditional power-2-based buddy allocator._
+_Replace the current scheme with a power-2-based buddy allocator._
 
-Within such a scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
+In the buddy allocator scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
 
 The maximum size shall be large enough to serve any possible Metaspace allocation ("root chunk"). 
 The memory range of a VirtualSpaceNode would consist of a series of n root chunks. Its borders would be aligned to root chunk size.
@@ -125,18 +125,20 @@ _Let Chunks grow in place if possible:_ in a power-2 buddy allocation scheme, ch
 
 Advantages:
 
-- Much better defragmentation, also on long runs with many class load/unload cycles. More efficient coalescation of free chunks, allowing for larger contiguous memory ranges. Together with the separation of chunk headers from their payload this is a good preparation for uncommitting larger memory areas while keeping virtual memory fragmentation to a minimum.
+- Much better defragmentation, also in long running VMs with many class load/unload cycles. More efficient coalescation of free chunks, allowing for larger contiguous memory ranges. Together with the separation of chunk headers from their payload this is a good preparation for uncommitting larger memory areas while keeping virtual memory fragmentation to a minimum.
 
 - More chunk sizes to choose from would result in less intrachunk waste. The fact that chunks can grow in place is a nice bonus.
 
 - Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood. It is also cheap to implement.
 
 
-## How allocation would work, step-by-step
+## Example: stepping through memory allocation
 
-A class loader requests n words of Metaspace memory. 
+Given the proposed scheme, this is how allocation would work:
 
-The SpaceManager first attempts to allocate from its current chunk. This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. If committing memory fails (hitting limit or GC threshold), allocation fails.
+- A class loader requests N words of Metaspace memory. 
+
+- The SpaceManager first attempts to allocate from its current chunk. This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. If committing memory fails (hitting limit or GC threshold), allocation fails.
 
 If the chunk is too small to house the allocation, first an attempt is made to grow it in-place by fusing it with its buddy, if that buddy is free.
 
@@ -151,22 +153,19 @@ Failing that, an attempt is made to take a new chunk from the free lists.
     - Chunks surpassing a certain - tunable - threshold will be uncommitted. Obviously, only chunks equal or larger than a commit granule can be uncommitted.
     - Alternatively, or in combination, when a Metaspace is purged after a GC, free chunks larger than a given threshold can be uncommitted.
 
-## Overhead of data structures
+## Memory overhead
 
-The proposed mechanisms - as currently implemented in the prototype accompanying the proposal - come with the following overhead:
+The proposed mechanisms - as currently implemented in the prototype accompanying this proposal - come with the following storage overhead:
 
-1) A bitmap per memory region storing the state of commit granules, each bit covers the size of a commit granule, which by default is 64 KB. For a 1 GB range, this would amount to 2 KB.
+1) A bitmap per memory region storing the state of commit granules. For a 1 GB Metaspace, this would amount to 2 KB.
 
-2) Chunk headers move out of Metaspace and are kept in a chunk header pool which ultimately is allocated from C-heap. Since this leaves extra space to be used in the chunks this does not really count as overhead, since the net memory cost is zero. However, it has to be kept in mind when comparing committed Metaspace size.
+2) Chunk headers move out of Metaspace and are kept in a chunk header pool which ultimately is allocated from C-heap. Since this leaves extra space to be used in the chunks this does not really add to overhead, since the net memory cost is zero.
 
-The size of the chunk header pool depends on the number of chunks which, for standard applications, range from 5000-10000 chunks. For example, a VM running Eclipse, with a committed Metaspace size of about 130 MB, causes about 10000 Metaspace chunks to be created, amounting to about 700 KB.
+3) The buddy allocator needs to keep state; the prototype implements this by keeping Metaspace chunks in an extra list according to their order in the underlying memory region. This causes extra overhead of two pointers per Metaspace chunk. A typical application allocates around 5000 - 20000 chunks, which amounts to 80..320 KB.
 
-3) The buddy allocator needs to keep state; the prototype implements this by keeping Metaspace chunks in an extra list according to their order in the underlying memory region. This causes extra overhead of two pointers per Metaspace chunk.
+However, we also would save memory, since we do not need the Occupancy Bitmap anymore. That reduces memory costs by 128 KB per GB Metaspace.
 
-## Savings due to removed data structures.
-
-Compared to the old allocator, the prototype does away with the Occupancy Bitmap, which saves 1 bit per 1KB of memory range, or 128 KB per GB.
-
+Memory costs and -savings are roughly comparable between the old and the new allocator and should not matter.
 
 ## Tunable parameters
 
@@ -207,7 +206,7 @@ Dependencies
 - TBD -
 
 
-
-[1] https://en.wikipedia.org/wiki/Buddy_memory_allocation
+[1] See jdk/sandbox repository, "stuefe-new-metaspace-branch": http://hg.openjdk.java.net/jdk/sandbox/shortlog/b537e6386306
+[2] https://en.wikipedia.org/wiki/Buddy_memory_allocation
 
 
