@@ -34,7 +34,7 @@ Motivation
 
 ## Preface
 
-Class metadata live in non-java-heap, native memory. Their lifetime is bound to the that of the loading class loader.
+Class metadata live in non-java-heap, native memory. Their lifetime is bound to that of the loading class loader.
 
 At the lowest level, memory is reserved from the OS, piecemeal committed and handed out in chunks of varying sizes to the class loader. From that point on, these chunks are owned by the class loader. From that chunk the class loader does simple pointer bump allocation to serve metadata allocation requests.
 
@@ -76,7 +76,7 @@ The proposed implementation changes:
 
 ## A) Commit chunks on demand and uncommit free chunks
 
-Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk is liveing in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
+Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk is living in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
 
 ### Proposal 
 
@@ -90,7 +90,7 @@ Where today Metaspace is committed bottom-to-top with a high water mark, in this
 
 A consideration is fragmentation of virtual memory resulting from this. In order to keep virtual memory fragmentation at bay, memory needs to be committed and uncommitted in a sufficiently coarse - and tunable - granularity.
 
-This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
+This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track of the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
 
 The size of these commit granules shall be tunable and by default large enough to keep virtual memory fragmentation manageable. 
 
