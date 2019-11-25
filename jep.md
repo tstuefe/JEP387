@@ -38,7 +38,7 @@ Class metadata live in non-java-heap, native memory. Their lifetime is bound to 
 
 At the lowest level, memory is reserved from the OS, piecemeal committed and handed out in chunks of varying sizes to the class loader. From that point on, these chunks are owned by the class loader. From that chunk the class loader does simple pointer bump allocation to serve metadata allocation requests.
 
-If the current chunk is exhausted - its leftover space too small to serve an incoming metadata allocation - a new chunk is handed to the class loader and allocation continues from that new chunk. The current chunk is "retired" - an attempt is made to store the leftover space for later reuse.
+If the current chunk is exhausted - its leftover space too small to serve an incoming metadata allocation - a new chunk is handed to the class loader and allocation continues from that new chunk. The current chunk is "retired" and the leftover space squirreled away for possible later reuse.
 
 When the class loader is unloaded the metaspace it accumulated over its lifetime can be freed: all its chunks are returned to the Metaspace allocator. They are added to a freelist and may be reused for future class loading. It is attempted to return memory to the OS; however, this heavily depends on Metaspace fragmentation and rarely works.
 
@@ -80,7 +80,7 @@ Currently memory is committed up-front, in a coarse-grained fashion, in the lowe
 
 ### Proposal 
 
-Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists could be uncommitted and would not count towards the working set size of the VM process.
+Chunks shall be individually committable (also in parts where it makes sense) and uncommittable. Chunks in free lists should be uncommitted and would not count towards the working set size of the VM process.
 
 Chunks in use by a class loader could be committed lazily and in parts. That way large chunks can get handed to class loaders but the full price would not have to be paid up front.
 
@@ -102,7 +102,9 @@ The current chunk allocation scheme knows three kinds of chunks, sized 1K/4K/64K
 The current allocation scheme has a number of disadvantages:
 
 - Ideally, upon returning a chunk to the free list, the chunk would be combined with free neighbors as much as possible to form large contiguous free memory ranges which then could get uncommitted. However, due to the odd chunk geometry, this remains difficult even after JDK-8198423.
+
 - Since there are only three chunk sizes to choose from (disregarding humongous chunks) there is a higher chance of intra-chunk waste. For example, a class loader needing to store a data item of 5K size will require a 64K chunk.
+
 - Chunks have headers, and these headers precede the chunk payload area. They must be present even if the chunk is in a free list. Hence, the page containing the chunk header cannot be uncommitted. This means even if we were to uncommit chunk payload areas, they always would be preceded by a single committed page, increasing virtual memory fragmentation and wasting memory.
 
 ### Proposal: 
@@ -111,17 +113,15 @@ _Replace the current scheme with a power-2-based buddy allocator._
 
 In the buddy allocator scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
 
-The maximum size shall be large enough to serve any possible Metaspace allocation ("root chunk"). 
-The memory range of a VirtualSpaceNode would consist of a series of n root chunks. Its borders would be aligned to root chunk size.
+The maximum chunk size shall be large enough to serve any possible Metaspace allocation ("root chunk"). The memory range of a VirtualSpaceNode would consist of a series of n root chunks. Its borders would be aligned to root chunk size.
 
 The minimum chunk size shall be small enough to house the majority of InstanceKlass instances in class space (1K for a 64bit VM).
 
-_Remove humongous chunks:_ Since root chunks would be large enough for the largest possible metadata allocation, and chunks can get committed on demand, there is no need for humongous chunks anymore. That significantly simplifies code complexity.
+_Remove humongous chunks:_ Since root chunks would be large enough for the largest possible metadata allocation, and chunks can get committed on demand, there is no need for humongous chunks anymore. That significantly reduces code complexity.
 
-_Split chunk headers from payload:_ they are to be housed in a separate chunk header pool. Separating chunk headers from their chunks would mean the chunks could get fully uncommitted without affecting the headers. Two neighboring uncommitted chunks would then form a single contiguous memory mapping on the OS layer, reducing virtual memory fragmentation.
+_Split chunk headers from payload:_ chunk headers are to be housed in a separate chunk header pool. Separating chunk headers from their chunks would mean chunks could get fully uncommitted without affecting the headers. Two neighboring uncommitted chunks would then form a single contiguous memory mapping on the OS layer, reducing virtual memory fragmentation.
 
 _Let Chunks grow in place if possible:_ in a power-2 buddy allocation scheme, chunks have a good chance to grow in place if they are too small to house a new Metaspace allocation: if the chunk is followed by an empty buddy chunk, they can be fused to one chunk. 
-
 
 Advantages:
 
@@ -129,43 +129,49 @@ Advantages:
 
 - More chunk sizes to choose from would result in less intrachunk waste. The fact that chunks can grow in place is a nice bonus.
 
-- Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood. It is also cheap to implement.
+- Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood. This improves maintainability. It is also cheap to implement.
 
 
 ## Example: stepping through memory allocation
 
-Given the proposed scheme, this is how allocation would work:
+Given the new allocation scheme, allocation requires the following steps:
 
-- A class loader requests N words of Metaspace memory. 
+- A class loader requests n words of Metaspace memory. 
 
-- The SpaceManager first attempts to allocate from its current chunk. This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. If committing memory fails (hitting limit or GC threshold), allocation fails.
+- The loader attempts to allocate from its current chunk via pointer-bump. This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. If committing memory fails (hitting limit or GC threshold), allocation fails.
 
-If the chunk is too small to house the allocation, first an attempt is made to grow it in-place by fusing it with its buddy, if that buddy is free.
+- If the chunk is too small to house the allocation, first an attempt is made to grow it in-place by fusing it with its buddy chunk, if that buddy chunk happens to be free.
 
-Failing that, an attempt is made to take a new chunk from the free lists.
-        - If only a larger chunk is available, it is taken from its free list and split in buddy style fashion to produce the output chunk. The resulting splinter chunks are re-added to the freelist.
-    - If no free chunk is found in the free lists, a new root chunk is retrieved from the underlying VirtualSpaceNode. Note that this chunk does not necessarily have to be committed. Again, this chunk is split in buddy style fashion to produce the result chunk, and splinter chunks are added to the free list.
+- Failing that, an attempt is made to take a new chunk from the global free lists.
 
-## How bulk-deallocation works
+- If only a larger chunk is available in the global free lists, it is taken from its corresponding list and split in power-of-two-steps produce the output chunk. The resulting splinter chunks are re-added to their corresponding freelist.
+
+- If no free chunk is found in the free lists, a new root chunk is retrieved from the underlying memory region. Note that this chunk does not necessarily have to be committed. Again, this chunk is split in buddy style fashion to produce the result chunk, and any splinter chunks are added to the free list.
+
+
+## Example: bulk-deallocation
+
 - A class loader is collected, its metadata to be released
-    - All chunks owned by this class loader are returned to the global free lists.
-    - Chunks are combined in buddy-style fashion with its buddies, producing larger free chunks.
-    - Chunks surpassing a certain - tunable - threshold will be uncommitted. Obviously, only chunks equal or larger than a commit granule can be uncommitted.
-    - Alternatively, or in combination, when a Metaspace is purged after a GC, free chunks larger than a given threshold can be uncommitted.
+
+- All chunks owned by this class loader are returned to the Metaspace allocator.
+    
+- For each returned chunk, an attempt is made to fuse it with its buddy chunk, should that be free. That process is repeated until a buddy chunk is encountered which is not free, or until the resulting chunk is a root chunk. The resulting chunk is put into its corresponding free list.
+    
+- Chunks surpassing a certain - tunable - size threshold will be uncommitted. Obviously, that threshold has to be a multiple of the commit granule size.
+
+- Alternatively, or in combination with the last point, when a Metaspace is purged after a GC, free chunks larger than a given threshold can be uncommitted.
+
 
 ## Memory overhead
 
-The proposed mechanisms - as currently implemented in the prototype accompanying this proposal - come with the following storage overhead:
+Memory overhead between the old implementation and the proposed new one - as implemented in the current prototype - are roughly equivalent and in any case very miniscule compared to the size of the Metaspace itself.
 
-1) A bitmap per memory region storing the state of commit granules. For a 1 GB Metaspace, this would amount to 2 KB.
+A bitmap per memory region storing the state of commit granules. For a 1 GB Metaspace, this would amount to 2 KB.
 
-2) Chunk headers move out of Metaspace and are kept in a chunk header pool which ultimately is allocated from C-heap. Since this leaves extra space to be used in the chunks this does not really add to overhead, since the net memory cost is zero.
+The buddy allocator needs to keep state. Two extra fields per chunk header are used for this, increasing chunk header size by 16 bytes. For a typical application allocating about 10000 chunks, this amounts to increase amounts to about 156KB.
 
-3) The buddy allocator needs to keep state; the prototype implements this by keeping Metaspace chunks in an extra list according to their order in the underlying memory region. This causes extra overhead of two pointers per Metaspace chunk. A typical application allocates around 5000 - 20000 chunks, which amounts to 80..320 KB.
+We do not need the Occupancy Bitmaps anymore. That reduces memory costs by 128 KB per GB Metaspace.
 
-However, we also would save memory, since we do not need the Occupancy Bitmap anymore. That reduces memory costs by 128 KB per GB Metaspace.
-
-Memory costs and -savings are roughly comparable between the old and the new allocator and should not matter.
 
 ## Tunable parameters
 
@@ -180,25 +186,28 @@ Memory costs and -savings are roughly comparable between the old and the new all
 Alternatives
 ------------
 
-A recurring idea popping up is to get rid of the Metaspace allocator altogether and replace it with a simple malloc() based one. That has obvious drawbacks, since
+A recurring idea popping up is to get rid of the Metaspace allocator altogether and replace it with a simple malloc() based one. A variant of that idea would be to use an existing general purpose allocator (e.g. dlmalloc()) atop of pre-allocated space.
 
-- we would not be able to allocate contiguous space for Compressed Class Space
-- we would be highly dependent on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap.
-- A custom Metaspace allocator can be specifically geared toward metadata allocation - e.g. use the fact that metadata are bulk-deleted on class loader death.
+These ideas have the following drawbacks:
+
+1) Using malloc(), we would not be able to allocate contiguous space for Compressed Class Space
+
+2) Using malloc(), we would be highly dependent on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap. The same argument goes for any other third-party allocation library we would use.
+
+3) Most importantly, a custom Metaspace allocator can be specifically geared toward Metadata allocation. Since the lifetime of Metadata is scoped to its loading class loader, we can bulk-delete it when the class loader dies and do not have to track every single allocation individually. We can also use the fact that we know the typical allocation sizes (e.g. InstanceKlass allocations will be between 512 bytes and 1 KB) to tailor the Metaspace allocator toward these sizes. Any general purpose allocator has to be efficient over a whole range of allocation sizes. The Metaspace allocator does not.
 
 Testing
 -------
 
-A side effect of a new Metaspace implementation should be better testability, which will result in more and better gtests.
+A side effect of a new Metaspace implementation would be better isolation of sub components which makes for better testability. This will result in more and better gtests.
 
-A working prototype of this new allocator exists in jdk-sandbox, branch "stuefe-new-metaspace-branch". Due to the reworked Metaspace coding, better isolation of the sub components has been achieved and used to write a new set of extended gtests.
-
-
+Extensive function- and performance tests will be part of this work.
 
 Risks and Assumptions
 ---------------------
 
 It is assumed that the consensus is not to re-implement Metaspace in a completely different way. Were that to happen, e.g. a hypothetical switch back to PermGen-in-Java-heap or a re-implementation using platform malloc, this proposal would be moot.
+
 
 Dependencies
 -----------
