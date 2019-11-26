@@ -213,6 +213,5 @@ Dependencies
 
 
 [1] See jdk/sandbox repository, "stuefe-new-metaspace-branch": http://hg.openjdk.java.net/jdk/sandbox/shortlog/b537e6386306
-[2] https://en.wikipedia.org/wiki/Buddy_memory_allocation
 
 
