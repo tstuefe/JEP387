@@ -36,7 +36,7 @@ Motivation
 
 Class metadata live in non-java-heap, native memory. Their lifetime is bound to that of the loading class loader.
 
-At the lowest level, memory is reserved from the OS, piecemeal committed and handed out in chunks of varying sizes to the class loader. From that point on, these chunks are owned by the class loader. From that chunk the class loader does simple pointer bump allocation to serve metadata allocation requests.
+At the lowest level, memory is reserved from the OS, piecemeal committed and handed out in chunks of varying (larger) sizes to the class loader. From that point on, these chunks are owned by the class loader. From them the class loader does simple pointer bump allocation to serve metadata allocation requests.
 
 If the current chunk is exhausted - its leftover space too small to serve an incoming metadata allocation - a new chunk is handed to the class loader and allocation continues from that new chunk. The current chunk is "retired" and the leftover space squirreled away for possible later reuse.
 
@@ -57,7 +57,7 @@ _Intra-chunk waste for active allocations_
 
 Class loaders get assigned a chunk of Metaspace memory; they allocate from it via pointer-bump allocation. Typically, at some point the class loader will stop loading classes and has no further need for Metaspace memory; the remaining space in its current chunk is wasted.
 
-Space wasted this way typically amounts to about 5-12% of committed Metaspace.
+Space wasted this way typically amounts to about 5-20% of committed Metaspace. Note that the more small class loaders exist - loaders only loading few or a single class each - the higher this percentage becomes. Typical examples include loaders for Reflection delegator classes and for hidden classes backing Lambdas. 
 
 A second waste point is leftover space in retired chunks: when the free space left in a chunk is too small to satisfy an allocation, the class loader requests a new chunk; an attempt is made to reuse the leftover space of the old chunk, but often fails. 
 
@@ -144,7 +144,7 @@ Given the new allocation scheme, allocation requires the following steps:
 
 - Failing that, an attempt is made to take a new chunk from the global free lists.
 
-- If only a larger chunk is available in the global free lists, it is taken from its corresponding list and split in power-of-two-steps produce the output chunk. The resulting splinter chunks are re-added to their corresponding freelist.
+- If only a larger chunk is available in the global free lists, it is taken from its corresponding list and split in power-of-two-steps to produce the desired output chunk. The resulting splinter chunks are re-added to their corresponding freelist.
 
 - If no free chunk is found in the free lists, a new root chunk is retrieved from the underlying memory region. Note that this chunk does not necessarily have to be committed. Again, this chunk is split in buddy style fashion to produce the result chunk, and any splinter chunks are added to the free list.
 
@@ -164,7 +164,7 @@ Given the new allocation scheme, allocation requires the following steps:
 
 ## Memory overhead
 
-Memory overhead between the old implementation and the proposed new one - as implemented in the current prototype - are roughly equivalent and in any case very miniscule compared to the size of the Metaspace itself.
+Memory overhead of the old implementation and the proposed new one - as implemented in the current prototype - is roughly equivalent and in any case very miniscule compared to the size of the Metaspace itself.
 
 A bitmap per memory region storing the state of commit granules. For a 1 GB Metaspace, this would amount to 2 KB.
 
