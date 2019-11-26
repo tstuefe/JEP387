@@ -17,7 +17,7 @@ Non-Goals
 
 - Getting rid of the class space.
 - Changing the way Metaspace is allocated (caller code should not have to change)
-- Changing the lifetime of Metaspace objects
+- Changing the life cycle of Metaspace objects
 
 
 Success Metrics
@@ -26,8 +26,6 @@ Success Metrics
 - Metaspace shall recover from allocation spikes much more readily: we should see a significant reduction in unused-but-committed memory after Metaspace memory is released.
 
 - In scenarios not involving class unloading we should see a small to moderate decrease in committed Metaspace. Under no circumstances should we require more Metaspace.
-
-- Memory overhead caused by the changed Metaspace allocator should be smaller than what is saved in committed Metaspace.
 
 Motivation
 ----------
@@ -64,11 +62,6 @@ A second waste point is leftover space in retired chunks: when the free space le
 Space wasted this way typically amounts to about 1-3% of committed Metaspace.
 
 
-## Code clarity
-
-Metaspace code has grown over time in complexity; an overhaul would be very beneficial, bringing maintenance costs down and making the code more malleable.
-
-
 Description
 -----------
 
@@ -92,7 +85,7 @@ A consideration is fragmentation of virtual memory resulting from this. In order
 
 This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track of the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
 
-The size of these commit granules shall be tunable and by default large enough to keep virtual memory fragmentation manageable. 
+The size of these commit granules shall be tunable and by default large enough to keep virtual memory fragmentation manageable.
 
 
 ## B) Replace hard-wired chunk geometry with a buddy allocation scheme
@@ -134,7 +127,7 @@ Advantages:
 
 ## Example: stepping through memory allocation
 
-Given the new allocation scheme, allocation requires the following steps:
+Given the new allocation scheme, allocation requires the following steps (leaving out small details like handling of leftover space from retired chunks):
 
 - A class loader requests n words of Metaspace memory. 
 
@@ -178,8 +171,8 @@ We do not need the Occupancy Bitmaps anymore. That reduces memory costs by 128 K
 - Commit granule size
     - Defaults to 64K
 - Whether new root chunks should be fully committed
-- To what extend new chunks given to class loaders should be committed
-- The threshold beyond which free chunks are to be uncommitted
+- Initial chunk commit size: to what extend new chunks given to class loaders should be committed
+- Uncommit chunk size: size beyond which free chunks are to be uncommitted
 
 
 
@@ -190,9 +183,9 @@ A recurring idea popping up is to get rid of the Metaspace allocator altogether 
 
 These ideas have the following drawbacks:
 
-1) Using malloc(), we would not be able to allocate contiguous space for Compressed Class Space
+1) Using malloc(): we would not be able to allocate contiguous space for Compressed Class Space
 
-2) Using malloc(), we would be highly dependent on the libc implementation, on various platforms e.g. subject to the process break or being limited by an inconveniently placed Java heap. The same argument goes for any other third-party allocation library we would use.
+2) Using malloc(): we would be very dependent on the libc implementation, e.g. be subject to the process break or being limited by an inconveniently placed Java heap. The same argument goes for any other third-party allocation library we would use.
 
 3) Most importantly, a custom Metaspace allocator can be specifically geared toward Metadata allocation. Since the lifetime of Metadata is scoped to its loading class loader, we can bulk-delete it when the class loader dies and do not have to track every single allocation individually. We can also use the fact that we know the typical allocation sizes (e.g. InstanceKlass allocations will be between 512 bytes and 1 KB) to tailor the Metaspace allocator toward these sizes. Any general purpose allocator has to be efficient over a whole range of allocation sizes. The Metaspace allocator does not.
 
@@ -207,6 +200,10 @@ Risks and Assumptions
 ---------------------
 
 It is assumed that the consensus is not to re-implement Metaspace in a completely different way. Were that to happen, e.g. a hypothetical switch back to PermGen-in-Java-heap or a re-implementation using platform malloc, this proposal would be moot.
+
+Should virtual memory fragmentation become an issue, the uncommit chunk size can be increased or uncommitting switched off completely. We even may monitor metaspace memory fragmentation and automatically tune the uncommit chunk size. With uncommitting shut off the behaviour is roughly comparable to the current implementation. 
+
+Note however that our current prototype shows only a very modest increase in virtual memory fragmentation with the default commit granule size of 64K, so we do not expect this to be a problem.
 
 
 Dependencies
