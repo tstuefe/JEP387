@@ -3,86 +3,11 @@
 # Date 1551445166 -3600
 #      Fri Mar 01 13:59:26 2019 +0100
 # Branch stuefe-new-metaspace-branch
-# Node ID b3afb91dba975aff961b342a1bfe19ddb06046db
-# Parent  e18d2d9d15154b7151b07c1b7803abb99fdbaefd
-From a5f47351c16725452ea8ff5cc26cdc33fa16d42d Mon Sep 17 00:00:00 2001
-[PATCH] SapMachine #241: Initial implementation of a low-cost, always
-From a5f47351c16725452ea8ff5cc26cdc33fa16d42d Mon Sep 17 00:00:00 2001
- on statistical value history (JDK-8212618)
----
- src/hotspot/os/aix/stathist_aix.cpp                |   43 +
- src/hotspot/os/bsd/stathist_bsd.cpp                |   43 +
- src/hotspot/os/linux/stathist_linux.cpp            |  415 +++++++
- src/hotspot/os/solaris/stathist_solaris.cpp        |   44 +
- src/hotspot/os/windows/stathist_windows.cpp        |   89 ++
- .../classfile/classLoaderDataGraph.inline.hpp      |   20 +
- src/hotspot/share/runtime/globals.hpp              |   10 +
- src/hotspot/share/runtime/thread.cpp               |   11 +
- src/hotspot/share/services/diagnosticCommand.cpp   |    4 +
- src/hotspot/share/services/stathist.cpp            | 1192 ++++++++++++++++++++
- src/hotspot/share/services/stathist.hpp            |   67 ++
- src/hotspot/share/services/stathistDCmd.cpp        |   95 ++
- src/hotspot/share/services/stathistDCmd.hpp        |   65 ++
- src/hotspot/share/services/stathist_internals.hpp  |  181 +++
- src/hotspot/share/utilities/vmError.cpp            |   16 +
- test/hotspot/jtreg/TEST.groups                     |    8 +
- .../jtreg/serviceability/dcmd/vm/StatHistTest.java |   59 +
- 17 files changed, 2362 insertions(+)
- create mode 100644 src/hotspot/os/aix/stathist_aix.cpp
- create mode 100644 src/hotspot/os/bsd/stathist_bsd.cpp
- create mode 100644 src/hotspot/os/linux/stathist_linux.cpp
- create mode 100644 src/hotspot/os/solaris/stathist_solaris.cpp
- create mode 100644 src/hotspot/os/windows/stathist_windows.cpp
- create mode 100644 src/hotspot/share/services/stathist.cpp
- create mode 100644 src/hotspot/share/services/stathist.hpp
- create mode 100644 src/hotspot/share/services/stathistDCmd.cpp
- create mode 100644 src/hotspot/share/services/stathistDCmd.hpp
- create mode 100644 src/hotspot/share/services/stathist_internals.hpp
- create mode 100644 test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java
-* * *
-[PATCH] SapMachine #321: Minor fixes for statistical history
-From 641c0b96a5b9408bab1f3d1edcdae09e9790ae7a Mon Sep 17 00:00:00 2001
-- possible misprint for CPU values in long term table due to overflow
-- possible issues when printing the statistics table with code printing
-  in parallel due to temp. change of print locale
-- Fix issue which caused RSS details not to be shown even if available.
----
- src/hotspot/os/linux/stathist_linux.cpp | 19 ++++++++-----------
- src/hotspot/share/services/stathist.cpp | 18 ------------------
- 2 files changed, 8 insertions(+), 29 deletions(-)
-* * *
-[PATCH] Rename external representation of Statistical History (#421)
-From 7fc8c42184d7279a145f81146a12ce879ecd2ca2 Mon Sep 17 00:00:00 2001
-Rename "Statistical History" to "Vitals" with a minimum of fuss:
+# Node ID de02f487a78abc5cd0ffaadf22462834fa1dc203
+# Parent  54750b44826425b2ed915f220ff18da628b4ce00
+vitals
 
-rename command: VM.stathist -> VM.vitals
-rename switches: "EnableStatHist" -> "EnableVitals" etc.
-fixes #420
----
- src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp |  8 ++++----
- src/hotspot/share/runtime/globals.hpp                       | 13 +++++++------
- src/hotspot/share/runtime/thread.cpp                        |  2 +-
- src/hotspot/share/services/stathist.cpp                     | 10 +++++-----
- src/hotspot/share/services/stathistDCmd.hpp                 |  4 ++--
- src/hotspot/share/utilities/vmError.cpp                     |  4 ++--
- test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java |  4 ++--
- 7 files changed, 23 insertions(+), 22 deletions(-)
-* * *
-[PATCH] Sapmachine #492: Various improvements to vitals (#493)
-From edf4899dcafbee27bc1aba67d635dfda0ace15e4 Mon Sep 17 00:00:00 2001
-SapMachine #492: Various improvements to vitals
----
- src/hotspot/share/runtime/globals.hpp              |   6 +-
- src/hotspot/share/runtime/java.cpp                 |  12 +
- src/hotspot/share/services/stathist.cpp            | 243 +++++++++++++++++----
- src/hotspot/share/services/stathist.hpp            |  13 +-
- src/hotspot/share/services/stathistDCmd.cpp        |  21 +-
- src/hotspot/share/services/stathistDCmd.hpp        |   5 +-
- src/hotspot/share/utilities/vmError.cpp            |  18 +-
- .../jtreg/serviceability/dcmd/vm/StatHistTest.java |  32 ++-
- 8 files changed, 285 insertions(+), 65 deletions(-)
-
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/aix/stathist_aix.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/os/aix/stathist_aix.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/os/aix/stathist_aix.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -0,0 +1,43 @@
@@ -129,7 +54,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/aix/stathist_aix.cpp
 +}
 +
 +} // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/bsd/stathist_bsd.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/os/bsd/stathist_bsd.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/os/bsd/stathist_bsd.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -0,0 +1,43 @@
@@ -176,7 +101,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/bsd/stathist_bsd.cpp
 +}
 +
 +} // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/linux/stathist_linux.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/os/linux/stathist_linux.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/os/linux/stathist_linux.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -0,0 +1,412 @@
@@ -592,7 +517,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/linux/stathist_linux.cpp
 +}
 +
 +} // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/solaris/stathist_solaris.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/os/solaris/stathist_solaris.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/os/solaris/stathist_solaris.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -0,0 +1,44 @@
@@ -640,7 +565,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/solaris/stathist_solaris.cpp
 +}
 +
 +} // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/windows/stathist_windows.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/os/windows/stathist_windows.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/os/windows/stathist_windows.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -0,0 +1,89 @@
@@ -733,8 +658,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/os/windows/stathist_windows.cpp
 +}
 +
 +} // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp
---- a/src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp	Fri Nov 01 11:09:18 2019 +0100
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp
+--- a/src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp	Tue Nov 26 16:21:29 2019 +0100
 +++ b/src/hotspot/share/classfile/classLoaderDataGraph.inline.hpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -28,7 +28,11 @@
  #include "classfile/classLoaderDataGraph.hpp"
@@ -785,8 +710,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/classfile/classLoaderData
  }
  
  bool ClassLoaderDataGraph::should_clean_metaspaces_and_reset() {
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/globals.hpp
---- a/src/hotspot/share/runtime/globals.hpp	Fri Nov 01 11:09:18 2019 +0100
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/runtime/globals.hpp
+--- a/src/hotspot/share/runtime/globals.hpp	Tue Nov 26 16:21:29 2019 +0100
 +++ b/src/hotspot/share/runtime/globals.hpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -501,6 +501,26 @@
    develop(bool, Verbose, false,                                             \
@@ -804,9 +729,9 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/globals.hpp
 +          "When sampling vitals, omit any actions which require locking.")  \
 +                                                                            \
 +  product(bool, DumpVitalsAtExit, false,                                    \
-+	        "Dump vitals at VM exit into two files, by default called "       \
-+	        "sapmachine_vitals_<pid>.txt and sapmachine_vitals_<pid>.csv. "   \
-+	        "Use -XX:VitalsFile option to change the file names.")            \
++          "Dump vitals at VM exit into two files, by default called "       \
++          "sapmachine_vitals_<pid>.txt and sapmachine_vitals_<pid>.csv. "   \
++          "Use -XX:VitalsFile option to change the file names.")            \
 +                                                                            \
 +  product(ccstr, VitalsFile, NULL,                                          \
 +          "When DumpVitalsAtExit is set, the file name prefix for the "     \
@@ -815,8 +740,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/globals.hpp
    develop(bool, PrintMiscellaneous, false,                                  \
            "Print uncategorized debugging information (requires +Verbose)")  \
                                                                              \
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/java.cpp
---- a/src/hotspot/share/runtime/java.cpp	Fri Nov 01 11:09:18 2019 +0100
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/runtime/java.cpp
+--- a/src/hotspot/share/runtime/java.cpp	Tue Nov 26 16:21:29 2019 +0100
 +++ b/src/hotspot/share/runtime/java.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -71,6 +71,8 @@
  #include "runtime/timer.hpp"
@@ -851,8 +776,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/java.cpp
    if (LogTouchedMethods && PrintTouchedMethodsAtExit) {
      Method::print_touched_methods(tty);
    }
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/thread.cpp
---- a/src/hotspot/share/runtime/thread.cpp	Fri Nov 01 11:09:18 2019 +0100
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/runtime/thread.cpp
+--- a/src/hotspot/share/runtime/thread.cpp	Tue Nov 26 16:21:29 2019 +0100
 +++ b/src/hotspot/share/runtime/thread.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -107,6 +107,8 @@
  #include "services/attachListener.hpp"
@@ -863,7 +788,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/thread.cpp
  #include "services/threadService.hpp"
  #include "utilities/align.hpp"
  #include "utilities/copy.hpp"
-@@ -4021,6 +4023,11 @@
+@@ -4067,6 +4069,11 @@
    StatSampler::engage();
    if (CheckJNICalls)                  JniPeriodicChecker::engage();
  
@@ -875,7 +800,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/thread.cpp
    BiasedLocking::init();
  
  #if INCLUDE_RTM_OPT
-@@ -4447,6 +4454,10 @@
+@@ -4493,6 +4500,10 @@
    p->set_on_thread_list();
  
    _number_of_threads++;
@@ -886,8 +811,32 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/runtime/thread.cpp
    oop threadObj = p->threadObj();
    bool daemon = true;
    // Bootstrapping problem: threadObj can be null for initial
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/diagnosticCommand.cpp
---- a/src/hotspot/share/services/diagnosticCommand.cpp	Fri Nov 01 11:09:18 2019 +0100
+@@ -4749,6 +4760,13 @@
+     st->cr();
+   }
+ 
++  // SapMachine 2019-11-07 : stathist
++  const Thread* stathist_sampler_thread = StatisticsHistory::samplerthread();
++  if (stathist_sampler_thread != NULL) {
++    stathist_sampler_thread->print_on(st);
++    st->cr();
++  }
++
+   st->flush();
+ }
+ 
+@@ -4801,6 +4819,9 @@
+   st->print_cr("Other Threads:");
+   print_on_error(VMThread::vm_thread(), st, current, buf, buflen, &found_current);
+   print_on_error(WatcherThread::watcher_thread(), st, current, buf, buflen, &found_current);
++  // SapMachine 2019-11-07 : stathist
++  print_on_error(const_cast<Thread*>(StatisticsHistory::samplerthread()),
++                 st, current, buf, buflen, &found_current);
+ 
+   PrintOnErrorClosure print_closure(st, current, buf, buflen, &found_current);
+   Universe::heap()->gc_threads_do(&print_closure);
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/services/diagnosticCommand.cpp
+--- a/src/hotspot/share/services/diagnosticCommand.cpp	Tue Nov 26 16:21:29 2019 +0100
 +++ b/src/hotspot/share/services/diagnosticCommand.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -46,6 +46,8 @@
  #include "services/diagnosticFramework.hpp"
@@ -907,10 +856,10 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/diagnosticComman
  #if INCLUDE_SERVICES
    DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<HeapDumpDCmd>(DCmd_Source_Internal | DCmd_Source_AttachAPI, true, false));
    DCmdFactory::register_DCmdFactory(new DCmdFactoryImpl<ClassHistogramDCmd>(full_export, true, false));
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/services/stathist.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/share/services/stathist.cpp	Fri Mar 01 13:59:26 2019 +0100
-@@ -0,0 +1,1350 @@
+@@ -0,0 +1,1348 @@
 +/*
 + * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2019, SAP SE.
@@ -944,7 +893,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +#include "classfile/classLoaderDataGraph.inline.hpp"
 +#include "code/codeCache.hpp"
 +#include "memory/allocation.hpp"
-+#include "memory/metaspace/metaspaceEnums.hpp"
++#include "memory/metaspace.hpp"
 +#include "memory/universe.hpp"
 +#include "runtime/os.hpp"
 +#include "runtime/thread.hpp"
@@ -988,6 +937,11 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +}
 +
 +} // namespace counters
++
++// context for printing
++struct print_context_t {
++  int records_printed;
++};
 +
 +// helper function for the missing outputStream::put(int c, int repeat)
 +static void ostream_put_n(outputStream* st, int c, int repeat) {
@@ -1562,6 +1516,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    const RecordTable* const _rt;
 +    const bool _reverse;
 +    int _p;
++    const int _max_steps;
++    int _step;
 +
 +    void move_to_oldest() {
 +      _p = _rt->oldest_pos();
@@ -1571,22 +1527,14 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +      _p = _rt->youngest_pos();
 +    }
 +
-+    void step_forward() {
-+      if (valid()) {
-+        _p = _rt->following_pos(_p);
-+      }
-+    }
-+
-+    void step_back() {
-+      if (valid()) {
-+        _p = _rt->preceeding_pos(_p);
-+      }
-+    }
++    void step_forward() { _p = _rt->following_pos(_p); }
++    void step_back()    { _p = _rt->preceeding_pos(_p); }
 +
 +  public:
 +
 +    ConstIterator(const RecordTable* rt, bool reverse = false)
-+      : _rt(rt), _reverse(reverse), _p(-1)
++      : _rt(rt), _reverse(reverse), _p(-1),
++        _max_steps(rt->size()), _step(0)
 +    {
 +      if (_reverse) {
 +        move_to_oldest();
@@ -1598,10 +1546,17 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    bool valid() const { return _p != -1; }
 +
 +    void step() {
-+      if (_reverse) {
-+        step_forward();
-+      } else {
-+        step_back();
++      if (valid()) {
++        if (_reverse) {
++          step_forward();
++        } else {
++          step_back();
++        }
++        // Safety.
++        _step ++;
++        if (_step > _max_steps) {
++          _p = -1;
++        }
 +      }
 +    }
 +
@@ -1646,13 +1601,14 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +  }
 +
 +  // Print all records.
-+  void print_all_records(outputStream* st, const int widths[], const print_info_t* pi) const {
++  void print_all_records(outputStream* st, const int widths[], const print_info_t* pi, print_context_t* pc) const {
 +    ConstIterator it(this, pi->reverse_ordering);
-+    while(it.valid()) {
++    while(it.valid() && (pi->max == 0 || pc->records_printed < pi->max)) {
 +      const record_t* record = it.get();
 +      const record_t* previous_record = it.get_preceeding();
 +      print_one_record(st, record, previous_record, widths, pi);
 +      it.step();
++      pc->records_printed ++;
 +    }
 +  }
 +
@@ -1679,6 +1635,9 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    return at(_pos);
 +  }
 +
++  // Returns max. number of entries size of this record table.
++  int size() const { return _num_records; }
++
 +  // finish the current record: advances the write position in the FIFO buffer by one.
 +  // Should that cause a record to fall out of the FIFO end, it propagates the record to
 +  // the follower table if needed.
@@ -1698,9 +1657,9 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    }
 +  }
 +
-+  void print_table(outputStream* st, const print_info_t* pi, const record_t* values_now = NULL) const {
++  void print_table(outputStream* st, const print_info_t* pi, print_context_t* pc) const {
 +
-+    if (is_empty() && values_now == NULL) {
++    if (is_empty()) {
 +      st->print_cr("(no records)");
 +      return;
 +    }
@@ -1710,9 +1669,6 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    // Before actually printing, lets calculate the printing widths
 +    // (if now-values are given, they are part of the table too, so include them in the widths calculation)
 +    update_widths_from_all_records(g_widths, pi);
-+    if (values_now != NULL) {
-+      update_widths_from_one_record(values_now, youngest_in_table, g_widths, pi);
-+    }
 +
 +    // Print headers (not in csv mode)
 +    if (pi->csv == false) {
@@ -1724,32 +1680,25 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +
 +    // Now print the actual values. We preceede the table values with the now value
 +    //  (if printing order is youngest-to-oldest) or write it last (if printing order is oldest-to-youngest).
-+    if (values_now != NULL && pi->reverse_ordering == false) {
-+      print_one_record(st, values_now, youngest_in_table, g_widths, pi);
-+    }
-+    print_all_records(st, g_widths, pi);
-+    if (values_now != NULL && pi->reverse_ordering == true) {
-+      print_one_record(st, values_now, youngest_in_table, g_widths, pi);
-+    }
++    print_all_records(st, g_widths, pi, pc);
 +
 +  }
 +};
 +
 +class RecordTables: public CHeapObj<mtInternal> {
 +
-+  enum {
-+    // short term: 15 seconds per sample, 240 samples or 60 minutes total
-+    short_term_interval_default = 15,
-+    short_term_num_samples = 240,
++  // short term: 10 seconds per sample, 360 samples or 60 minutes total
++  static const int short_term_interval_default = 10;
++  static const int short_term_num_samples = 360;
 +
-+    // mid term: 15 minutes per sample (aka 60 short term samples), 96 samples or 24 hours in total
-+    mid_term_interval_ratio = 60,
-+    mid_term_num_samples = 96,
++  // mid term: 10 minutes per sample (aka 60 short term samples), 144 samples or 24 hours in total
++  static const int mid_term_interval_ratio = 60;
++  static const int mid_term_num_samples = 144;
 +
-+    // long term history: 2 hour intervals (aka 8 mid term samples), 120 samples or 10 days in total
-+    long_term_interval_ratio = 8,
-+    long_term_num_samples = 120
-+  };
++  // long term history: 2 hour intervals (aka 8 mid term samples), 120 samples or 10 days in total
++  static const int long_term_interval_ratio = 8;
++  static const int long_term_num_samples = 120;
++
 +
 +  int _short_term_interval;
 +
@@ -1798,26 +1747,35 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    }
 +
 +    const int short_term_interval = VitalsSampleInterval != 0 ?
-+        VitalsSampleInterval : (int)short_term_interval_default;
++        VitalsSampleInterval : short_term_interval_default;
 +    return _the_tables->initialize(short_term_interval);
 +
 +  }
 +
-+  void print_all(outputStream* st, const print_info_t* pi, const record_t* values_now = NULL) const {
++  void print_all(outputStream* st, const print_info_t* pi) const {
 +
-+    st->print_cr("Short Term Values:");
-+    // At the start of the short term table we print the current (now) values. The intent is to be able
-+    // to see very short term developments (e.g. a spike in heap usage in the last n seconds)
-+    _short_term_table->print_table(st, pi, values_now);
-+    st->cr();
++    print_context_t pc;
++    pc.records_printed = 0;
 +
-+    st->print_cr("Mid Term Values:");
-+    _mid_term_table->print_table(st, pi);
-+    st->cr();
++    if (pi->max == 0 || pc.records_printed < pi->max) {
++      st->print_cr("Short Term Values:");
++      // At the start of the short term table we print the current (now) values. The intent is to be able
++      // to see very short term developments (e.g. a spike in heap usage in the last n seconds)
++      _short_term_table->print_table(st, pi, &pc);
++      st->cr();
++    }
 +
-+    st->print_cr("Long Term Values:");
-+    _long_term_table->print_table(st, pi);
-+    st->cr();
++    if (pi->max == 0 || pc.records_printed < pi->max) {
++      st->print_cr("Mid Term Values:");
++      _mid_term_table->print_table(st, pi, &pc);
++      st->cr();
++    }
++
++    if (pi->max == 0 || pc.records_printed < pi->max) {
++      st->print_cr("Long Term Values:");
++      _long_term_table->print_table(st, pi, &pc);
++      st->cr();
++    }
 +
 +  }
 +
@@ -1865,14 +1823,6 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +
 +  }
 +
-+  void do_sleep(int ms) {
-+    while (ms > 0) {
-+      int n = MIN2(999, ms);
-+      os::naked_short_sleep(n);
-+      ms -= n;
-+    }
-+  }
-+
 +public:
 +
 +  SamplerThread()
@@ -1886,7 +1836,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    record_stack_base_and_size();
 +    for (;;) {
 +      take_sample();
-+      do_sleep(RecordTables::the_tables()->short_term_interval() * 1000);
++      os::naked_sleep(RecordTables::the_tables()->short_term_interval() * 1000);
 +      if (_stop) {
 +        break;
 +      }
@@ -2076,8 +2026,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +  set_value_in_record(g_col_metaspace_used, record, MetaspaceUtils::used_bytes());
 +
 +  if (Metaspace::using_class_space()) {
-+    set_value_in_record(g_col_classspace_committed, record, MetaspaceUtils::committed_bytes(metaspace::ClassType));
-+    set_value_in_record(g_col_classspace_used, record, MetaspaceUtils::used_bytes(metaspace::ClassType));
++    set_value_in_record(g_col_classspace_committed, record, MetaspaceUtils::committed_bytes(Metaspace::ClassType));
++    set_value_in_record(g_col_classspace_used, record, MetaspaceUtils::used_bytes(Metaspace::ClassType));
 +  }
 +
 +  set_value_in_record(g_col_metaspace_cap_until_gc, record, MetaspaceGC::capacity_until_GC());
@@ -2167,6 +2117,18 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +  }
 +}
 +
++const print_info_t* default_settings() {
++  static const print_info_t x = {
++      false, // raw
++      false, // csv
++      false, // omit_legend
++      false, // reverse_ordering;
++      0,     // scale
++      0      // max
++  };
++  return &x;
++}
++
 +void print_report(outputStream* st, const print_info_t* pi) {
 +
 +  st->print("Vitals:");
@@ -2178,15 +2140,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +
 +  st->cr();
 +
-+  static const print_info_t default_settings = {
-+      false, // raw
-+      false, // csv
-+      false, // omit_legend
-+      true   // avoid_sampling
-+  };
-+
 +  if (pi == NULL) {
-+    pi = &default_settings;
++    pi = default_settings();
 +  }
 +
 +  // Print legend at the top (omit if suppressed on command line, or in csv mode).
@@ -2195,15 +2150,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    st->cr();
 +  }
 +
-+  record_t* values_now = NULL;
-+  if (!pi->avoid_sampling) {
-+    // Sample the current values (not when reporting errors, since we do not want to risk secondary errors).
-+    values_now = g_record_now;
-+    values_now->timestamp = 0; // means "Now"
-+    sample_values(values_now, true);
-+  }
-+
-+  RecordTables::the_tables()->print_all(st, pi, values_now);
++  RecordTables::the_tables()->print_all(st, pi);
 +
 +}
 +
@@ -2219,19 +2166,19 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +  } else {
 +    os::snprintf(vitals_file_name, sizeof(vitals_file_name), "%s%d.txt", file_prefix, os::current_process_id());
 +  }
++
++  // Note: we print two reports, both in reverse order (oldest to youngest). One in text form, one as csv.
++
 +  ::printf("Dumping Vitals to %s\n", vitals_file_name);
-+  print_info_t pi;
-+  memset(&pi, 0, sizeof(pi));
-+  pi.avoid_sampling = true; // this is called during exit, so lets be a bit careful.
 +  {
 +    fileStream fs(vitals_file_name);
 +    static const StatisticsHistory::print_info_t settings = {
 +        false, // raw
 +        false, // csv
 +        false, // no_legend
-+        true,  // avoid_sampling
 +        true,  // reverse_ordering
-+        0      // scale
++        0,     // scale
++        0      // max
 +    };
 +    print_report(&fs, &settings);
 +  }
@@ -2242,29 +2189,29 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.cpp
 +    os::snprintf(vitals_file_name, sizeof(vitals_file_name), "%s%d.csv", file_prefix, os::current_process_id());
 +  }
 +  ::printf("Dumping Vitals csv to %s\n", vitals_file_name);
-+  pi.csv = true;
-+  pi.scale = 1 * K;
-+  pi.reverse_ordering = true;
 +  {
 +    fileStream fs(vitals_file_name);
 +    static const StatisticsHistory::print_info_t settings = {
 +        false, // raw
 +        true,  // csv
 +        false, // no_legend
-+        true,  // avoid_sampling
 +        true,  // reverse_ordering
-+        1 * K  // scale
++        1 * K, // scale
++        0      // max
 +    };
 +    print_report(&fs, &settings);
 +  }
 +
 +}
 +
++// For printing in thread lists only.
++const Thread* samplerthread() { return g_sampler_thread; }
++
 +} // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.hpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/services/stathist.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/share/services/stathist.hpp	Fri Mar 01 13:59:26 2019 +0100
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,80 @@
 +/*
 + * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2019, SAP SE.
@@ -2308,22 +2255,28 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.hpp
 +    bool csv;
 +    // Omit printing a legend.
 +    bool no_legend;
-+    // Normally, when we print a report, we sample the current values too and print it atop of the table.
-+    // We may want to avoid that, e.g. during error handling.
-+    bool avoid_sampling;
 +    // Reverse printing order (default: youngest-to-oldest; reversed: oldest-to-youngest)
 +    bool reverse_ordering;
 +
 +    size_t scale;
 +
++    // max number of samples to print (0 = print all)
++    int max;
++
 +  };
 +
++  // text output, youngest-to-oldest ordered, with legend, all records, dynamic scale.
++  const print_info_t* default_settings();
 +
-+  void print_report(outputStream* st, const print_info_t* print_info);
++  // Print report to stream. Leave print_info NULL for default settings.
++  void print_report(outputStream* st, const print_info_t* print_info = NULL);
 +
 +  // Dump both textual and csv style reports to two files, "vitals_<pid>.txt" and "vitals_<pid>.csv".
 +  // If these files exist, they are overwritten.
 +  void dump_reports();
++
++  // For printing in thread lists only.
++  const Thread* samplerthread();
 +
 +  // These are counters for the statistics history. Ideally, they would live
 +  // inside their thematical homes, e.g. thread.cpp or classLoaderDataGraph.cpp,
@@ -2339,10 +2292,10 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist.hpp
 +};
 +
 +#endif /* HOTSPOT_SHARE_SERVICES_STATHIST_HPP */
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.cpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/services/stathistDCmd.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/share/services/stathistDCmd.cpp	Fri Mar 01 13:59:26 2019 +0100
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,100 @@
 +/*
 + * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2019, SAP SE.
@@ -2388,13 +2341,15 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.cpp
 +    _csv("csv", "csv format.", "BOOLEAN", false, "false"),
 +    _no_legend("no-legend", "Omit legend.", "BOOLEAN", false, "false"),
 +    _reverse("reverse", "Reverse printing order.", "BOOLEAN", false, "false"),
-+    _raw("raw", "Print raw values.", "BOOLEAN", false, "false")
++    _raw("raw", "Print raw values.", "BOOLEAN", false, "false"),
++    _max("max", "Limit printing to max items.", "INT", false)
 +{
 +  _dcmdparser.add_dcmd_option(&_scale);
 +  _dcmdparser.add_dcmd_option(&_no_legend);
 +  _dcmdparser.add_dcmd_option(&_reverse);
 +  _dcmdparser.add_dcmd_option(&_raw);
 +  _dcmdparser.add_dcmd_option(&_csv);
++  _dcmdparser.add_dcmd_option(&_max);
 +}
 +
 +int StatHistDCmd::num_arguments() {
@@ -2435,16 +2390,16 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.cpp
 +  pi.csv = _csv.value();
 +  pi.no_legend = _no_legend.value();
 +  pi.reverse_ordering = _reverse.value();
-+  pi.avoid_sampling = false;
++  pi.max = _max.value();
 +
 +  StatisticsHistory::print_report(output(), &pi);
 +}
 +
 +}; // namespace StatisticsHistory
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.hpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/services/stathistDCmd.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/share/services/stathistDCmd.hpp	Fri Mar 01 13:59:26 2019 +0100
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,65 @@
 +/*
 + * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2019, SAP SE.
@@ -2486,6 +2441,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.hpp
 +  DCmdArgument<bool> _no_legend;
 +  DCmdArgument<bool> _reverse;
 +  DCmdArgument<bool> _raw;
++  DCmdArgument<jlong> _max;
 +public:
 +  StatHistDCmd(outputStream* output, bool heap);
 +  static const char* name() {
@@ -2509,7 +2465,7 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathistDCmd.hpp
 +}; // namespace StatisticsHistory
 +
 +#endif /* HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP */
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist_internals.hpp
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/services/stathist_internals.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/src/hotspot/share/services/stathist_internals.hpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -0,0 +1,181 @@
@@ -2694,8 +2650,8 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/services/stathist_interna
 +}; // namespace StatisticsHistory
 +
 +#endif /* HOTSPOT_SHARE_SERVICES_STATHIST_INTERNALS_HPP */
-diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/utilities/vmError.cpp
---- a/src/hotspot/share/utilities/vmError.cpp	Fri Nov 01 11:09:18 2019 +0100
+diff -r 54750b448264 -r de02f487a78a src/hotspot/share/utilities/vmError.cpp
+--- a/src/hotspot/share/utilities/vmError.cpp	Tue Nov 26 16:21:29 2019 +0100
 +++ b/src/hotspot/share/utilities/vmError.cpp	Fri Mar 01 13:59:26 2019 +0100
 @@ -45,6 +45,8 @@
  #include "runtime/vmOperations.hpp"
@@ -2706,49 +2662,32 @@ diff -r e18d2d9d1515 -r b3afb91dba97 src/hotspot/share/utilities/vmError.cpp
  #include "services/memTracker.hpp"
  #include "utilities/debug.hpp"
  #include "utilities/decoder.hpp"
-@@ -103,6 +105,16 @@
-   (const char *)0
- };
- 
-+// SapMachine 2019-09-16: Vitals
-+static const StatisticsHistory::print_info_t vitals_print_settings = {
-+    false, // raw
-+    false, // csv
-+    false, // no_legend
-+    true,  // avoid_sampling
-+    false, // reverse_ordering
-+    0      // scale
-+};
-+
- // A simple parser for -XX:OnError, usage:
- //  ptr = OnError;
- //  while ((cmd = next_OnError_command(buffer, sizeof(buffer), &ptr) != NULL)
-@@ -1002,6 +1014,12 @@
+@@ -1011,6 +1013,12 @@
         MemTracker::error_report(st);
       }
  
 +  // SapMachine 2019-02-20 : stathist
 +  STEP("Vitals")
 +     if (_verbose) {
-+       StatisticsHistory::print_report(st, &vitals_print_settings);
++       StatisticsHistory::print_report(st);
 +     }
 +
    STEP("printing system")
  
       if (_verbose) {
-@@ -1173,6 +1191,10 @@
+@@ -1182,6 +1190,10 @@
  
    MemTracker::error_report(st);
  
 +  // SapMachine 2019-02-20 : stathist
 +  // STEP("Vitals")
-+  StatisticsHistory::print_report(st, &vitals_print_settings);
++  StatisticsHistory::print_report(st);
 +
    // STEP("printing system")
  
    st->cr();
-diff -r e18d2d9d1515 -r b3afb91dba97 test/hotspot/jtreg/TEST.groups
---- a/test/hotspot/jtreg/TEST.groups	Fri Nov 01 11:09:18 2019 +0100
+diff -r 54750b448264 -r de02f487a78a test/hotspot/jtreg/TEST.groups
+--- a/test/hotspot/jtreg/TEST.groups	Tue Nov 26 16:21:29 2019 +0100
 +++ b/test/hotspot/jtreg/TEST.groups	Fri Mar 01 13:59:26 2019 +0100
 @@ -311,6 +311,11 @@
   -:tier1_runtime_appcds_exclude \
@@ -2773,10 +2712,10 @@ diff -r e18d2d9d1515 -r b3afb91dba97 test/hotspot/jtreg/TEST.groups
    :tier1_common \
    :tier1_compiler \
    :tier1_gc \
-diff -r e18d2d9d1515 -r b3afb91dba97 test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java
+diff -r 54750b448264 -r de02f487a78a test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/test/hotspot/jtreg/serviceability/dcmd/vm/StatHistTest.java	Fri Mar 01 13:59:26 2019 +0100
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,94 @@
 +/*
 + * Copyright (c) 2014, 2019, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -2843,6 +2782,11 @@ diff -r e18d2d9d1515 -r b3afb91dba97 test/hotspot/jtreg/serviceability/dcmd/vm/S
 +        output.shouldContain("--meta--");
 +
 +        output = executor.execute("VM.vitals raw");
++        output.shouldContain("--jvm--");
++        output.shouldContain("--heap--");
++        output.shouldContain("--meta--");
++
++        output = executor.execute("VM.vitals max=1");
 +        output.shouldContain("--jvm--");
 +        output.shouldContain("--heap--");
 +        output.shouldContain("--meta--");
