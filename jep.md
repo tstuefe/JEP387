@@ -199,11 +199,19 @@ Extensive function- and performance tests will be part of this work.
 Risks and Assumptions
 ---------------------
 
-It is assumed that the consensus is not to re-implement Metaspace in a completely different way. Were that to happen, e.g. a hypothetical switch back to PermGen-in-Java-heap or a re-implementation using platform malloc, this proposal would be moot.
+An important part of this proposal is the ability to uncommit and recommit at reasonable speed. We are at the mercy of the underlying OS here. In particular, two potential issues stick out:
 
-Should virtual memory fragmentation become an issue, the uncommit chunk size can be increased or uncommitting switched off completely. We even may monitor metaspace memory fragmentation and automatically tune the uncommit chunk size. With uncommitting shut off the behaviour is roughly comparable to the current implementation. 
+1) Uncommitting memory may be slow. We never saw this in practice but it may happen in theory. Metaspace reclamation happens as part of class unloading which may, depending on the collector involved, happen in a GC pause. Slow uncommitting would increase the pause time.
 
-Note however that our current prototype shows only a very modest increase in virtual memory fragmentation with the default commit granule size of 64K, so we do not expect this to be a problem.
+2) Every OS needs to manage virtual memory ranges. Uncommitting memory may fragment these ranges and increase their number. On Linux in particular, vm ranges are represented by an instance of vm_area_struct, which are kept in both a list and a lookup tree. Increasing the number of ranges may increase lookup time for virtual memory areas. Also, there are limits to how many mappings (areas) a process can have.
+
+Note that both issues have been no concern in reality so far.
+
+Mitigation/Contingency plans:
+
+For (1), should uncommit times turn out to be problematic, uncommitting could be offloaded to an own thread and be done concurrently to the running application outside of a GC pause. This would increase coding complexity, so it should only be done if necessary.
+
+For both (1) and (2), increasing commit granule size and/or uncommit threshold would decrease virtual memory fragmentation and decrease number of uncommit operations. In extreme cases we could switch off uncommitting altogether. The result would be a allocator working very similar to how Metaspace works now.
 
 
 Dependencies
@@ -213,5 +221,4 @@ Dependencies
 
 
 [1] See jdk/sandbox repository, "stuefe-new-metaspace-branch": http://hg.openjdk.java.net/jdk/sandbox/shortlog/b537e6386306
-
 
