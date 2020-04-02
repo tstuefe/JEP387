@@ -1,0 +1,207 @@
+# HG changeset patch
+# User stuefe
+# Date 1585224263 -3600
+#      Thu Mar 26 13:04:23 2020 +0100
+# Branch stuefe-new-metaspace-branch
+# Node ID e2b1d0beb2061f856a1323e808476ba8d0b0aa8c
+# Parent  7d382c9b2e0223d0a59b410318f455ce3faf5906
+[mq]: mallocwhanot
+
+diff -r 7d382c9b2e02 -r e2b1d0beb206 src/hotspot/share/memory/metaspace/metaspaceCommon.cpp
+--- a/src/hotspot/share/memory/metaspace/metaspaceCommon.cpp	Fri Mar 01 13:59:26 2019 +0100
++++ b/src/hotspot/share/memory/metaspace/metaspaceCommon.cpp	Thu Mar 26 13:04:23 2020 +0100
+@@ -166,5 +166,26 @@
+   }
+ }
+ 
++
++
++
++#ifdef MALLOCWHYNOT
++xxx_t* xxx_alloc(size_t payload_word_size) {
++  size_t total_word_size = payload_word_size + (sizeof(xxx_t) / sizeof(MetaWord));
++  MetaWord* p = NEW_C_HEAP_ARRAY(MetaWord, total_word_size, mtClass);
++  xxx_t* pp = (xxx_t*)p;
++//  pp->eyecatcher = EYECATCHER;
++  pp->next = pp->prev = NULL;
++  //  pp->size = payload_word_size;
++  return pp;
++}
++void xxx_free(xxx_t* p) {
++  //  assert(p->eyecatcher == EYECATCHER, "Sanity");
++  //  p->eyecatcher = 0;
++  FREE_C_HEAP_ARRAY(MetaWord, p);
++}
++#endif
++
++
+ } // namespace metaspace
+ 
+diff -r 7d382c9b2e02 -r e2b1d0beb206 src/hotspot/share/memory/metaspace/metaspaceCommon.hpp
+--- a/src/hotspot/share/memory/metaspace/metaspaceCommon.hpp	Fri Mar 01 13:59:26 2019 +0100
++++ b/src/hotspot/share/memory/metaspace/metaspaceCommon.hpp	Thu Mar 26 13:04:23 2020 +0100
+@@ -64,6 +64,33 @@
+ const char* loaders_plural(uintx num);
+ void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared);
+ 
++
++
++
++#define MALLOCWHYNOT
++
++#ifdef MALLOCWHYNOT
++#define EYECATCHER 0x1927471921002324ULL
++struct xxx_t {
++  //uint64_t eyecatcher;
++  xxx_t* prev;
++  xxx_t* next;
++  //size_t size;
++  MetaWord payload [0];
++};
++xxx_t* xxx_alloc(size_t payload_word_size);
++void xxx_free(xxx_t* p);
++inline xxx_t* xxx_from_payload(MetaWord* payload) { xxx_t* pp = (xxx_t*)(((address)payload) - sizeof(xxx_t)); return pp; }
++inline MetaWord* payload_from_xxx(xxx_t* pp) { return pp->payload; }
++inline bool is_xxx(const MetaWord* payload) {
++  return true;
++
++//  const xxx_t* pp = xxx_from_payload(const_cast<MetaWord*>(payload)); // very shaky I know
++ // return pp->eyecatcher == EYECATCHER;
++}
++#endif
++
++
+ } // namespace metaspace
+ 
+ #endif // SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+diff -r 7d382c9b2e02 -r e2b1d0beb206 src/hotspot/share/memory/metaspace/spaceManager.cpp
+--- a/src/hotspot/share/memory/metaspace/spaceManager.cpp	Fri Mar 01 13:59:26 2019 +0100
++++ b/src/hotspot/share/memory/metaspace/spaceManager.cpp	Thu Mar 26 13:04:23 2020 +0100
+@@ -47,7 +47,6 @@
+ #define LOGFMT_SPCMGR         "SpcMgr @" PTR_FORMAT " (%s)"
+ #define LOGFMT_SPCMGR_ARGS    p2i(this), this->_name
+ 
+-
+ // Given a net allocation word size, return the raw word size
+ // we need to actually allocate in order to:
+ // 1) be able to deallocate the allocation - deallocated blocks are stored either in SmallBlocks
+@@ -166,7 +165,11 @@
+              SizeAtomicCounter* total_used_words_counter,
+              const char* name,
+              bool is_micro_loader)
+-: _lock(lock),
++:
++#ifdef MALLOCWHYNOT
++    _first_allocation(NULL),
++#endif
++  _lock(lock),
+   _chunk_manager(chunk_manager),
+   _chunk_alloc_sequence(alloc_sequence),
+   _chunks(),
+@@ -180,6 +183,21 @@
+ SpaceManager::~SpaceManager() {
+ 
+   MutexLocker fcl(lock(), Mutex::_no_safepoint_check_flag);
++
++
++#ifdef MALLOCWHYNOT
++if (UseNewCode3) {
++  xxx_t* pp = (xxx_t*) _first_allocation;
++  xxx_t* pp2 = NULL;
++  while (pp) {
++    pp2 = pp->next;
++    xxx_free(pp);
++    pp = pp2;
++  }
++  return;
++}
++#endif
++
+   Metachunk* c = _chunks.first();
+   Metachunk* c2 = NULL;
+   while(c) {
+@@ -267,6 +285,22 @@
+                        "raw word size: " SIZE_FORMAT ".",
+                        LOGFMT_SPCMGR_ARGS, requested_word_size, raw_word_size);
+ 
++#ifdef MALLOCWHYNOT
++if (UseNewCode3) {
++  xxx_t* pp = xxx_alloc(raw_word_size);
++  pp->next = _first_allocation;
++  if (_first_allocation) {
++    _first_allocation->prev = pp;
++  }
++  _first_allocation = pp;
++  if (AlwaysPreTouch) {
++    ::memset(pp->payload, 0, raw_word_size * sizeof(MetaWord));
++  }
++  return pp->payload;
++
++}
++#endif
++
+   MetaWord* p = NULL;
+ 
+   bool did_hit_limit = false;
+@@ -383,6 +417,17 @@
+ void SpaceManager::deallocate_locked(MetaWord* p, size_t word_size) {
+   assert_lock_strong(lock());
+ 
++#ifdef MALLOCWHYNOT
++if (UseNewCode3) {
++  xxx_t* pp = xxx_from_payload(p);
++  if (pp->prev) pp->prev->next = pp->next;
++  if (pp->next) pp->next->prev = pp->prev;
++  xxx_free(pp);
++  return;
++}
++#endif
++
++
+   // Allocations and deallocations are in raw_word_size
+   size_t raw_word_size = get_raw_allocation_word_size(word_size);
+ 
+diff -r 7d382c9b2e02 -r e2b1d0beb206 src/hotspot/share/memory/metaspace/spaceManager.hpp
+--- a/src/hotspot/share/memory/metaspace/spaceManager.hpp	Fri Mar 01 13:59:26 2019 +0100
++++ b/src/hotspot/share/memory/metaspace/spaceManager.hpp	Thu Mar 26 13:04:23 2020 +0100
+@@ -33,6 +33,7 @@
+ #include "memory/metaspace/metachunk.hpp"
+ #include "memory/metaspace/metaspaceCommon.hpp"
+ 
++#define MALLOCWHYNOT
+ 
+ class outputStream;
+ class Mutex;
+@@ -52,6 +53,10 @@
+ 
+ class SpaceManager : public CHeapObj<mtClass> {
+ 
++#ifdef MALLOCWHYNOT
++xxx_t* _first_allocation;
++#endif
++
+   // Lock handed down from the associated ClassLoaderData.
+   //  Protects allocations from this space.
+   Mutex* const _lock;
+diff -r 7d382c9b2e02 -r e2b1d0beb206 src/hotspot/share/memory/metaspace/virtualSpaceList.cpp
+--- a/src/hotspot/share/memory/metaspace/virtualSpaceList.cpp	Fri Mar 01 13:59:26 2019 +0100
++++ b/src/hotspot/share/memory/metaspace/virtualSpaceList.cpp	Thu Mar 26 13:04:23 2020 +0100
+@@ -31,6 +31,7 @@
+ #include "memory/metaspace/counter.hpp"
+ #include "memory/metaspace/commitLimiter.hpp"
+ #include "memory/metaspace/counter.hpp"
++#include "memory/metaspace/metaspaceCommon.hpp"
+ #include "memory/metaspace/virtualSpaceList.hpp"
+ #include "memory/metaspace/virtualSpaceNode.hpp"
+ #include "runtime/mutexLocker.hpp"
+@@ -246,6 +247,10 @@
+ 
+ // Returns true if this pointer is contained in one of our nodes.
+ bool VirtualSpaceList::contains(const MetaWord* p) const {
++
++#ifdef MALLOCWHYNOT
++if (UseNewCode3) return is_xxx(p);
++#endif
+   const VirtualSpaceNode* vsn = _first_node;
+   while (vsn != NULL) {
+     if (vsn->contains(p)) {
