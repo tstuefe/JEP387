@@ -196,7 +196,7 @@ Alternatives
 ------------
 
 
-Instead of modernizing the Metaspace allocator, we could get rid of it and instead allocate class metadata directly from C heap. The perceived advantage of such a move would be reduced code complexity.
+Instead of modernizing the Metaspace allocator, we could get rid of it and allocate class metadata directly from C heap. The perceived advantage of such a move would be reduced code complexity.
 
 The Metaspace allocator (both in its current and in its proposed improved form) is an arena-based allocator, similar to ResourceAreas or Compiler Arenas. An arena-based allocator exploits the fact that data are not released individually but have a common lifetime and can be released in bulk. In case of Metadata that lifetime is bound to the class loader.
 
@@ -204,11 +204,11 @@ A general purpose allocator like malloc on the other hand needs to be able to re
 
 The C Heap allocator in particular as some further disadvantages:
 
-- Since allocations cannot be placed into pre-reserved ranges, we cannot use them to allocate Klass structures and convert their pointers into a narrow format by adding a common offset. In other words, the Compressed Class Space as it exists today would work, we would have to re-imagine the way class pointers are encoded into their narrow format. The current encoding scheme is very effective and it would be difficult to find a similarly effective way to encode them.
+- Since allocations cannot be placed into pre-reserved ranges, we cannot use them to allocate Klass structures and convert their pointers into a narrow format by adding a common offset. In other words, the Compressed Class Space as it exists today would not work, we would have to re-imagine the way class pointers are encoded into their narrow format. The current encoding scheme is very effective and it would be difficult to find a similarly effective way to encode them.
 
 - Relying too much on the libc allocator for a product which spans multiple platforms brings its own risk. At SAP we have experience with porting software across a large range of platforms. libc allocators can come with their own set of problems, which include but are not limited to high fragmentation, unelasticity and the infamous sbrk-hits-java-heap issue. Working together with vendors to solve these problems can be work- and time-intensive, if possible at all, and easily negate the advantage of reduced code complexity.
 
-Nevertheless, a prototype was tested which completely rewires Metadata allocations to C Heap - so, every Metadata allocation was allocated with malloc(), and upon Class Loader death, each of these allocations was freed via free(). This experiment was done on Debian with glibc 2.23. The VM as well as a comparison VM using the new Metaspace prototype were ran through a micro benchmark involving heavy class loading and unloading. CompressedClassPointers were switched off as to not disadvantage the malloc-only variant.
+Nevertheless, a prototype was tested which completely rewires Metadata allocations to C Heap - so, every Metadata allocation was allocated with malloc(), and upon Class Loader death, each of these allocations was freed via free() [3]. This experiment was done on Debian with glibc 2.23. The VM as well as a comparison VM using the new Metaspace prototype were ran through a micro benchmark involving heavy class loading and unloading. CompressedClassPointers were switched off as to not disadvantage the malloc-only variant.
 
 The malloc-only variant showed the following differences to the comparison VM:
 
@@ -243,7 +243,10 @@ For (1), should uncommit times turn out to be problematic, uncommitting could be
 
 For both (1) and (2), increasing commit granule size and/or uncommit threshold would decrease virtual memory fragmentation and decrease number of uncommit operations. In extreme cases we could switch off uncommitting altogether. The result would be a allocator working very similar to how Metaspace works now.
 
-
+----
 
 [1] See jdk/sandbox repository, "stuefe-new-metaspace-branch": http://hg.openjdk.java.net/jdk/sandbox/shortlog/b537e6386306
+
 [2] https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/test/test-mallocwhynot/malloc-only-vs-patched.svg
+
+[3] https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/test/test-mallocwhynot/readme.md
