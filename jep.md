@@ -9,13 +9,13 @@ Goals
 
 - A more elastic Metaspace
 - Reduced Metaspace memory footprint
-- A cleaner implementation which is cheaper to maintain
+- A cleaner implementation which is less difficult to maintain
 
 
 Non-Goals
 ---------
 
-- Getting rid of the class space.
+- Getting rid of the separate class space
 - Changing the life cycle of Metaspace objects
 
 
