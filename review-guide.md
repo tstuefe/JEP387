@@ -48,6 +48,51 @@ Chunks are managed by a [buddy allocator](https://en.wikipedia.org/wiki/Buddy_me
 
 In code, chunk size is given as "chunk level" (`typedef .. chklvl_t`). A root chunk - the largest chunk there is - has chunk level 0. The smallest chunk has chunk level 13. Helper functions and constants to work with chunk level can be found at chunk_level.hpp.
 
+#### Merging chunks
+
+In buddy style allocation, a chunk is always part of a pair of chunks, unless the chunk is a root chunk. We call a chunk a "leader" if it is the first chunk (lower address) of the pair.
+
+```
++-------------------+-------------------+
+| Leader            | Follower          |
++-------------------+-------------------+
+```
+
+A free chunk can be merged with its buddy if that buddy is free and unsplit (which is synonymous if buddy style rules are followed):
+
+```
++-------------------+-------------------+
+|         A         |         B         |
++-------------------+-------------------+
+                    |
+                    v
++-------------------+-------------------+
+|                   C                   |
++-------------------+-------------------+
+```
+
+If the buddy is not free, or split (in which case on of the splinters will not be free), we cannot merge. In this example, B cannot merge with its buddy since it is splintered:
+
+```
++-------------------+-------------------+
+| D1 | D2 |    C    |         B         |
++-------------------+-------------------+
+```
+
+#### Splitting chunks
+
+To get a small chunk from a larger one a larger one can be split. Splitting always happens at pow2 borders:
+
++-------------------+-------------------+
+|                   A                   |
++-------------------+-------------------+
+                    |
+                    v
++-------------------+-------------------+
+| D1 | D2 |    C    |         B         |
++-------------------+-------------------+
+
+
 
 ## Outside usage
 
@@ -63,6 +108,14 @@ class ClassLoaderMetaspace is the holder for above mentioned arenas; it belongs 
 The new Metaspace is separated into various subsystems which are rather isolated and can get reviewed independently from each other.
 
 ## The Virtual Memory Subsystem
+
+Classes:
+- VirtualSpaceList
+- VirtualSpaceNode
+- RootChunkArea
+- RootChunkAreaLUT
+- CommitMask
+- CommitLimiter
 
 The Virtual Memory Layer is the lowest subsystem of all. It is responsible for reserving and committing memory. It has knowledge about commit granules (the granularity at which we commit in Metaspace).
 
@@ -174,8 +227,6 @@ The class RootChunkArea encapsulates the Buddy Style Allocator implementation. I
 
 It knows how to split and merge chunks buddy-style-allocator-style.
 
-(Arguably this could also be done somewhere else, e.g. by the ChunkManager itself, or even within the Metachunk class. But I needed a place to put this functionality, and in former implementations the Buddy Allocator implementation was more involved and needed more state.)
-
 The class RootChunkAreaLUT (for "lookup table") just holds a sequence of RootChunkArea classes which cover a contiguous memory range containing multiple root chunks. It offers lookup functionality "give me the RootChunkArea for this address".
 
 Within the context of a VirtualSpaceNode, it just is the collection of all RootChunkAreas contained in the memory of this node.
@@ -191,7 +242,10 @@ Under normal circumstances, only one instance of the CommitLimiter ever exists, 
 But by separating this functionality from Metaspace, we get better testeability: we can plug in a Dummy CommitLimiter and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.
 
 
-## The Central Chunk Repository, aka ChunkManager
+## The Central Chunk Repository (chunk manager)
+
+Classes
+- ChunkManager
 
 This subsystem plays a very central role. It only consists of one class, `class ChunkManager`.
 
@@ -199,9 +253,9 @@ There only exists one central instance of the ChunkManager (two if `-XX:+UseComp
 
 The ChunkManager is the central point to hand out chunks of any given level (size). 
 
-It keeps lists of free unused chunks and tries preferably to satisfy requests by pulling chunks from the freelists.
+It keeps lists of free unused chunks. Memory of these chunks may or may not be comitted.
 
-It sits atop of the Virtual Memory Subsystem. If needed, it will request new root chunks from it to refill the free lists.
+It sits atop of the Virtual Memory Subsystem. If needed, it will request new root chunks from it to satisfy chunk requests and refill the free lists.
 
 ### Basic operations
 
@@ -209,7 +263,7 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
     `ChunkManager::get_chunk(..)`
 
-    This will provide a chunk to the upper layer of the requested size. It may pull the chunk from a freelist, maybe splitting larger chunks to do that. It also may allocate a new root chunk from the Virtual Memory Subsystem to satisfy the request.
+    This will provide a chunk to the upper layer of the requested size. If a fitting chunk is found in the freelists, it will reuse that one, splitting larger chunks if needed. Otherwise it will allocate a new root chunk from the Virtual Memory Subsystem and use that to satisfy the request.
 
 - "I do not need this chunk anymore, keep it"
 
@@ -220,7 +274,15 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
     If, after merging with neighbors, the resulting free chunk surpasses a certain threshold, its memory is uncomitted.
 
 
+
+
 ## Classloader-local subsystem
+
+Classes
+- ClassLoaderMetaspace
+- SpaceManager
+- Metachunk
+- ChunkAllocSequence
 
 The previous sub systems were all global structures. The Classloader-local subsystem encompasses all Classes whose instances are tied to a class loader.
 
@@ -254,21 +316,20 @@ It offers fine granular allocation to the caller. A caller needing 240 bytes for
 
 Metachunk wraps one chunk - be it a root chunk of 4M or a small chunk of 1K.
 
-Metachunk knows its chunk memory area (base address and size aka level).
+MetaChunk and its payload area are disjunct. In the old Metaspace, MetaChunk was a header, followed by the chunk payload. Elastic Metaspace separates those two, removing the headers from the payload and from Metaspace altogether. For details, see `class ChunkPoolHeader` below.
 
-MetaChunk and its payload area are disjunct. In the old Metaspace, MetaChunk was a header, followed by the chunk payload. Elastic Metaspace separates those two, removing the headers from the payload and from Metaspace altogether. For details, see class ChunkPoolHeader below.
+Metachunk knows its chunk memory area (base address and size aka level). It also knows the underlying VirtualSpaceNode whose address range the payload resides in. This is needed since it takes care of committing portions of itself on demand.
 
-It also knows the underlying VirtualSpaceNode whose memory it resides in.
+Metachunk has a state:
+- _"in-use"_: A chunk in use is owned by a class loader and carries live metadata.
+- _"free"_: A free chunk is not owned by anyone, but awaits re-use in the chunk manager freelist. Its memory
+- _"dead"_: A "dead" chunk is just an unused header, without payload.
 
-A Metachunk has a state. It is either "in-use", in which case it is owned by a class loader, and managed in its used-chunk-list. Or it is "unusued" and lives inside the freelist of the ChunkManager.
+Metachunk always lives in a linked list - live chunks live in the in-use list of their SpaceManager, free chunks in the freelists of the ChunkManager, dead chunk headers live in the ChunkHeaderPool. Therefore Metachunk has a prev/next member.
 
-A third state is "dead" which just indicates a MetaChunk header without payload.
+In order to easily do buddy style operations to a chunk (split and merge) it is needed to easily access the neighboring chunks in memory. Therefore Metachunk has also references to its lower and upper neighbors.
 
-It usually lives in some form of chained list, together with other chunks, so it has a next/prev.
-
-It also knows its neighboring chunks in memory - needed to efficiently do buddy style operations.
-
-#### Metachunk Memory
+##### Metachunk Memory
 
 A Metachunk which is "in-use" gets allocated from via pointer bump allocation, starting at base. So it has a used an unused part:
 
@@ -306,16 +367,70 @@ A chunk can of course be smaller than a commit granule. In that case it shares t
 
 Note that a chunk knows nothing about granules beyond their size, as an alignment hint for talking to VirtualSpaceNode. It just asks the VirtualSpaceNode to commit a range which may or may not cover multiple granules.
 
+##### Metachunk::allocate()
+
+`Metachunk::allocate()` is the central access to pointer bump allocation from a chunk. It takes care of on demand committing the underlying memory and moves the top pointer up.
+
 #### class SpaceManager
 
-A central class.
+The SpaceManager manages the in-use chunk list for a class loader.
 
+It has a current chunk, which is used to satisfy ongoing Metadata allocations. It also has a list of "retired" chunks, which are chunks which are completely or almost completely filled with Metadata. It safekeeps the chunks until the class loader dies and the SpaceManager is destroyed, to return them to the ChunkManager for reuse.
 
+It also has a `FreeBlocks` object, which takes care about deallocated blocks - see _Deallocation Subsystem_ below for details.
+
+##### SpaceManager::allocate()
+
+`SpaceManager::allocate()` is the central access point to allocate a piece of Metadata for a class loader. 
+
+It will first attempt to take memory from the `FreeBlocks` structure (see below).
+
+Failing that, it will first attempt to take memory from the current chunk via pointer bump allocation - see `Metachunk::allocate()`. 
+
+Failing that, it will employ various strategies to get more memory: it may try to enlarge the current chunk, or it may try to get a new chunk from the chunk manager.
+
+##### Retiring chunks
+
+When the SpaceManager gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will aquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
+
+The remainder space is added to the `FreeBlocks` structure and managed the same way as space deallocated from the outside would - getting reused for later allocations as soon as possible.
+
+#### class ClassLoaderMetaspace
+
+`ClassLoaderMetaspace` is just the connection between a CLD and one or two instances of SpaceManger - normally just one, but if `-XX:+UseCompressedClassPointers`, we need two SpaceManagers, one for class space allocations (to put Klass* structures), one for the rest.
+
+It also takes care of increasing the GC threshold when necessary.
+
+Beyond that, it does not have a lot of own logic.
+
+##### class ChunkAllocSequence
+
+`ChunkAllocSequence` encapsulates the logic of "how big a chunk do I give this class loader?".
+
+When a class loader allocates memory, we give it (via SpaceManager) a chunk to gnaw on, which should be fine for this requested allocation as well as a number of future allocations. The open question is how large that chunk should be. This is basically a guess toward the future loading behavior of this class loader.
+
+If we know the class loader will only load one or very few classes (e.g. Lambdas, Reflection glue code etc), it makes sense to give the SpaceManager a small chunk. If we know the loader may load a lot of classes (e.g. the Boot Class loader), we may want to give it a larger chunk.
+
+There is also the notion involved that a class loader "has to prove itself": a standard class loader which we know nothing else about will first be given a few small chunks until we give it larger chunks. How much sense this makes is questionable but as a strategy this seems to work reasonably well.
+
+This logic existed in old Metaspace too, in a somewhat convoluted fashion, see  `SpaceManager::get_initial_chunk_size()` and `SpaceManager::calc_chunk_size()`.
+
+In Elastic Metaspace, this logic lives in `ChunkAllocSequence`. This is basically just a fancy hard-coded array of chunk sizes marking the handout progression depending on how many chunks the loader already got. One of these arrays exist per use case.
+
+Note that with Elastic Metaspace, one important difference is that we now commit larger chunks on demand. This means when handing larger chunks to a loader we do not have to pay the memory cost upfront, which reduces the penalty for given larger chunks to loaders. So, we can give e.g. a full 4MB root chunk over to the boot class loader even though it may use less (maybe a lot less with CDS involved) and it only will commit the parts it needs.
 
 
 ## Deallocation subsystem
 
-This is a sideshow but still important.
+Classes:
+- FreeBlocks
+- BinList
+- BlockTree
+
+This is a bit of a sideshow but still important.
+
+The general assumption behind Metaspace is that we deal with arena-style allocation: we have a burst-free scenario and all Metadata 
+
 
 
 
@@ -332,6 +447,7 @@ MetachunkListVector  	- a list of MetachunkList, one for each possible chunk siz
 
 - Counters
 
+- allocation guards
 
 
 
