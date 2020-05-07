@@ -83,6 +83,7 @@ If the buddy is not free, or split (in which case on of the splinters will not b
 
 To get a small chunk from a larger one a larger one can be split. Splitting always happens at pow2 borders:
 
+```
 +-------------------+-------------------+
 |                   A                   |
 +-------------------+-------------------+
@@ -91,16 +92,16 @@ To get a small chunk from a larger one a larger one can be split. Splitting alwa
 +-------------------+-------------------+
 | D1 | D2 |    C    |         B         |
 +-------------------+-------------------+
-
+```
 
 
 ## Outside usage
 
 The outside interface to the Metaspace (ignoring reporting/monitoring for now) are:
-- the ClassLoaderMetaspace class
+- the`ClassLoaderMetaspace`class
 - the Metaspace static "namespace"
 
-class ClassLoaderMetaspace is the holder for above mentioned arenas; it belongs to a class loader (more accurately, to a CLD). When released (in the wake of a GC collecting the owning loader and its CLD) it will release all Metaspace back to the system.
+class`ClassLoaderMetaspace`is the holder for above mentioned arenas; it belongs to a class loader (more accurately, to a CLD). When released (in the wake of a GC collecting the owning loader and its CLD) it will release all Metaspace back to the system.
 
 
 # Subsystems
@@ -110,20 +111,20 @@ The new Metaspace is separated into various subsystems which are rather isolated
 ## The Virtual Memory Subsystem
 
 Classes:
-- VirtualSpaceList
-- VirtualSpaceNode
-- RootChunkArea
-- RootChunkAreaLUT
-- CommitMask
-- CommitLimiter
+-`VirtualSpaceList`
+-`VirtualSpaceNode`
+-`RootChunkArea`
+-`RootChunkAreaLUT`
+-`CommitMask`
+-`CommitLimiter`
 
 The Virtual Memory Layer is the lowest subsystem of all. It is responsible for reserving and committing memory. It has knowledge about commit granules (the granularity at which we commit in Metaspace).
 
-Its outside interface to upper layers is the class VirtualSpaceList; some operations are also directly accessed via a node in this list (VirtualSpaceNode).
+Its outside interface to upper layers is the `class VirtualSpaceList`; some operations are also directly accessed via a node in this list (VirtualSpaceNode).
 
-A VirtualSpaceList is a list of reserved regions (VirtualSpaceNode). It is a global structure: only one instance of this structures exists per process. It grows on demand (new reserved regions are added when more space is needed). Regions in this list are typically several MB sized (atm 8M = 2 Root chunks areas, see below).
+A `VirtualSpaceList` is a list of reserved regions (VirtualSpaceNode). It is a global structure: only one instance of this structures exists per process. It grows on demand (new reserved regions are added when more space is needed). Regions in this list are typically several MB sized (atm 8M = 2 Root chunks areas, see below).
 
-If we use CompressedKlassPointers, a second global instance of VirtualSpaceList exists, which holds the compressed class space. In that case the VirtualSpaceList is degenerated: it only ever has one node, sized as big as the CompressedClassSpaceSize (1G).
+If we use CompressedKlassPointers, a second global instance of `VirtualSpaceList` exists, which holds the compressed class space. In that case the `VirtualSpaceList` is degenerated: it only ever has one node, sized as big as the CompressedClassSpaceSize (1G).
 
 ### Essential operations
 
@@ -178,32 +179,32 @@ These operations the subsystem does on behalf of the ChunkManager.
 
 ### Classes
 
-#### class VirtualSpaceList
+#### class`VirtualSpaceList`
 
-A VirtualSpaceList is a list of reserved regions (VirtualSpaceNode). 
+A `VirtualSpaceList` is a list of reserved regions (VirtualSpaceNode). 
 
-It is a global structure: only one or two VirtualSpaceList instances exist per process. 
+It is a global structure: only one or two `VirtualSpaceList` instances exist per process. 
 
 VirtualSpaceList grows on demand - new reserved regions are added when more space is needed. Regions are several MB sized (atm 8M = 2 Root chunks areas, see below).
 
-If `-XX:+UseCompressedClassPointers`, a second global instance of VirtualSpaceList exists, which holds the "compressed class space" (see Concepts). That instance is a degenerated version of a list; it only ever has one node which is sized as big as the CompressedClassSpaceSize (1G). New nodes cannot be added.
+If `-XX:+UseCompressedClassPointers`, a second global instance of `VirtualSpaceList` exists, which holds the "compressed class space" (see Concepts). That instance is a degenerated version of a list; it only ever has one node which is sized as big as the CompressedClassSpaceSize (1G). New nodes cannot be added.
 
-#### class VirtualSpaceNode
+#### class`VirtualSpaceNode`
 
 Has a very central role.
 
-A VirtualSpaceNode manages one contiguous reserved region of the Metaspace. In case of the compressed class space, this is the whole compressed class space.
+A `VirtualSpaceNode` manages one contiguous reserved region of the Metaspace. In case of the compressed class space, this is the whole compressed class space.
 
-It knows which granules in this region are committed by maintaining a bitmask (class CommitMask).
+It knows which granules in this region are committed by maintaining a bitmask (`class CommitMask`).
 
-VirtualSpaceNode also knows about root chunks: the memory is divided into a series of root-chunk-sized areas (class RootChunkArea). This means the memory has to be aligned (both starting address and size) to root chunk area size of 4M.
+VirtualSpaceNode also knows about root chunks: the memory is divided into a series of root-chunk-sized areas (`class RootChunkArea`). This means the memory has to be aligned (both starting address and size) to root chunk area size of 4M.
 
 ```
 
 | root chunk area               | root chunk area               |
 
 +---------------------------------------------------------------+
-|     VirtualSpaceNode memory                                   |
+|    `VirtualSpaceNode`memory                                   |
 |                                                               |
 +---------------------------------------------------------------+
 
@@ -217,41 +218,41 @@ One root chunk area can contain a root chunk or a number of smaller chunks. E.g.
 
 Note that the concepts of commit granules and of root chunks and the buddy allocator are almost completely orthogonal; at this layer, they exist independently from each other.
 
-#### class CommitMask
+#### `class CommitMask`
 
 Very unexciting. Just a bit mask holding commit information, with a notion about which memory each bit covers.
 
-#### class RootChunkArea and class RootChunkAreaLUT
+#### `class RootChunkArea` and `class RootChunkAreaLUT`
 
-The class RootChunkArea encapsulates the Buddy Style Allocator implementation. It is wrapped over the area of one root chunk and manages buddy operations in this area.
+`RootChunkArea` encapsulates the Buddy Style Allocator implementation. It is wrapped over the area of one root chunk and manages buddy operations in this area.
 
 It knows how to split and merge chunks buddy-style-allocator-style.
 
-The class RootChunkAreaLUT (for "lookup table") just holds a sequence of RootChunkArea classes which cover a contiguous memory range containing multiple root chunks. It offers lookup functionality "give me the RootChunkArea for this address".
+`RootChunkAreaLUT` (for "lookup table") just holds a sequence of`RootChunkArea`classes which cover a contiguous memory range containing multiple root chunks. It offers lookup functionality "give me the `RootChunkArea`for this address".
 
-Within the context of a VirtualSpaceNode, it just is the collection of all RootChunkAreas contained in the memory of this node.
+Within the context of a `VirtualSpaceNode`, it just is the collection of all `RootChunkArea`s contained in the memory of this node.
 
-#### class CommitLimiter
+#### class`CommitLimiter`
 
 The commit limiter exists to separate the logic of "am I allowed to commit X words more for Metaspace purposes, or would I hit GC threshold or MaxMetaspaceSize?".
 
 It exists to remove knowledge about the GC and about limits like MaxMetaspaceSize from the Virtual Memory Subsystem. It just offers an interface to ask "is it okay to commit".
 
-Under normal circumstances, only one instance of the CommitLimiter ever exists, see CommitLimiter::globalLimiter(), which encapsulates the GC threshold and MaxMetaspace queries.
+Under normal circumstances, only one instance of the `CommitLimiter` ever exists, see `CommitLimiter::globalLimiter()`, which encapsulates the GC threshold and MaxMetaspace queries.
 
-But by separating this functionality from Metaspace, we get better testeability: we can plug in a Dummy CommitLimiter and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.
+But by separating this functionality from Metaspace, we get better testeability: we can plug in a dummy `CommitLimiter` and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.
 
 
 ## The Central Chunk Repository (chunk manager)
 
 Classes
-- ChunkManager
+- `ChunkManager`
 
 This subsystem plays a very central role. It only consists of one class, `class ChunkManager`.
 
 There only exists one central instance of the ChunkManager (two if `-XX:+UseCompressedClassPointers`).
 
-The ChunkManager is the central point to hand out chunks of any given level (size). 
+`ChunkManager` is the central point to hand out chunks of any given level (size). 
 
 It keeps lists of free unused chunks. Memory of these chunks may or may not be comitted.
 
@@ -269,7 +270,7 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
     `ChunkManager::return_chunk()`
 
-    Callers call this (typically a SpaceManager before its death) to hand down newly free chunks to the ChunkManager for safekeeping. ChunkManager will put them into the freelist. Before doing this, it will attempt to merge the chunks Buddy-Allocator style with its neighbors to arrive at larger chunks.
+    Callers call this (typically a `SpaceManager` before its death) to hand down newly free chunks to the ChunkManager for safekeeping. ChunkManager will put them into the freelist. Before doing this, it will attempt to merge the chunks Buddy-Allocator style with its neighbors to arrive at larger chunks.
 
     If, after merging with neighbors, the resulting free chunk surpasses a certain threshold, its memory is uncomitted.
 
@@ -279,8 +280,8 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 ## Classloader-local subsystem
 
 Classes
-- ClassLoaderMetaspace
-- SpaceManager
+- `ClassLoaderMetaspace`
+- `SpaceManager`
 - Metachunk
 - ChunkAllocSequence
 
@@ -316,22 +317,22 @@ It offers fine granular allocation to the caller. A caller needing 240 bytes for
 
 Metachunk wraps one chunk - be it a root chunk of 4M or a small chunk of 1K.
 
-MetaChunk and its payload area are disjunct. In the old Metaspace, MetaChunk was a header, followed by the chunk payload. Elastic Metaspace separates those two, removing the headers from the payload and from Metaspace altogether. For details, see `class ChunkPoolHeader` below.
+MetaChunk and its payload area are disjunct. In the old Metaspace, `Metachunk` was a header, followed by the chunk payload. Elastic Metaspace separates those two, removing the headers from the payload and from Metaspace altogether. For details, see `class ChunkPoolHeader` below.
 
-Metachunk knows its chunk memory area (base address and size aka level). It also knows the underlying VirtualSpaceNode whose address range the payload resides in. This is needed since it takes care of committing portions of itself on demand.
+Metachunk knows its chunk memory area (base address and size aka level). It also knows the underlying`VirtualSpaceNode`whose address range the payload resides in. This is needed since it takes care of committing portions of itself on demand.
 
 Metachunk has a state:
 - _"in-use"_: A chunk in use is owned by a class loader and carries live metadata.
 - _"free"_: A free chunk is not owned by anyone, but awaits re-use in the chunk manager freelist. Its memory
 - _"dead"_: A "dead" chunk is just an unused header, without payload.
 
-Metachunk always lives in a linked list - live chunks live in the in-use list of their SpaceManager, free chunks in the freelists of the ChunkManager, dead chunk headers live in the ChunkHeaderPool. Therefore Metachunk has a prev/next member.
+Metachunk always lives in a linked list - live chunks live in the in-use list of their SpaceManager, free chunks in the freelists of the ChunkManager, dead chunk headers live in the ChunkHeaderPool. Therefore `Metachunk` has a prev/next member.
 
-In order to easily do buddy style operations to a chunk (split and merge) it is needed to easily access the neighboring chunks in memory. Therefore Metachunk has also references to its lower and upper neighbors.
+In order to easily do buddy style operations to a chunk (split and merge) it is needed to easily access the neighboring chunks in memory. Therefore `Metachunk` has also references to its lower and upper neighbors.
 
-##### Metachunk Memory
+##### `Metachunk` Memory
 
-A Metachunk which is "in-use" gets allocated from via pointer bump allocation, starting at base. So it has a used an unused part:
+A `Metachunk` which is "in-use" gets allocated from via pointer bump allocation, starting at base. So it has a used an unused part:
 
 ```
 +------------------------------+--------------------------------------+
@@ -342,11 +343,11 @@ A Metachunk which is "in-use" gets allocated from via pointer bump allocation, s
 base                          used_words                              end.
 ```
 
-The memory underlying a Metachunk may consist of any number of commit granules, which can be committed or uncommitted independently from each other. So the memory below a chunk could be "checkered".
+The memory underlying a `Metachunk` may consist of any number of commit granules, which can be committed or uncommitted independently from each other. So the memory below a chunk could be "checkered".
 
-Of course, the used portion of a Metachunk has to be committed, otherwise we could not store data in them. Therefore, when allocating new memory from the Chunk, before moving the top-pointer, MetaChunk ensures the newly used memory is committed by asking the underlying VirtualSpaceNode.
+Of course, the used portion of a `Metachunk` has to be committed, otherwise we could not store data in them. Therefore, when allocating new memory from the Chunk, before moving the top-pointer, `Metachunk` ensures the newly used memory is committed by asking the underlying`VirtualSpaceNode`.
 
-But since this is costly - we do not want to bother VirtualSpaceNode for every single allocation - MetaChunk also keeps record of the highest committed address in its range. Note that does not mean there could not be committed granules in higher areas; it just means it does not know better:
+But since this is costly - we do not want to bother`VirtualSpaceNode`for every single allocation - `Metachunk` also keeps record of the highest committed address in its range. Note that does not mean there could not be committed granules in higher areas; it just means it does not know better:
 
 ```
 +------------------------------+-------------------+------------------+
@@ -357,7 +358,7 @@ But since this is costly - we do not want to bother VirtualSpaceNode for every s
 base                           used_words          committed_words    end.
 ```
 
-So, space below committed_words is guaranteed to be committed; beyond that MetaChunk has to make sure by bothering VirtualSpaceNode.
+So, space below committed_words is guaranteed to be committed; beyond that `Metachunk` has to make sure by bothering`VirtualSpaceNode`.
 
 -------------
 
@@ -365,7 +366,7 @@ A chunk can of course be smaller than a commit granule. In that case it shares t
 
 --------------
 
-Note that a chunk knows nothing about granules beyond their size, as an alignment hint for talking to VirtualSpaceNode. It just asks the VirtualSpaceNode to commit a range which may or may not cover multiple granules.
+Note that a chunk knows nothing about granules beyond their size, as an alignment hint for talking to `VirtualSpaceNode`. It just asks `VirtualSpaceNode` to commit a range which may or may not cover multiple granules.
 
 ##### Metachunk::allocate()
 
@@ -373,9 +374,9 @@ Note that a chunk knows nothing about granules beyond their size, as an alignmen
 
 #### class SpaceManager
 
-The SpaceManager manages the in-use chunk list for a class loader.
+`SpaceManager` manages the in-use chunk list for a class loader.
 
-It has a current chunk, which is used to satisfy ongoing Metadata allocations. It also has a list of "retired" chunks, which are chunks which are completely or almost completely filled with Metadata. It safekeeps the chunks until the class loader dies and the SpaceManager is destroyed, to return them to the ChunkManager for reuse.
+It has a current chunk, which is used to satisfy ongoing Metadata allocations. It also has a list of "retired" chunks, which are chunks which are completely or almost completely filled with Metadata. It safekeeps the chunks until the class loader dies and the `SpaceManager` is destroyed, to return them to the ChunkManager for reuse.
 
 It also has a `FreeBlocks` object, which takes care about deallocated blocks - see _Deallocation Subsystem_ below for details.
 
@@ -391,7 +392,7 @@ Failing that, it will employ various strategies to get more memory: it may try t
 
 ##### Retiring chunks
 
-When the SpaceManager gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will aquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
+When the `SpaceManager` gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will aquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
 
 The remainder space is added to the `FreeBlocks` structure and managed the same way as space deallocated from the outside would - getting reused for later allocations as soon as possible.
 
@@ -409,7 +410,7 @@ Beyond that, it does not have a lot of own logic.
 
 When a class loader allocates memory, we give it (via SpaceManager) a chunk to gnaw on, which should be fine for this requested allocation as well as a number of future allocations. The open question is how large that chunk should be. This is basically a guess toward the future loading behavior of this class loader.
 
-If we know the class loader will only load one or very few classes (e.g. Lambdas, Reflection glue code etc), it makes sense to give the SpaceManager a small chunk. If we know the loader may load a lot of classes (e.g. the Boot Class loader), we may want to give it a larger chunk.
+If we know the class loader will only load one or very few classes (e.g. Lambdas, Reflection glue code etc), it makes sense to give the `SpaceManager` a small chunk. If we know the loader may load a lot of classes (e.g. the Boot Class loader), we may want to give it a larger chunk.
 
 There is also the notion involved that a class loader "has to prove itself": a standard class loader which we know nothing else about will first be given a few small chunks until we give it larger chunks. How much sense this makes is questionable but as a strategy this seems to work reasonably well.
 
@@ -423,9 +424,9 @@ Note that with Elastic Metaspace, one important difference is that we now commit
 ## Deallocation subsystem
 
 Classes:
-- FreeBlocks
-- BinList
-- BlockTree
+- `FreeBlocks`
+- `BinList`
+- `BlockTree`
 
 This is a bit of a sideshow but still important.
 
@@ -471,9 +472,9 @@ A collection of miscelleneous helper classes.
 
 `ChunkHeaderPool` manages `Metachunk` structures.
 
-Since Metachunk structures are separated from the chunk payload areas, they need to live somewhere. We could just allocate them from C-Heap but that would be suboptimal since with buddy style chunk merging and splitting a lot of temporary headers are used.
+Since `Metachunk` structures are separated from the chunk payload areas, they need to live somewhere. We could just allocate them from C-Heap but that would be suboptimal since with buddy style chunk merging and splitting a lot of temporary headers are used.
 
-Therefore `ChunkHeaderPool` exists, which is just a growable array of Metachunk structures. It keeps a list of free structures. The underlying memory is allocated from C Heap.
+Therefore `ChunkHeaderPool` exists, which is just a growable array of `Metachunk` structures. It keeps a list of free structures. The underlying memory is allocated from C Heap.
 
 This not only makes for more efficient allocation and deallocation of Metachunk, it also provides better locality - the chance that headers of linked chunks are allocated close to each other in this pool is high - which makes walking these chunks cheaper.
 
@@ -491,7 +492,7 @@ These classes live in counter.hpp:
 
 `MetachunkList` is a linked list of Metachunks.
 
-`MetachunkListVector` is a list of Metachunk lists. One list per chunk level. The lists only contain chunks of their level.
+`MetachunkListVector` is a list of `Metachunk` lists. One list per chunk level. The lists only contain chunks of their level.
 
 ### Allocation guards
 
