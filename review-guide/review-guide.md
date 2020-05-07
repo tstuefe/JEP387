@@ -111,12 +111,12 @@ The new Metaspace is separated into various subsystems which are rather isolated
 ## The Virtual Memory Subsystem
 
 Classes:
--`VirtualSpaceList`
--`VirtualSpaceNode`
--`RootChunkArea`
--`RootChunkAreaLUT`
--`CommitMask`
--`CommitLimiter`
+- VirtualSpaceList
+- VirtualSpaceNode
+- RootChunkArea
+- RootChunkAreaLUT 
+- CommitMask
+- CommitLimiter
 
 The Virtual Memory Layer is the lowest subsystem of all. It is responsible for reserving and committing memory. It has knowledge about commit granules (the granularity at which we commit in Metaspace).
 
@@ -179,9 +179,9 @@ These operations the subsystem does on behalf of the ChunkManager.
 
 ### Classes
 
-#### class`VirtualSpaceList`
+#### class VirtualSpaceList
 
-A `VirtualSpaceList` is a list of reserved regions (VirtualSpaceNode). 
+`VirtualSpaceList` is a list of reserved regions (VirtualSpaceNode). 
 
 It is a global structure: only one or two `VirtualSpaceList` instances exist per process. 
 
@@ -189,11 +189,9 @@ VirtualSpaceList grows on demand - new reserved regions are added when more spac
 
 If `-XX:+UseCompressedClassPointers`, a second global instance of `VirtualSpaceList` exists, which holds the "compressed class space" (see Concepts). That instance is a degenerated version of a list; it only ever has one node which is sized as big as the CompressedClassSpaceSize (1G). New nodes cannot be added.
 
-#### class`VirtualSpaceNode`
+#### class VirtualSpaceNode
 
-Has a very central role.
-
-A `VirtualSpaceNode` manages one contiguous reserved region of the Metaspace. In case of the compressed class space, this is the whole compressed class space.
+`VirtualSpaceNode` manages one contiguous reserved region of the Metaspace. In case of the compressed class space, this is the whole compressed class space.
 
 It knows which granules in this region are committed by maintaining a bitmask (`class CommitMask`).
 
@@ -218,11 +216,11 @@ One root chunk area can contain a root chunk or a number of smaller chunks. E.g.
 
 Note that the concepts of commit granules and of root chunks and the buddy allocator are almost completely orthogonal; at this layer, they exist independently from each other.
 
-#### `class CommitMask`
+#### class CommitMask
 
 Very unexciting. Just a bit mask holding commit information, with a notion about which memory each bit covers.
 
-#### `class RootChunkArea` and `class RootChunkAreaLUT`
+#### class RootChunkArea and class RootChunkAreaLUT
 
 `RootChunkArea` encapsulates the Buddy Style Allocator implementation. It is wrapped over the area of one root chunk and manages buddy operations in this area.
 
@@ -232,7 +230,7 @@ It knows how to split and merge chunks buddy-style-allocator-style.
 
 Within the context of a `VirtualSpaceNode`, it just is the collection of all `RootChunkArea`s contained in the memory of this node.
 
-#### class`CommitLimiter`
+#### class CommitLimiter
 
 The commit limiter exists to separate the logic of "am I allowed to commit X words more for Metaspace purposes, or would I hit GC threshold or MaxMetaspaceSize?".
 
@@ -243,10 +241,10 @@ Under normal circumstances, only one instance of the `CommitLimiter` ever exists
 But by separating this functionality from Metaspace, we get better testeability: we can plug in a dummy `CommitLimiter` and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.
 
 
-## The Central Chunk Repository (chunk manager)
+## The Central Chunk Manager Subsystem
 
 Classes
-- `ChunkManager`
+- ChunkManager
 
 This subsystem plays a very central role. It only consists of one class, `class ChunkManager`.
 
@@ -277,17 +275,17 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
 
 
-## Classloader-local subsystem
+## Classloader-local Subsystem
 
 Classes
-- `ClassLoaderMetaspace`
-- `SpaceManager`
+- ClassLoaderMetaspace
+- SpaceManager
 - Metachunk
 - ChunkAllocSequence
 
-The previous sub systems were all global structures. The Classloader-local subsystem encompasses all Classes whose instances are tied to a class loader.
+The previous sub systems were all global structures. In contrast to that, this subsystem encompasses all Classes whose instances are tied to a class loader.
 
-This sub system builds atop the Central Chunk Repository, the ChunkManager, and indirectly atop the Virtual Memory Subsystem.
+It builds atop the Central Chunk Manager and indirectly atop the Virtual Memory Subsystem.
 
 It offers fine granular allocation to the caller. A caller needing 240 bytes for a constant pool will get this memory from this layer. Therefore it can be seen as the topmost layer of Metaspace.
 
@@ -330,7 +328,7 @@ Metachunk always lives in a linked list - live chunks live in the in-use list of
 
 In order to easily do buddy style operations to a chunk (split and merge) it is needed to easily access the neighboring chunks in memory. Therefore `Metachunk` has also references to its lower and upper neighbors.
 
-##### `Metachunk` Memory
+##### Metachunk Memory
 
 A `Metachunk` which is "in-use" gets allocated from via pointer bump allocation, starting at base. So it has a used an unused part:
 
@@ -424,21 +422,21 @@ Note that with Elastic Metaspace, one important difference is that we now commit
 ## Deallocation subsystem
 
 Classes:
-- `FreeBlocks`
-- `BinList`
-- `BlockTree`
+- FreeBlocks
+- BinList
+- BlockTree
 
 This is a bit of a sideshow but still important.
 
-The general assumption behind Metaspace is that we deal with arena-style allocation: we have a burst-free scenario and all Metadata go poof when their loader gets collected.
+The general assumption behind Metaspace is that we deal with arena-style allocation: we have a burst-free scenario and all Metadata go poof when their loader gets collected. However, there are cases when, after allocating Metadata, upper layers decide that memory may not needed after all.
 
-However, there are cases when, after allocating Metadata, upper layers decide that memory is not needed after all. One example is when class load errors happen and the Metadata already loaded are orphaned. Or when we redefine classes and do not need the old bytecode anymore.
+One example is when class load errors happen and the Metadata already loaded are orphaned. 
 
-In all these cases we have premature deallocation. These are uncommon, usually rare cases (if they were not we would not use arenas). In all these cases the caller returns the memory to the Metaspace via `Metaspace::deallocate()`.
+Another example is when classes are redefined and the memory holding the old bytecode is not needed anymore.
 
-Metaspace will attempt to reuse these returned blocks. However, since the blocks are embedded into Metachunks which are in use by a live class loader, these blocks can only be reused by that class loader.
+In all these cases we have to deal with premature deallocation. These are uncommon, usually rare cases (if they were not we would not use arenas). The caller returns the memory to the Metaspace via `Metaspace::deallocate()`.
 
-Therefore, each class loader (as part of its SpaceManager) keeps a structure (`FreeBlocks`) to managed returned blocks. Normally this structure does not see much action, therefore it is only allocated on demand.
+Metaspace will attempt to reuse these returned blocks. However, since the blocks are embedded into Metachunks which are in use by a live class loader, these blocks can only be reused by that class loader. Therefore, each class loader (as part of its SpaceManager) keeps a structure (`FreeBlocks`) to managed returned blocks. Normally this structure does not see much action, therefore it is only allocated on demand.
 
 Note that this mechanism is also used to manage remainder space from almost-used-up blocks.
 
@@ -499,11 +497,18 @@ These classes live in counter.hpp:
 This is an optional feature controlled by `-XX:+MetaspaceGuardAllocations`. Normally off, if switched on it will add a fence after every Metaspace allocation, and test these fences in regular intervals (e.g. when a GC purges the Metaspace). This can be used to capture memory overwriters.
 
 
-
-
-
 ## Locking and concurrency
 
+Locking in Elastic Metaspace is simple, a two-step mechanism which is unchanged from the old Metaspace.
+
+There is locking at class loader level (`ClassLoaderData::_metaspace_lock`) which guards access to the `ClassLoaderMetaspace`. Ideally the brunt of Metaspace allocations should only need this lock. It guards the access to the current chunk and the pointer bump allocation done with it.
+
+The moment central data structures are accessed (e.g. when memory needs to be committed, a new chunk allocated or returned to the freelist), a global lock is taken, the `MetaspaceExpand_lock`.
+
+
+# Review proposal
+
+In order to review this code, the proposal would be to do it via 
 
 
 
