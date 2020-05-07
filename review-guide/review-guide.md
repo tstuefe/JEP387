@@ -108,6 +108,8 @@ class`ClassLoaderMetaspace`is the holder for above mentioned arenas; it belongs 
 
 The new Metaspace is separated into various subsystems which are rather isolated and can get reviewed independently from each other.
 
+![All Subsystems](./all-subsystems.svg "All Subsystems")
+
 ## The Virtual Memory Subsystem
 
 Classes:
