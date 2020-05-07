@@ -22,7 +22,7 @@ Slides: https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/p
 
 Metaspace is used to manage memory for Metadata. 
 
-It is in its core an [arena-based allocator](https://en.wikipedia.org/wiki/Region-based_memory_management). This is because Metadata are tied to their classes, which usually are tied to their class loaders and live just as long; unloading a class loader will make all classes collectable, which will in turn release all their Metadata in one go -> burst free scenario.
+It is in its core an [arena-based allocator](https://en.wikipedia.org/wiki/Region-based_memory_management). This is because Metadata are tied to their classes, which usually are tied to their class loaders and live just as long; unloading a class loader will make all classes collectible, which will in turn release all their Metadata in one go -> burst free scenario.
 
 ## Concepts
 
@@ -157,7 +157,7 @@ If we use CompressedKlassPointers, a second global instance of `VirtualSpaceList
 
 	`VirtualSpaceNode::uncommit_range()`
 	
-    Similar to committing. Subsystem figures out which commit granules are affected, and uncomits those.
+    Similar to committing. Subsystem figures out which commit granules are affected, and uncommits those.
 
 - "purge"
 	
@@ -243,7 +243,7 @@ It exists to remove knowledge about the GC and about limits like MaxMetaspaceSiz
 
 Under normal circumstances, only one instance of the `CommitLimiter` ever exists, see `CommitLimiter::globalLimiter()`, which encapsulates the GC threshold and MaxMetaspace queries.
 
-But by separating this functionality from Metaspace, we get better testeability: we can plug in a dummy `CommitLimiter` and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.
+But by separating this functionality from Metaspace, we get better testability: we can plug in a dummy `CommitLimiter` and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.
 
 
 ## The Central Chunk Manager Subsystem
@@ -260,7 +260,7 @@ There only exists one central instance of the ChunkManager (two if `-XX:+UseComp
 
 `ChunkManager` is the central point to hand out chunks of any given level (size). 
 
-It keeps lists of free unused chunks. Memory of these chunks may or may not be comitted.
+It keeps lists of free unused chunks. Memory of these chunks may or may not be committed.
 
 It sits atop of the Virtual Memory Subsystem. If needed, it will request new root chunks from it to satisfy chunk requests and refill the free lists.
 
@@ -278,7 +278,7 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
     Callers call this (typically a `SpaceManager` before its death) to hand down newly free chunks to the ChunkManager for safekeeping. ChunkManager will put them into the freelist. Before doing this, it will attempt to merge the chunks Buddy-Allocator style with its neighbors to arrive at larger chunks.
 
-    If, after merging with neighbors, the resulting free chunk surpasses a certain threshold, its memory is uncomitted.
+    If, after merging with neighbors, the resulting free chunk surpasses a certain threshold, its memory is uncommitted.
 
 
 
@@ -400,7 +400,7 @@ Failing that, it will employ various strategies to get more memory: it may try t
 
 ##### Retiring chunks
 
-When the `SpaceManager` gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will aquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
+When the `SpaceManager` gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will acquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
 
 The remainder space is added to the `FreeBlocks` structure and managed the same way as space deallocated from the outside would - getting reused for later allocations as soon as possible.
 
@@ -475,9 +475,9 @@ The outside interface is the `FreeBlocks` structure. It itself contains two stru
 
 `BlockTree` is a binary search tree used to manage larger blocks. It is unbalanced (though it may be a good idea in the future to make it a red black tree).
 
-## Auxiliary stuff
+## Auxiliary code
 
-A collection of miscelleneous helper classes.
+A collection of miscellaneous helper classes.
 
 ### class ChunkHeaderPool
 
@@ -519,7 +519,4 @@ There is locking at class loader level (`ClassLoaderData::_metaspace_lock`) whic
 The moment central data structures are accessed (e.g. when memory needs to be committed, a new chunk allocated or returned to the freelist), a global lock is taken, the `MetaspaceExpand_lock`.
 
 
-# Review proposal
-
-.. Todo .. work in progress ..
 
