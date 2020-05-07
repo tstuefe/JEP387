@@ -106,11 +106,14 @@ class`ClassLoaderMetaspace`is the holder for above mentioned arenas; it belongs 
 
 # Subsystems
 
-The new Metaspace is separated into various subsystems which are rather isolated and can get reviewed independently from each other.
-
 ![All Subsystems](./all-subsystems.svg "All Subsystems")
 
+The new Metaspace is separated into various subsystems which are rather isolated and can get reviewed independently from each other.
+
 ## The Virtual Memory Subsystem
+
+![Virtual Memory Subsystem](./vm-subsystem.svg "Virtual Memory Subsystem")
+
 
 Classes:
 - VirtualSpaceList
@@ -245,6 +248,9 @@ But by separating this functionality from Metaspace, we get better testeability:
 
 ## The Central Chunk Manager Subsystem
 
+![Central Chunk Manager](./cm-subsystem.svg "Central Chunk Manager")
+
+
 Classes
 - ChunkManager
 
@@ -278,6 +284,8 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
 
 ## Classloader-local Subsystem
+
+![Classloader-local Subsystem](./per-cl-subsystem.svg "Classloader-local Subsystem")
 
 Classes
 - ClassLoaderMetaspace
@@ -423,6 +431,9 @@ Note that with Elastic Metaspace, one important difference is that we now commit
 
 ## Deallocation subsystem
 
+![Deallocation subsystem](./deallocation-subsystem.svg "Deallocation subsystem")
+
+
 Classes:
 - FreeBlocks
 - BinList
@@ -510,7 +521,5 @@ The moment central data structures are accessed (e.g. when memory needs to be co
 
 # Review proposal
 
-In order to review this code, the proposal would be to do it via 
-
-
+.. Todo .. work in progress ..
 
