@@ -429,33 +429,79 @@ Classes:
 
 This is a bit of a sideshow but still important.
 
-The general assumption behind Metaspace is that we deal with arena-style allocation: we have a burst-free scenario and all Metadata 
+The general assumption behind Metaspace is that we deal with arena-style allocation: we have a burst-free scenario and all Metadata go poof when their loader gets collected.
 
+However, there are cases when, after allocating Metadata, upper layers decide that memory is not needed after all. One example is when class load errors happen and the Metadata already loaded are orphaned. Or when we redefine classes and do not need the old bytecode anymore.
 
+In all these cases we have premature deallocation. These are uncommon, usually rare cases (if they were not we would not use arenas). In all these cases the caller returns the memory to the Metaspace via `Metaspace::deallocate()`.
 
+Metaspace will attempt to reuse these returned blocks. However, since the blocks are embedded into Metachunks which are in use by a live class loader, these blocks can only be reused by that class loader.
+
+Therefore, each class loader (as part of its SpaceManager) keeps a structure (`FreeBlocks`) to managed returned blocks. Normally this structure does not see much action, therefore it is only allocated on demand.
+
+Note that this mechanism is also used to manage remainder space from almost-used-up blocks.
+
+The interface is very simple:
+
+- "keep block for future reuse"
+
+    `FreeBlocks::add_block()`
+
+    Adds this block to the manager.
+
+- "give me a block of size x"
+
+    `FreeBlock::get_block()`
+
+    This will attempt to return a block of at least size x. The block may be larger. Internally, the best fit is searched for, and if the best fit is found but considered too large to waste for size x, it is split and the remainder is put back into the manager.
+
+### Classes
+
+The outside interface is the `FreeBlocks` structure. It itself contains two structures, `BinList` and `BlockTree`.
+
+`BinList` is a simple mechanism to manage small to very small memory blocks and store/retrieve them efficiently. It is somewhat costly in terms of memory (one pointer size per block word size), therefore it only covers the first 16 small block sizes. But since these block sizes are the vast majority of deallocated blocks, it makes sense to pay this cost.
+
+`BlockTree` is a binary search tree used to manage larger blocks. It is unbalanced (though it may be a good idea in the future to make it a red black tree).
 
 ## Auxiliary stuff
 
+A collection of miscelleneous helper classes.
 
-todo
+### class ChunkHeaderPool
 
-MetachunkList  		- a linked list of Metachunk. Maybe homogenous, maybe not.
-MetachunkListVector  	- a list of MetachunkList, one for each possible chunk size (so, 13 ATM). 
+`ChunkHeaderPool` manages `Metachunk` structures.
+
+Since Metachunk structures are separated from the chunk payload areas, they need to live somewhere. We could just allocate them from C-Heap but that would be suboptimal since with buddy style chunk merging and splitting a lot of temporary headers are used.
+
+Therefore `ChunkHeaderPool` exists, which is just a growable array of Metachunk structures. It keeps a list of free structures. The underlying memory is allocated from C Heap.
+
+This not only makes for more efficient allocation and deallocation of Metachunk, it also provides better locality - the chance that headers of linked chunks are allocated close to each other in this pool is high - which makes walking these chunks cheaper.
+
+### Counters
+
+In Metaspace, a lot of things are counted. This is a lot of boilerplate coding. Helper classes exist which provide counting and various check functions (e.g.overflow- and underflow checking).
+
+These classes live in counter.hpp:
+
+- class SizeCounter
+- class IntCounter
+- class MemoryCounter
+
+### MetachunkList and MetachunkListVector
+
+`MetachunkList` is a linked list of Metachunks.
+
+`MetachunkListVector` is a list of Metachunk lists. One list per chunk level. The lists only contain chunks of their level.
+
+### Allocation guards
+
+This is an optional feature controlled by `-XX:+MetaspaceGuardAllocations`. Normally off, if switched on it will add a fence after every Metaspace allocation, and test these fences in regular intervals (e.g. when a GC purges the Metaspace). This can be used to capture memory overwriters.
 
 
-- ChunkHeaderPool
-
-- Counters
-
-- allocation guards
 
 
 
-
-
-## Other information
-
-### Locking and concurrency
+## Locking and concurrency
 
 
 
