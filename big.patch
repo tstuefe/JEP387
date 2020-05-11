@@ -1,6 +1,6 @@
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderData.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/classfile/classLoaderData.cpp
 --- a/src/hotspot/share/classfile/classLoaderData.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/classfile/classLoaderData.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/classfile/classLoaderData.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -59,6 +59,8 @@
  #include "logging/logStream.hpp"
  #include "memory/allocation.inline.hpp"
@@ -49,9 +49,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderData
  
    for (Klass* k = _klasses; k != NULL; k = k->next_link()) {
      guarantee(k->class_loader_data() == this, "Must be the same");
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderData.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/classfile/classLoaderData.hpp
 --- a/src/hotspot/share/classfile/classLoaderData.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/classfile/classLoaderData.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/classfile/classLoaderData.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -63,6 +63,10 @@
  class DictionaryEntry;
  class Dictionary;
@@ -90,9 +90,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderData
  
    inline oop class_loader() const;
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderDataGraph.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/classfile/classLoaderDataGraph.cpp
 --- a/src/hotspot/share/classfile/classLoaderDataGraph.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/classfile/classLoaderDataGraph.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/classfile/classLoaderDataGraph.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -648,24 +648,6 @@
    return NULL;
  }
@@ -118,9 +118,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderData
  #ifndef PRODUCT
  // callable from debugger
  extern "C" int print_loader_data_graph() {
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderDataGraph.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/classfile/classLoaderDataGraph.hpp
 --- a/src/hotspot/share/classfile/classLoaderDataGraph.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/classfile/classLoaderDataGraph.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/classfile/classLoaderDataGraph.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -161,12 +161,4 @@
    static Klass* next_klass_in_cldg(Klass* klass);
  };
@@ -134,9 +134,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderData
 -  ClassLoaderMetaspace* get_next();
 -};
  #endif // SHARE_CLASSFILE_CLASSLOADERDATAGRAPH_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderStats.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/classfile/classLoaderStats.cpp
 --- a/src/hotspot/share/classfile/classLoaderStats.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/classfile/classLoaderStats.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/classfile/classLoaderStats.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -23,6 +23,7 @@
   */
  
@@ -154,9 +154,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/classfile/classLoaderStat
    if (ms != NULL) {
      if(cld->has_class_mirror_holder()) {
        cls->_hidden_chunk_sz += ms->allocated_chunks_bytes();
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/g1/g1CollectedHeap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/g1/g1CollectedHeap.cpp
 --- a/src/hotspot/share/gc/g1/g1CollectedHeap.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/g1/g1CollectedHeap.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/g1/g1CollectedHeap.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1026,7 +1026,7 @@
  
    // Delete metaspaces for unloaded class loaders and clean up loader_data graph
@@ -166,9 +166,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/g1/g1CollectedHeap.cpp
  
    // Prepare heap for normal collections.
    assert(num_free_regions() == 0, "we should not have added any free regions");
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/parallel/psParallelCompact.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/parallel/psParallelCompact.cpp
 --- a/src/hotspot/share/gc/parallel/psParallelCompact.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/parallel/psParallelCompact.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/parallel/psParallelCompact.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1057,7 +1057,7 @@
  
    // Delete metaspaces for unloaded class loaders and clean up loader_data graph
@@ -178,9 +178,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/parallel/psParallelCom
  
    heap->prune_scavengable_nmethods();
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/collectedHeap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/collectedHeap.cpp
 --- a/src/hotspot/share/gc/shared/collectedHeap.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/collectedHeap.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/collectedHeap.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -37,6 +37,7 @@
  #include "gc/shared/memAllocator.hpp"
  #include "logging/log.hpp"
@@ -189,9 +189,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/collectedHeap.c
  #include "memory/resourceArea.hpp"
  #include "memory/universe.hpp"
  #include "oops/instanceMirrorKlass.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/collectedHeap.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/collectedHeap.hpp
 --- a/src/hotspot/share/gc/shared/collectedHeap.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/collectedHeap.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/collectedHeap.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -29,6 +29,7 @@
  #include "gc/shared/gcWhen.hpp"
  #include "gc/shared/verifyOption.hpp"
@@ -200,9 +200,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/collectedHeap.h
  #include "runtime/handles.hpp"
  #include "runtime/perfData.hpp"
  #include "runtime/safepoint.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/gcTrace.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/gcTrace.cpp
 --- a/src/hotspot/share/gc/shared/gcTrace.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/gcTrace.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/gcTrace.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -30,6 +30,7 @@
  #include "gc/shared/gcTrace.hpp"
  #include "gc/shared/objectCountEventSender.hpp"
@@ -211,9 +211,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/gcTrace.cpp
  #include "memory/heapInspection.hpp"
  #include "memory/resourceArea.hpp"
  #include "runtime/os.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/gcVMOperations.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/gcVMOperations.cpp
 --- a/src/hotspot/share/gc/shared/gcVMOperations.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/gcVMOperations.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/gcVMOperations.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -32,6 +32,7 @@
  #include "gc/shared/genCollectedHeap.hpp"
  #include "interpreter/oopMapCache.hpp"
@@ -222,9 +222,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/gcVMOperations.
  #include "memory/oopFactory.hpp"
  #include "memory/universe.hpp"
  #include "runtime/handles.inline.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/gcVMOperations.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/gcVMOperations.hpp
 --- a/src/hotspot/share/gc/shared/gcVMOperations.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/gcVMOperations.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/gcVMOperations.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -28,6 +28,7 @@
  #include "gc/shared/collectedHeap.hpp"
  #include "gc/shared/genCollectedHeap.hpp"
@@ -233,9 +233,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/gcVMOperations.
  #include "prims/jvmtiExport.hpp"
  #include "runtime/handles.hpp"
  #include "runtime/jniHandles.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/genCollectedHeap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/genCollectedHeap.cpp
 --- a/src/hotspot/share/gc/shared/genCollectedHeap.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/genCollectedHeap.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/genCollectedHeap.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -57,6 +57,7 @@
  #include "memory/filemap.hpp"
  #include "memory/iterator.hpp"
@@ -253,9 +253,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/genCollectedHea
      // Resize the metaspace capacity after full collections
      MetaspaceGC::compute_new_size();
      update_full_collections_completed();
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/generationSpec.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/generationSpec.cpp
 --- a/src/hotspot/share/gc/shared/generationSpec.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/generationSpec.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/generationSpec.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -25,7 +25,6 @@
  #include "precompiled.hpp"
  #include "gc/shared/cardTableRS.hpp"
@@ -264,9 +264,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/generationSpec.
  #include "memory/filemap.hpp"
  #include "runtime/java.hpp"
  #include "utilities/macros.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp
 --- a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -262,18 +262,6 @@
    return JVMFlag::SUCCESS;
  }
@@ -286,9 +286,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/jvmFlagConstrai
  // To avoid an overflow by 'align_up(value, alignment)'.
  static JVMFlag::Error MaxSizeForAlignment(const char* name, size_t value, size_t alignment, bool verbose) {
    size_t aligned_max = ((max_uintx - alignment) & ~(alignment-1));
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp
 --- a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -56,7 +56,6 @@
  
  JVMFlag::Error MaxGCPauseMillisConstraintFunc(uintx value, bool verbose);
@@ -297,9 +297,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shared/jvmFlagConstrai
  JVMFlag::Error MinHeapSizeConstraintFunc(size_t value, bool verbose);
  JVMFlag::Error InitialHeapSizeConstraintFunc(size_t value, bool verbose);
  JVMFlag::Error MaxHeapSizeConstraintFunc(size_t value, bool verbose);
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
 --- a/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -71,7 +71,9 @@
  #include "gc/shenandoah/shenandoahJfrSupport.hpp"
  #endif
@@ -319,9 +319,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shenandoah/shenandoahH
  }
  
  // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp
 --- a/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -35,6 +35,7 @@
  #include "gc/shenandoah/shenandoahPadding.hpp"
  #include "gc/shenandoah/shenandoahSharedVariables.hpp"
@@ -330,9 +330,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shenandoah/shenandoahH
  #include "services/memoryManager.hpp"
  #include "utilities/globalDefinitions.hpp"
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp
 --- a/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -184,5 +184,5 @@
  
  void ShenandoahUnload::finish() {
@@ -340,9 +340,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/shenandoah/shenandoahU
 -  MetaspaceUtils::verify_metrics();
 +  DEBUG_ONLY(MetaspaceUtils::verify(false);)
  }
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/z/zCollectedHeap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/z/zCollectedHeap.cpp
 --- a/src/hotspot/share/gc/z/zCollectedHeap.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/z/zCollectedHeap.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/z/zCollectedHeap.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -33,6 +33,7 @@
  #include "gc/z/zServiceability.hpp"
  #include "gc/z/zStat.hpp"
@@ -351,9 +351,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/z/zCollectedHeap.cpp
  #include "memory/iterator.hpp"
  #include "memory/universe.hpp"
  #include "runtime/mutexLocker.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/z/zCollectedHeap.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/z/zCollectedHeap.hpp
 --- a/src/hotspot/share/gc/z/zCollectedHeap.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/z/zCollectedHeap.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/z/zCollectedHeap.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -34,6 +34,7 @@
  #include "gc/z/zRuntimeWorkers.hpp"
  #include "gc/z/zStat.hpp"
@@ -362,9 +362,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/z/zCollectedHeap.hpp
  
  class ZCollectedHeap : public CollectedHeap {
    friend class VMStructs;
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/z/zUnload.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/gc/z/zUnload.cpp
 --- a/src/hotspot/share/gc/z/zUnload.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/gc/z/zUnload.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/gc/z/zUnload.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -164,5 +164,5 @@
  void ZUnload::finish() {
    // Resize and verify metaspace
@@ -372,9 +372,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/gc/z/zUnload.cpp
 -  MetaspaceUtils::verify_metrics();
 +  DEBUG_ONLY(MetaspaceUtils::verify(false);)
  }
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
 --- a/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -39,9 +39,10 @@
  #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
  #include "jfr/support/jfrThreadLocal.hpp"
@@ -396,9 +396,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/jfr/recorder/checkpoint/t
    }
  }
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
 --- a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -25,6 +25,7 @@
  #define SHARE_JVMCI_JVMCICOMPILERTOVM_HPP
  
@@ -407,9 +407,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/jvmci/jvmciCompilerToVM.h
  #include "jvmci/jvmciExceptions.hpp"
  #include "runtime/javaCalls.hpp"
  #include "runtime/signature.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/allocation.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/allocation.hpp
 --- a/src/hotspot/share/memory/allocation.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/allocation.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/allocation.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -140,6 +140,7 @@
    f(mtModule,        "Module")                                                      \
    f(mtSafepoint,     "Safepoint")                                                   \
@@ -418,7 +418,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/allocation.hpp
    f(mtNone,          "Unknown")                                                     \
    //end
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/binaryTreeDictionary.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/binaryTreeDictionary.hpp
 --- a/src/hotspot/share/memory/binaryTreeDictionary.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,393 +0,0 @@
@@ -815,7 +815,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/binaryTreeDictiona
 -};
 -
 -#endif // SHARE_MEMORY_BINARYTREEDICTIONARY_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/binaryTreeDictionary.inline.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/binaryTreeDictionary.inline.hpp
 --- a/src/hotspot/share/memory/binaryTreeDictionary.inline.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,1004 +0,0 @@
@@ -1823,9 +1823,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/binaryTreeDictiona
 -}
 -
 -#endif // SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/filemap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/filemap.cpp
 --- a/src/hotspot/share/memory/filemap.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/filemap.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/filemap.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -40,6 +40,7 @@
  #include "memory/heapShared.inline.hpp"
  #include "memory/iterator.inline.hpp"
@@ -1834,7 +1834,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/filemap.cpp
  #include "memory/metaspaceClosure.hpp"
  #include "memory/metaspaceShared.hpp"
  #include "memory/oopFactory.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/freeList.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/freeList.hpp
 --- a/src/hotspot/share/memory/freeList.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,175 +0,0 @@
@@ -2013,7 +2013,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/freeList.hpp
 -};
 -
 -#endif // SHARE_MEMORY_FREELIST_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/freeList.inline.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/freeList.inline.hpp
 --- a/src/hotspot/share/memory/freeList.inline.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,330 +0,0 @@
@@ -2347,9 +2347,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/freeList.inline.hp
 -}
 -
 -#endif // SHARE_MEMORY_FREELIST_INLINE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metadataFactory.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metadataFactory.hpp
 --- a/src/hotspot/share/memory/metadataFactory.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metadataFactory.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metadataFactory.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -26,6 +26,8 @@
  #define SHARE_MEMORY_METADATAFACTORY_HPP
  
@@ -2359,9 +2359,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metadataFactory.hp
  #include "oops/array.hpp"
  #include "utilities/exceptions.hpp"
  #include "utilities/globalDefinitions.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace.cpp
 --- a/src/hotspot/share/memory/metaspace.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -23,63 +23,195 @@
   */
  
@@ -3299,7 +3299,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace.cpp
 +  _commit_alignment  = metaspace::Settings::commit_granule_bytes();
 +
 +  // Reserve alignment: all Metaspace memory mappings are to be aligned to the size of a root chunk.
-+  _reserve_alignment = MAX2((size_t)os::vm_allocation_granularity(), metaspace::chklvl::MAX_CHUNK_BYTE_SIZE);
++  _reserve_alignment = MAX2((size_t)os::vm_allocation_granularity(), metaspace::chunklevel::MAX_CHUNK_BYTE_SIZE);
 +
 +
 +  // MaxMetaspaceSize and CompressedClassSpaceSize:
@@ -3453,8 +3453,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace.cpp
 +  if (using_class_space()) {
 +    // The simplest way to fix this is to allocate a tiny chunk right at the start of ccs
 +    // and do not use it for anything.
-+    ChunkManager::chunkmanager_class()->get_chunk(metaspace::chklvl::HIGHEST_CHUNK_LEVEL,
-+                                                  metaspace::chklvl::HIGHEST_CHUNK_LEVEL); // smallest chunk possible.
++    ChunkManager::chunkmanager_class()->get_chunk(metaspace::chunklevel::HIGHEST_CHUNK_LEVEL,
++                                                  metaspace::chunklevel::HIGHEST_CHUNK_LEVEL); // smallest chunk possible.
 +  }
 +#endif
 +
@@ -3781,9 +3781,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace.cpp
 -    out->medium_chunk_word_size = ClassMediumChunk;
 -  }
 -}
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace.hpp
 --- a/src/hotspot/share/memory/metaspace.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -28,9 +28,9 @@
  #include "memory/memRegion.hpp"
  #include "memory/metaspaceChunkFreeListSummary.hpp"
@@ -4249,9 +4249,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace.hpp
 +};
 +
  #endif // SHARE_MEMORY_METASPACE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/allocationGuard.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/allocationGuard.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/allocationGuard.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/allocationGuard.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,88 @@
 +
 +/*
@@ -4332,7 +4332,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/allocati
 +
 +inline void check_prefix(const prefix_t* pp) {
 +  assert(pp->mark == EYECATCHER, "corrupt block at " PTR_FORMAT ".", p2i(pp));
-+  assert(pp->word_size > 0 && pp->word_size < chklvl::MAX_CHUNK_WORD_SIZE,
++  assert(pp->word_size > 0 && pp->word_size < chunklevel::MAX_CHUNK_WORD_SIZE,
 +         "Invalid size " SIZE_FORMAT " in block at " PTR_FORMAT ".", pp->word_size, p2i(pp));
 +}
 +
@@ -4341,9 +4341,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/allocati
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_ALLOCATION_GUARD_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/binlist.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/binlist.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/binlist.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/binlist.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,198 @@
 +
 +/*
@@ -4543,7 +4543,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/binlist.
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_BINLIST_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blockFreelist.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/blockFreelist.cpp
 --- a/src/hotspot/share/memory/metaspace/blockFreelist.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,109 +0,0 @@
@@ -4656,7 +4656,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blockFre
 -
 -} // namespace metaspace
 -
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blockFreelist.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/blockFreelist.hpp
 --- a/src/hotspot/share/memory/metaspace/blockFreelist.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,92 +0,0 @@
@@ -4752,9 +4752,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blockFre
 -} // namespace metaspace
 -
 -#endif // SHARE_MEMORY_METASPACE_BLOCKFREELIST_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blocktree.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/blocktree.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/blocktree.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/blocktree.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,168 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -4924,9 +4924,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blocktre
 +}
 +
 +} // namespace metaspace
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blocktree.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/blocktree.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/blocktree.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/blocktree.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,424 @@
 +
 +/*
@@ -5352,9 +5352,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/blocktre
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_BLOCKTREE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAllocSequence.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkAllocSequence.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/chunkAllocSequence.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkAllocSequence.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,159 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -5397,19 +5397,19 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAll
 +
 +  // integer array specifying chunk level allocation progression.
 +  // Last chunk is to be an endlessly repeated allocation.
-+  const chklvl_t* const _entries;
++  const chunklevel_t* const _entries;
 +  const int _num_entries;
 +
 +public:
 +
-+  ConstantChunkAllocSequence(const chklvl_t* array, int num_entries)
++  ConstantChunkAllocSequence(const chunklevel_t* array, int num_entries)
 +    : _entries(array)
 +    , _num_entries(num_entries)
 +  {
 +    assert(_num_entries > 0, "must not be empty.");
 +  }
 +
-+  chklvl_t get_next_chunk_level(int num_allocated) const {
++  chunklevel_t get_next_chunk_level(int num_allocated) const {
 +    if (num_allocated >= _num_entries) {
 +      // Caller shall repeat last allocation
 +      return _entries[_num_entries - 1];
@@ -5421,62 +5421,62 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAll
 +
 +// hard-coded chunk allocation sequences for various space types
 +
-+static const chklvl_t g_sequ_standard_non_class[] = {
-+    chklvl::CHUNK_LEVEL_4K,
-+    chklvl::CHUNK_LEVEL_4K,
-+    chklvl::CHUNK_LEVEL_4K,
-+    chklvl::CHUNK_LEVEL_4K,
-+    chklvl::CHUNK_LEVEL_16K
++static const chunklevel_t g_sequ_standard_non_class[] = {
++    chunklevel::CHUNK_LEVEL_4K,
++    chunklevel::CHUNK_LEVEL_4K,
++    chunklevel::CHUNK_LEVEL_4K,
++    chunklevel::CHUNK_LEVEL_4K,
++    chunklevel::CHUNK_LEVEL_16K
 +    // .. repeat last
 +};
 +
-+static const chklvl_t g_sequ_standard_class[] = {
-+    chklvl::CHUNK_LEVEL_2K,
-+    chklvl::CHUNK_LEVEL_2K,
-+    chklvl::CHUNK_LEVEL_2K,
-+    chklvl::CHUNK_LEVEL_2K,
-+    chklvl::CHUNK_LEVEL_16K
++static const chunklevel_t g_sequ_standard_class[] = {
++    chunklevel::CHUNK_LEVEL_2K,
++    chunklevel::CHUNK_LEVEL_2K,
++    chunklevel::CHUNK_LEVEL_2K,
++    chunklevel::CHUNK_LEVEL_2K,
++    chunklevel::CHUNK_LEVEL_16K
 +    // .. repeat last
 +};
 +
-+static const chklvl_t g_sequ_anon_non_class[] = {
-+    chklvl::CHUNK_LEVEL_1K,
++static const chunklevel_t g_sequ_anon_non_class[] = {
++    chunklevel::CHUNK_LEVEL_1K,
 +    // .. repeat last
 +};
 +
-+static const chklvl_t g_sequ_anon_class[] = {
-+    chklvl::CHUNK_LEVEL_1K,
++static const chunklevel_t g_sequ_anon_class[] = {
++    chunklevel::CHUNK_LEVEL_1K,
 +    // .. repeat last
 +};
 +
-+static const chklvl_t g_sequ_refl_non_class[] = {
-+    chklvl::CHUNK_LEVEL_2K,
-+    chklvl::CHUNK_LEVEL_1K
++static const chunklevel_t g_sequ_refl_non_class[] = {
++    chunklevel::CHUNK_LEVEL_2K,
++    chunklevel::CHUNK_LEVEL_1K
 +    // .. repeat last
 +};
 +
-+static const chklvl_t g_sequ_refl_class[] = {
-+    chklvl::CHUNK_LEVEL_1K,
++static const chunklevel_t g_sequ_refl_class[] = {
++    chunklevel::CHUNK_LEVEL_1K,
 +    // .. repeat last
 +};
 +
 +// Boot class loader: give it large chunks: beyond commit granule size
 +// (typically 64K) the costs for large chunks largely diminishes since
 +// they are committed on the fly.
-+static const chklvl_t g_sequ_boot_non_class[] = {
-+    chklvl::CHUNK_LEVEL_4M,
-+    chklvl::CHUNK_LEVEL_1M
++static const chunklevel_t g_sequ_boot_non_class[] = {
++    chunklevel::CHUNK_LEVEL_4M,
++    chunklevel::CHUNK_LEVEL_1M
 +    // .. repeat last
 +};
 +
-+static const chklvl_t g_sequ_boot_class[] = {
-+    chklvl::CHUNK_LEVEL_1M,
-+    chklvl::CHUNK_LEVEL_256K
++static const chunklevel_t g_sequ_boot_class[] = {
++    chunklevel::CHUNK_LEVEL_1M,
++    chunklevel::CHUNK_LEVEL_256K
 +    // .. repeat last
 +};
 +
 +#define DEFINE_CLASS_FOR_ARRAY(what) \
-+  static ConstantChunkAllocSequence g_chunk_alloc_sequence_##what (g_sequ_##what, sizeof(g_sequ_##what)/sizeof(chklvl_t));
++  static ConstantChunkAllocSequence g_chunk_alloc_sequence_##what (g_sequ_##what, sizeof(g_sequ_##what)/sizeof(chunklevel_t));
 +
 +DEFINE_CLASS_FOR_ARRAY(standard_non_class)
 +DEFINE_CLASS_FOR_ARRAY(standard_class)
@@ -5515,9 +5515,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAll
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAllocSequence.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkAllocSequence.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/chunkAllocSequence.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkAllocSequence.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,57 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -5564,7 +5564,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAll
 +class ChunkAllocSequence {
 +public:
 +
-+  virtual chklvl_t get_next_chunk_level(int num_allocated) const = 0;
++  virtual chunklevel_t get_next_chunk_level(int num_allocated) const = 0;
 +
 +  // Given a space type, return the correct allocation sequence to use.
 +  // The returned object is static and read only.
@@ -5576,9 +5576,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkAll
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_CHUNKALLOCSEQUENCE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkHeaderPool.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkHeaderPool.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/chunkHeaderPool.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkHeaderPool.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,90 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -5670,9 +5670,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkHea
 +} // namespace metaspace
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkHeaderPool.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkHeaderPool.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/chunkHeaderPool.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkHeaderPool.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,150 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -5824,9 +5824,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkHea
 +
 +
 +#endif // SHARE_MEMORY_METASPACE_CHUNKHEADERPOOL_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLevel.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkLevel.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/chunkLevel.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkLevel.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,66 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -5862,24 +5862,24 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLev
 +
 +namespace metaspace {
 +
-+chklvl_t chklvl::level_fitting_word_size(size_t word_size) {
++chunklevel_t chunklevel::level_fitting_word_size(size_t word_size) {
 +
-+  assert(chklvl::MAX_CHUNK_WORD_SIZE >= word_size,
++  assert(chunklevel::MAX_CHUNK_WORD_SIZE >= word_size,
 +         "too large allocation size (" SIZE_FORMAT ")", word_size * BytesPerWord);
 +
 +  // TODO: This can be done much better.
-+  chklvl_t l = chklvl::HIGHEST_CHUNK_LEVEL;
-+  while (l >= chklvl::LOWEST_CHUNK_LEVEL &&
-+         word_size > chklvl::word_size_for_level(l)) {
++  chunklevel_t l = chunklevel::HIGHEST_CHUNK_LEVEL;
++  while (l >= chunklevel::LOWEST_CHUNK_LEVEL &&
++         word_size > chunklevel::word_size_for_level(l)) {
 +    l --;
 +  }
 +
 +  return l;
 +}
 +
-+void chklvl::print_chunk_size(outputStream* st, chklvl_t lvl) {
-+  if (chklvl::is_valid_level(lvl)) {
-+    const size_t s = chklvl::word_size_for_level(lvl) * BytesPerWord;
++void chunklevel::print_chunk_size(outputStream* st, chunklevel_t lvl) {
++  if (chunklevel::is_valid_level(lvl)) {
++    const size_t s = chunklevel::word_size_for_level(lvl) * BytesPerWord;
 +    if (s < 1 * M) {
 +      st->print("%3uk", (unsigned)(s / K));
 +    } else {
@@ -5894,9 +5894,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLev
 +} // namespace metaspace
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLevel.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkLevel.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/chunkLevel.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkLevel.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,131 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -5962,11 +5962,11 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLev
 +// 1K      12
 +
 +// Metachunk level (must be signed)
-+typedef signed char chklvl_t;
++typedef signed char chunklevel_t;
 +
 +#define CHKLVL_FORMAT "lv%.2d"
 +
-+namespace chklvl {
++namespace chunklevel {
 +
 +static const size_t   MAX_CHUNK_BYTE_SIZE    = 4 * M;
 +static const int      NUM_CHUNK_LEVELS       = 13;
@@ -5975,24 +5975,24 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLev
 +static const size_t   MIN_CHUNK_WORD_SIZE    = MIN_CHUNK_BYTE_SIZE / sizeof(MetaWord);
 +static const size_t   MAX_CHUNK_WORD_SIZE    = MAX_CHUNK_BYTE_SIZE / sizeof(MetaWord);
 +
-+static const chklvl_t ROOT_CHUNK_LEVEL       = 0;
++static const chunklevel_t ROOT_CHUNK_LEVEL       = 0;
 +
-+static const chklvl_t HIGHEST_CHUNK_LEVEL    = NUM_CHUNK_LEVELS - 1;
-+static const chklvl_t LOWEST_CHUNK_LEVEL     = 0;
++static const chunklevel_t HIGHEST_CHUNK_LEVEL    = NUM_CHUNK_LEVELS - 1;
++static const chunklevel_t LOWEST_CHUNK_LEVEL     = 0;
 +
-+static const chklvl_t INVALID_CHUNK_LEVEL    = (chklvl_t) -1;
++static const chunklevel_t INVALID_CHUNK_LEVEL    = (chunklevel_t) -1;
 +
-+inline bool is_valid_level(chklvl_t level) {
++inline bool is_valid_level(chunklevel_t level) {
 +  return level >= LOWEST_CHUNK_LEVEL &&
 +         level <= HIGHEST_CHUNK_LEVEL;
 +}
 +
-+inline void check_valid_level(chklvl_t lvl) {
++inline void check_valid_level(chunklevel_t lvl) {
 +  assert(is_valid_level(lvl), "invalid level (%d)", (int)lvl);
 +}
 +
 +// Given a level return the chunk size, in words.
-+inline size_t word_size_for_level(chklvl_t level) {
++inline size_t word_size_for_level(chunklevel_t level) {
 +  check_valid_level(level);
 +  return (MAX_CHUNK_BYTE_SIZE >> level) / BytesPerWord;
 +}
@@ -6000,38 +6000,38 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkLev
 +// Given an arbitrary word size smaller than the highest chunk size,
 +// return the highest chunk level able to hold this size.
 +// Returns INVALID_CHUNK_LEVEL if no fitting level can be found.
-+chklvl_t level_fitting_word_size(size_t word_size);
++chunklevel_t level_fitting_word_size(size_t word_size);
 +
 +// Shorthands to refer to exact sizes
-+static const chklvl_t CHUNK_LEVEL_4M =     ROOT_CHUNK_LEVEL;
-+static const chklvl_t CHUNK_LEVEL_2M =    (ROOT_CHUNK_LEVEL + 1);
-+static const chklvl_t CHUNK_LEVEL_1M =    (ROOT_CHUNK_LEVEL + 2);
-+static const chklvl_t CHUNK_LEVEL_512K =  (ROOT_CHUNK_LEVEL + 3);
-+static const chklvl_t CHUNK_LEVEL_256K =  (ROOT_CHUNK_LEVEL + 4);
-+static const chklvl_t CHUNK_LEVEL_128K =  (ROOT_CHUNK_LEVEL + 5);
-+static const chklvl_t CHUNK_LEVEL_64K =   (ROOT_CHUNK_LEVEL + 6);
-+static const chklvl_t CHUNK_LEVEL_32K =   (ROOT_CHUNK_LEVEL + 7);
-+static const chklvl_t CHUNK_LEVEL_16K =   (ROOT_CHUNK_LEVEL + 8);
-+static const chklvl_t CHUNK_LEVEL_8K =    (ROOT_CHUNK_LEVEL + 9);
-+static const chklvl_t CHUNK_LEVEL_4K =    (ROOT_CHUNK_LEVEL + 10);
-+static const chklvl_t CHUNK_LEVEL_2K =    (ROOT_CHUNK_LEVEL + 11);
-+static const chklvl_t CHUNK_LEVEL_1K =    (ROOT_CHUNK_LEVEL + 12);
++static const chunklevel_t CHUNK_LEVEL_4M =     ROOT_CHUNK_LEVEL;
++static const chunklevel_t CHUNK_LEVEL_2M =    (ROOT_CHUNK_LEVEL + 1);
++static const chunklevel_t CHUNK_LEVEL_1M =    (ROOT_CHUNK_LEVEL + 2);
++static const chunklevel_t CHUNK_LEVEL_512K =  (ROOT_CHUNK_LEVEL + 3);
++static const chunklevel_t CHUNK_LEVEL_256K =  (ROOT_CHUNK_LEVEL + 4);
++static const chunklevel_t CHUNK_LEVEL_128K =  (ROOT_CHUNK_LEVEL + 5);
++static const chunklevel_t CHUNK_LEVEL_64K =   (ROOT_CHUNK_LEVEL + 6);
++static const chunklevel_t CHUNK_LEVEL_32K =   (ROOT_CHUNK_LEVEL + 7);
++static const chunklevel_t CHUNK_LEVEL_16K =   (ROOT_CHUNK_LEVEL + 8);
++static const chunklevel_t CHUNK_LEVEL_8K =    (ROOT_CHUNK_LEVEL + 9);
++static const chunklevel_t CHUNK_LEVEL_4K =    (ROOT_CHUNK_LEVEL + 10);
++static const chunklevel_t CHUNK_LEVEL_2K =    (ROOT_CHUNK_LEVEL + 11);
++static const chunklevel_t CHUNK_LEVEL_1K =    (ROOT_CHUNK_LEVEL + 12);
 +
 +STATIC_ASSERT(CHUNK_LEVEL_1K == HIGHEST_CHUNK_LEVEL);
 +
 +/////////////////////////////////////////////////////////
 +// print helpers
-+void print_chunk_size(outputStream* st, chklvl_t lvl);
++void print_chunk_size(outputStream* st, chunklevel_t lvl);
 +
 +
-+} // namespace chklvl
++} // namespace chunklevel
 +
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_CHUNKLEVEL_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkManager.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkManager.cpp
 --- a/src/hotspot/share/memory/metaspace/chunkManager.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/chunkManager.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkManager.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -6283,7 +6283,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 -        chunk = chunk->next();
 +  DEBUG_ONLY(c->verify(false));
 +
-+  const chklvl_t lvl = c->level();
++  const chunklevel_t lvl = c->level();
 +  _chunks.add(c);
 +  c->reset_used_words();
 +
@@ -6295,10 +6295,10 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +
 +// Take a single chunk from the given freelist and adjust counters. Returns NULL
 +// if there is no fitting chunk for this level.
-+Metachunk* ChunkManager::remove_first_chunk_at_level(chklvl_t l) {
++Metachunk* ChunkManager::remove_first_chunk_at_level(chunklevel_t l) {
 +
 +  assert_lock_strong(MetaspaceExpand_lock);
-+  DEBUG_ONLY(chklvl::check_valid_level(l);)
++  DEBUG_ONLY(chunklevel::check_valid_level(l);)
 +
 +  Metachunk* c = _chunks.remove_first(l);
 +
@@ -6334,12 +6334,12 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +
 +// Given a chunk which must be outside of a freelist and must be free, split it to
 +// meet a target level and return it. Splinters are added to the freelist.
-+Metachunk* ChunkManager::split_chunk_and_add_splinters(Metachunk* c, chklvl_t target_level) {
++Metachunk* ChunkManager::split_chunk_and_add_splinters(Metachunk* c, chunklevel_t target_level) {
 +
 +  assert_lock_strong(MetaspaceExpand_lock);
 +
 +  assert(c->is_free() && c->level() < target_level, "Invalid chunk for splitting");
-+  DEBUG_ONLY(chklvl::check_valid_level(target_level);)
++  DEBUG_ONLY(chunklevel::check_valid_level(target_level);)
 +
 +  DEBUG_ONLY(c->verify(true);)
 +
@@ -6349,7 +6349,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +  log_debug(metaspace)("ChunkManager %s: will split chunk " METACHUNK_FORMAT " to " CHKLVL_FORMAT ".",
 +                       _name, METACHUNK_FORMAT_ARGS(c), target_level);
 +
-+  const chklvl_t orig_level = c->level();
++  const chunklevel_t orig_level = c->level();
 +  c = c->vsnode()->split(target_level, c, &_chunks);
 +
 +  // Splitting should never fail.
@@ -6376,14 +6376,14 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +//   but this may fail if we hit a commit limit. In that case, a partly uncommit chunk
 +//   will be returned, and the commit is attempted again when we allocate from the chunk's
 +//   uncommitted area. See also Metachunk::allocate.
-+Metachunk* ChunkManager::get_chunk(chklvl_t max_level, chklvl_t pref_level) {
++Metachunk* ChunkManager::get_chunk(chunklevel_t max_level, chunklevel_t pref_level) {
 +
 +  MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
 +
 +  DEBUG_ONLY(verify_locked(false);)
 +
-+  DEBUG_ONLY(chklvl::check_valid_level(max_level);)
-+  DEBUG_ONLY(chklvl::check_valid_level(pref_level);)
++  DEBUG_ONLY(chunklevel::check_valid_level(max_level);)
++  DEBUG_ONLY(chunklevel::check_valid_level(pref_level);)
 +  assert(max_level >= pref_level, "invalid level.");
 +
 +  Metachunk* c = NULL;
@@ -6391,8 +6391,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +  // Tracing
 +  log_debug(metaspace)("ChunkManager %s: get chunk: max " CHKLVL_FORMAT " (" SIZE_FORMAT "),"
 +                       "preferred " CHKLVL_FORMAT " (" SIZE_FORMAT ").",
-+                       _name, max_level, chklvl::word_size_for_level(max_level),
-+                       pref_level, chklvl::word_size_for_level(pref_level));
++                       _name, max_level, chunklevel::word_size_for_level(max_level),
++                       pref_level, chunklevel::word_size_for_level(pref_level));
 +
 +  // When handing a new chunk to the caller, we must balance the need to not let free space go to waste
 +  // with the need to keep fragmentation low.
@@ -6418,7 +6418,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +
 +  // 3) Failing that, attempt to find a free chunk of larger size and split it to the preferred size...
 +  if (c == NULL) {
-+    for (chklvl_t lvl = pref_level - 1; lvl >= chklvl::ROOT_CHUNK_LEVEL; lvl --) {
++    for (chunklevel_t lvl = pref_level - 1; lvl >= chunklevel::ROOT_CHUNK_LEVEL; lvl --) {
 +      c = remove_first_chunk_at_level(lvl);
 +      if (c != NULL) {
 +        // Split chunk; add splinters to freelist
@@ -6520,7 +6520,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +  // 4) Failing that, before we give up and get a new root chunk, lets really scrape the barrel. Any
 +  //    smaller chunk is acceptable now...
 +  if (c == NULL) {
-+    for (chklvl_t lvl = pref_level + 2; lvl <= max_level; lvl ++) {
++    for (chunklevel_t lvl = pref_level + 2; lvl <= max_level; lvl ++) {
 +      c = remove_first_chunk_at_level(lvl);
 +      if (c != NULL) {
          break;
@@ -6789,7 +6789,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +      return NULL;
 +    }
 +
-+    assert(c->level() == chklvl::LOWEST_CHUNK_LEVEL, "Not a root chunk?");
++    assert(c->level() == chunklevel::LOWEST_CHUNK_LEVEL, "Not a root chunk?");
 +
 +    // Split this root chunk to the desired chunk size. Splinters are added to freelist.
 +    if (pref_level > c->level()) {
@@ -6847,7 +6847,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +  c->set_free();
 +  c->reset_used_words();
 +
-+  const chklvl_t orig_lvl = c->level();
++  const chunklevel_t orig_lvl = c->level();
 +
 +  Metachunk* merged = NULL;
 +  if (!c->is_root_chunk()) {
@@ -6971,9 +6971,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
    }
 +
 +  if (Settings::uncommit_on_purge()) {
-+    const chklvl_t max_level =
-+        chklvl::level_fitting_word_size(Settings::uncommit_on_purge_min_word_size());
-+    for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL;
++    const chunklevel_t max_level =
++        chunklevel::level_fitting_word_size(Settings::uncommit_on_purge_min_word_size());
++    for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL;
 +         l <= max_level;
 +         l ++)
 +    {
@@ -7034,7 +7034,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +
 +  MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
 +
-+  for (chklvl_t l = chklvl::ROOT_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::ROOT_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    out->num_chunks[l] += _chunks.num_chunks_at_level(l);
 +    out->committed_word_size[l] += _chunks.committed_word_size_at_level(l);
 +  }
@@ -7061,7 +7061,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +  _chunks.verify(true);
 +
 +  // Need to check that each chunk is free..._size = 0;
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    for (const Metachunk* c = _chunks.first_at_level(l); c != NULL; c = c->next()) {
 +      assert(c->is_free(), "Chunk is not free.");
 +      assert(c->used_words() == 0, "Chunk should have not used words.");
@@ -7085,9 +7085,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
  }
  
  } // namespace metaspace
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkManager.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/chunkManager.hpp
 --- a/src/hotspot/share/memory/metaspace/chunkManager.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/chunkManager.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/chunkManager.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -7170,20 +7170,20 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 -  size_t _free_chunks_count;
 +  // Take a single chunk from the given freelist and adjust counters. Returns NULL
 +  // if there is no fitting chunk for this level.
-+  Metachunk* remove_first_chunk_at_level(chklvl_t l);
++  Metachunk* remove_first_chunk_at_level(chunklevel_t l);
  
 -  // Update counters after a chunk was added or removed removed.
 -  void account_for_added_chunk(const Metachunk* c);
 -  void account_for_removed_chunk(const Metachunk* c);
 +  // Given a chunk which must be outside of a freelist and must be free, split it to
 +  // meet a target level and return it. Splinters are added to the freelist.
-+  Metachunk* split_chunk_and_add_splinters(Metachunk* c, chklvl_t target_level);
++  Metachunk* split_chunk_and_add_splinters(Metachunk* c, chunklevel_t target_level);
  
 -  // Given a pointer to a chunk, attempts to merge it with neighboring
 -  // free chunks to form a bigger chunk. Returns true if successful.
 -  bool attempt_to_coalesce_around_chunk(Metachunk* chunk, ChunkIndex target_chunk_type);
 +  // Uncommit all chunks equal or below the given level.
-+  void uncommit_free_chunks(chklvl_t max_level);
++  void uncommit_free_chunks(chunklevel_t max_level);
  
 -  // Helper for chunk merging:
 -  //  Given an address range with 1-n chunks which are all supposed to be
@@ -7219,7 +7219,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
 +  //   but this may fail if we hit a commit limit. In that case, a partly uncommitted chunk
 +  //   will be returned, and the commit is attempted again when we allocate from the chunk's
 +  //   uncommitted area. See also Metachunk::allocate.
-+  Metachunk* get_chunk(chklvl_t max_level, chklvl_t pref_level);
++  Metachunk* get_chunk(chunklevel_t max_level, chunklevel_t pref_level);
  
 -  ChunkManager(bool is_class);
 +  // Return a single chunk to the ChunkManager and adjust accounting. May merge chunk
@@ -7366,9 +7366,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/chunkMan
  
 -
  #endif // SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,191 @@
 +/*
 + * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
@@ -7561,9 +7561,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/classLoa
 +
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/classLoaderMetaspace.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/classLoaderMetaspace.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,95 @@
 +/*
 + * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
@@ -7660,9 +7660,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/classLoa
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_CLASSLOADERMETASPACE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitLimiter.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/commitLimiter.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/commitLimiter.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/commitLimiter.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,62 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -7726,9 +7726,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitLi
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitLimiter.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/commitLimiter.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/commitLimiter.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/commitLimiter.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,75 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -7805,9 +7805,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitLi
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_COMMITLIMITER_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitMask.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/commitMask.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/commitMask.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/commitMask.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,111 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -7920,9 +7920,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitMa
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitMask.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/commitMask.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/commitMask.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/commitMask.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,182 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -8106,9 +8106,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/commitMa
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_COMMITMASK_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/counter.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/counter.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/counter.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/counter.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,191 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -8301,9 +8301,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/counter.
 +
 +#endif // SHARE_MEMORY_METASPACE_WORDSIZECOUNTER_HPP
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/freeBlocks.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/freeBlocks.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/freeBlocks.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/freeBlocks.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,66 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -8371,9 +8371,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/freeBloc
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/freeBlocks.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/freeBlocks.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/freeBlocks.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/freeBlocks.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,120 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -8495,9 +8495,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/freeBloc
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/internStat.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/internStat.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/internStat.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/internStat.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,60 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -8559,9 +8559,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/internSt
 +} // namespace metaspace
 +
 +#endif // ASSERT
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/internStat.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/internStat.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/internStat.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/internStat.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,144 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -8707,7 +8707,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/internSt
 +#endif // ASSERT
 +
 +#endif // SHARE_MEMORY_METASPACE_INTERNSTAT_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaDebug.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaDebug.cpp
 --- a/src/hotspot/share/memory/metaspace/metaDebug.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,63 +0,0 @@
@@ -8774,7 +8774,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaDebu
 -} // namespace metaspace
 -
 -
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaDebug.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaDebug.hpp
 --- a/src/hotspot/share/memory/metaspace/metaDebug.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,57 +0,0 @@
@@ -8835,7 +8835,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaDebu
 -} // namespace metaspace
 -
 -#endif // SHARE_MEMORY_METASPACE_METADEBUG_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metabase.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metabase.hpp
 --- a/src/hotspot/share/memory/metaspace/metabase.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,81 +0,0 @@
@@ -8920,7 +8920,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metabase
 -} // namespace metaspace
 -
 -#endif // SHARE_MEMORY_METASPACE_METABASE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metablock.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metablock.hpp
 --- a/src/hotspot/share/memory/metaspace/metablock.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,50 +0,0 @@
@@ -8974,9 +8974,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metabloc
 -} // namespace metaspace
 -
 -#endif // SHARE_MEMORY_METASPACE_METABLOCK_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachunk.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metachunk.cpp
 --- a/src/hotspot/share/memory/metaspace/metachunk.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metachunk.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metachunk.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
 - * Copyright (c) 2012, 2016, Oracle and/or its affiliates. All rights reserved.
@@ -9423,7 +9423,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  assert(!is_dead(), "Do not call on dead chunks.");
 +
 +  // Note: only call this on a life Metachunk.
-+  chklvl::check_valid_level(level());
++  chunklevel::check_valid_level(level());
 +
 +  assert(base() != NULL, "No base ptr");
 +
@@ -9462,7 +9462,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +            "level " CHKLVL_FORMAT " (" SIZE_FORMAT " words), "
 +            "used " SIZE_FORMAT " words, committed " SIZE_FORMAT " words.",
 +            p2i(this), get_state_char(), p2i(base()), level(),
-+            (chklvl::is_valid_level(level()) ? chklvl::word_size_for_level(level()) : 0),
++            (chunklevel::is_valid_level(level()) ? chunklevel::word_size_for_level(level()) : 0),
 +            used_words(), committed_words());
 +
 +}
@@ -9540,7 +9540,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 -  ocmap->verify_for_chunk(chunk);
 +
 +bool MetachunkListVector::contains(const Metachunk* c) const {
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    if (list_for_level(l)->contains(c)) {
 +      return true;
 +    }
@@ -9557,7 +9557,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +
 +  MemRangeCounter local_count;
 +
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +
 +    // Check, for each chunk in this list, exclusivity.
 +    for (const Metachunk* c = first_at_level(l); c != NULL; c = c->next()) {
@@ -9569,7 +9569,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +
 +    unsigned count = list_for_level(l)->count();
 +    if (count > 0) {
-+      local_count.add_multiple(count, count * chklvl::word_size_for_level(l));
++      local_count.add_multiple(count, count * chunklevel::word_size_for_level(l));
 +    }
 +
 +  }
@@ -9581,7 +9581,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +
 +void MetachunkListVector::print_on(outputStream* st) const {
 +
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    st->print("-- List[" CHKLVL_FORMAT "]: ", l);
 +    list_for_level(l)->print_on(st);
 +    st->cr();
@@ -9591,9 +9591,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
  }
  
  } // namespace metaspace
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachunk.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metachunk.hpp
 --- a/src/hotspot/share/memory/metaspace/metachunk.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metachunk.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metachunk.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
 - * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -9602,7 +9602,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   *
   * This code is free software; you can redistribute it and/or modify it
-@@ -24,149 +25,406 @@
+@@ -24,149 +25,404 @@
  #ifndef SHARE_MEMORY_METASPACE_METACHUNK_HPP
  #define SHARE_MEMORY_METASPACE_METACHUNK_HPP
  
@@ -9693,7 +9693,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  size_t _committed_words;
  
 -  friend class ::MetachunkTest;
-+  chklvl_t _level; // aka size.
++  chunklevel_t _level; // aka size.
  
 -  // The VirtualSpaceNode containing this chunk.
 -  VirtualSpaceNode* const _container;
@@ -9766,7 +9766,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +    : _base(NULL),
 +      _used_words(0),
 +      _committed_words(0),
-+      _level(chklvl::ROOT_CHUNK_LEVEL),
++      _level(chunklevel::ROOT_CHUNK_LEVEL),
 +      _state(state_free),
 +      _vsnode(NULL),
 +      _prev(NULL), _next(NULL),
@@ -9779,7 +9779,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +   _base = NULL;
 +   _used_words = 0;
 +   _committed_words = 0;
-+   _level = chklvl::ROOT_CHUNK_LEVEL;
++   _level = chunklevel::ROOT_CHUNK_LEVEL;
 +   _state = state_free;
 +   _vsnode = NULL;
 +   _prev = NULL;
@@ -9791,7 +9791,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 -  Metachunk(ChunkIndex chunktype, bool is_class, size_t word_size, VirtualSpaceNode* container);
  
 -  MetaWord* allocate(size_t word_size);
-+  size_t word_size() const        { return chklvl::word_size_for_level(_level); }
++  size_t word_size() const        { return chunklevel::word_size_for_level(_level); }
  
 -  VirtualSpaceNode* container() const { return _container; }
 +  MetaWord* base() const          { return _base; }
@@ -9834,17 +9834,15 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  // Return a single char presentation of the state ('f', 'u', 'd')
 +  char get_state_char() const;
 +
-+  void inc_level()                { _level ++; DEBUG_ONLY(chklvl::is_valid_level(_level);) }
-+  void dec_level()                { _level --; DEBUG_ONLY(chklvl::is_valid_level(_level);) }
-+//  void set_level(chklvl_t v)      { _level = v; DEBUG_ONLY(chklvl::is_valid_level(_level);) }
-+  chklvl_t level() const          { return _level; }
++  void inc_level()                { _level ++; DEBUG_ONLY(chunklevel::is_valid_level(_level);) }
++  void dec_level()                { _level --; DEBUG_ONLY(chunklevel::is_valid_level(_level);) }
++  chunklevel_t level() const          { return _level; }
 +
 +  // Convenience functions for extreme levels.
-+  bool is_root_chunk() const      { return chklvl::ROOT_CHUNK_LEVEL == _level; }
-+  bool is_leaf_chunk() const      { return chklvl::HIGHEST_CHUNK_LEVEL == _level; }
++  bool is_root_chunk() const      { return chunklevel::ROOT_CHUNK_LEVEL == _level; }
++  bool is_leaf_chunk() const      { return chunklevel::HIGHEST_CHUNK_LEVEL == _level; }
 +
 +  VirtualSpaceNode* vsnode() const        { return _vsnode; }
-+//  void set_vsnode(VirtualSpaceNode* n)    { _vsnode = n; }
 +
 +  size_t used_words() const                   { return _used_words; }
 +  size_t free_words() const                   { return word_size() - used_words(); }
@@ -9888,7 +9886,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  bool attempt_rollback_allocation(MetaWord* p, size_t word_size);
 +
 +  // Initialize structure for reuse.
-+  void initialize(VirtualSpaceNode* node, MetaWord* base, chklvl_t lvl) {
++  void initialize(VirtualSpaceNode* node, MetaWord* base, chunklevel_t lvl) {
 +    _vsnode = node; _base = base; _level = lvl;
 +    _used_words = _committed_words = 0; _state = state_free;
 +    _next = _prev = _next_in_vs = _prev_in_vs = NULL;
@@ -9899,7 +9897,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  bool is_leader() const {
 +    assert(!is_root_chunk(), "Root chunks have no buddy.");
 +    // I am sure this can be done smarter...
-+    return is_aligned(base(), chklvl::word_size_for_level(level() - 1) * BytesPerWord);
++    return is_aligned(base(), chunklevel::word_size_for_level(level() - 1) * BytesPerWord);
 +  }
 +
 +  //// Debug stuff ////
@@ -10032,22 +10030,22 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
  
 -// Helper function that does a bunch of checks for a chunk.
 -DEBUG_ONLY(void do_verify_chunk(Metachunk* chunk);)
-+  MetachunkList _lists[chklvl::NUM_CHUNK_LEVELS];
++  MetachunkList _lists[chunklevel::NUM_CHUNK_LEVELS];
 +  MemRangeCounter _counter;
  
 -// Given a Metachunk, update its in-use information (both in the
 -// chunk and the occupancy map).
 -void do_update_in_use_info_for_chunk(Metachunk* chunk, bool inuse);
-+  const MetachunkList* list_for_level(chklvl_t lvl) const         { DEBUG_ONLY(chklvl::check_valid_level(lvl)); return _lists + lvl; }
-+  MetachunkList* list_for_level(chklvl_t lvl)                     { DEBUG_ONLY(chklvl::check_valid_level(lvl)); return _lists + lvl; }
++  const MetachunkList* list_for_level(chunklevel_t lvl) const         { DEBUG_ONLY(chunklevel::check_valid_level(lvl)); return _lists + lvl; }
++  MetachunkList* list_for_level(chunklevel_t lvl)                     { DEBUG_ONLY(chunklevel::check_valid_level(lvl)); return _lists + lvl; }
 +
 +  const MetachunkList* list_for_chunk(const Metachunk* c) const   { return list_for_level(c->level()); }
 +  MetachunkList* list_for_chunk(const Metachunk* c)               { return list_for_level(c->level()); }
 +
 +public:
 +
-+  const Metachunk* first_at_level(chklvl_t lvl) const   { return list_for_level(lvl)->first(); }
-+  Metachunk* first_at_level(chklvl_t lvl)               { return list_for_level(lvl)->first(); }
++  const Metachunk* first_at_level(chunklevel_t lvl) const   { return list_for_level(lvl)->first(); }
++  Metachunk* first_at_level(chunklevel_t lvl)               { return list_for_level(lvl)->first(); }
 +
 +  // Remove given chunk from its list. List must contain that chunk.
 +  void remove(Metachunk* c) {
@@ -10056,7 +10054,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  }
 +
 +  // Remove first node unless empty. Returns node or NULL.
-+  Metachunk* remove_first(chklvl_t lvl) {
++  Metachunk* remove_first(chunklevel_t lvl) {
 +    Metachunk* c = list_for_level(lvl)->remove_first();
 +    if (c != NULL) {
 +      _counter.sub(c->word_size());
@@ -10070,12 +10068,12 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  }
 +
 +  // Returns number of chunks for a given level.
-+  int num_chunks_at_level(chklvl_t lvl) const {
++  int num_chunks_at_level(chunklevel_t lvl) const {
 +    return list_for_level(lvl)->count();
 +  }
 +
 +  // Returns number of chunks for a given level.
-+  size_t committed_word_size_at_level(chklvl_t lvl) const {
++  size_t committed_word_size_at_level(chunklevel_t lvl) const {
 +    return list_for_level(lvl)->committed_word_size();
 +  }
 +
@@ -10089,7 +10087,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
 +  // Note: walks lists.
 +  size_t total_committed_word_size() const {
 +    size_t sum = 0;
-+    for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++    for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +      sum += list_for_level(l)->committed_word_size();
 +    }
 +    return sum;
@@ -10105,9 +10103,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metachun
  
  } // namespace metaspace
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceCommon.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceCommon.cpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceCommon.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceCommon.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceCommon.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,4 +1,5 @@
  /*
 + * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
@@ -10281,9 +10279,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
  const char* loaders_plural(uintx num) {
    return num == 1 ? "loader" : "loaders";
  }
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceCommon.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceCommon.hpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceCommon.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceCommon.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceCommon.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,4 +1,5 @@
  /*
 + * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
@@ -10463,9 +10461,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
  } // namespace metaspace
  
  #endif // SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,6 +1,6 @@
  /*
 - * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
@@ -10527,9 +10525,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
      VM_PrintMetadata op(output(), scale, flags);
      VMThread::execute(&op);
    }
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,6 +1,6 @@
  /*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -10547,9 +10545,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
    DCmdArgument<char*> _scale;
    DCmdArgument<bool> _show_classes;
  public:
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceEnums.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceEnums.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/metaspaceEnums.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceEnums.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,54 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -10605,9 +10603,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceEnums.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceEnums.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/metaspaceEnums.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceEnums.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,86 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -10695,9 +10693,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACEENUMS_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceReport.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceReport.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/metaspaceReport.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceReport.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,381 @@
 +/*
 + * Copyright (c) 2018, 2019 SAP and/or its affiliates.
@@ -11080,9 +11078,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceReport.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceReport.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/metaspaceReport.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceReport.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,64 @@
 +/*
 + * Copyright (c) 2018, 2019 SAP and/or its affiliates.
@@ -11148,9 +11146,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_METASPACEREPORT_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -26,6 +26,7 @@
  #include "precompiled.hpp"
  
@@ -11159,9 +11157,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
  #include "memory/metaspace/metaspaceSizesSnapshot.hpp"
  
  namespace metaspace {
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,6 +1,6 @@
  /*
 - * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
@@ -11219,7 +11217,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 -    _chunk_stats[i].reset();
 +// Returns total word size of all chunks in this manager.
 +void cm_stats_t::add(const cm_stats_t& other) {
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    num_chunks[l] += other.num_chunks[l];
 +    committed_word_size[l] += other.committed_word_size[l];
    }
@@ -11233,8 +11231,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +// Returns total word size of all chunks in this manager.
 +size_t cm_stats_t::total_word_size() const {
 +  size_t s = 0;
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
-+    s += num_chunks[l] * chklvl::word_size_for_level(l);
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
++    s += num_chunks[l] * chunklevel::word_size_for_level(l);
 +  }
 +  return s;
  }
@@ -11245,7 +11243,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +// Returns total committed word size of all chunks in this manager.
 +size_t cm_stats_t::total_committed_word_size() const {
 +  size_t s = 0;
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    s += committed_word_size[l];
 +  }
 +  return s;
@@ -11256,16 +11254,16 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +  // Note: used as part of MetaspaceReport so formatting matters.
 +  size_t total_size = 0;
 +  size_t total_committed_size = 0;
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
      st->cr();
 -    st->print("%12s chunks: ", chunk_size_name(i));
 -    if (_chunk_stats[i].num() > 0) {
 -      st->print(UINTX_FORMAT_W(4) ", capacity ", _chunk_stats[i].num());
 -      print_scaled_words(st, _chunk_stats[i].cap(), scale);
-+    chklvl::print_chunk_size(st, l);
++    chunklevel::print_chunk_size(st, l);
 +    st->print(": ");
 +    if (num_chunks[l] > 0) {
-+      const size_t word_size = num_chunks[l] * chklvl::word_size_for_level(l);
++      const size_t word_size = num_chunks[l] * chunklevel::word_size_for_level(l);
 +
 +      st->print("%4d, capacity=", num_chunks[l]);
 +      print_scaled_words(st, word_size, scale);
@@ -11380,7 +11378,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 -    _chunk_stats[i].reset();
 -    _free_blocks_num = 0; _free_blocks_cap_words = 0;
 +void sm_stats_t::add(const sm_stats_t& other) {
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    stats[l].add(other.stats[l]);
    }
 +  free_blocks_num += other.free_blocks_num;
@@ -11394,7 +11392,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +// Returns total chunk statistics over all chunk types.
 +in_use_chunk_stats_t sm_stats_t::totals() const {
 +  in_use_chunk_stats_t out;
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    out.add(stats[l]);
 +  }
 +  return out;
@@ -11427,11 +11425,11 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
      {
        streamIndentor sti2(st);
 -      for (ChunkIndex i = ZeroIndex; i < NumberOfInUseLists; i = next_chunk_index(i)) {
-+      for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++      for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
          st->cr_indent();
 -        st->print("%15s: ", chunk_size_name(i));
 -        if (_chunk_stats[i].num() == 0) {
-+        chklvl::print_chunk_size(st, l);
++        chunklevel::print_chunk_size(st, l);
 +        st->print(" chunks: ");
 +        if (stats[l].num == 0) {
            st->print(" (none)");
@@ -11467,7 +11465,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 +
 +void sm_stats_t::verify() const {
 +  size_t total_used = 0;
-+  for (chklvl_t l = chklvl::LOWEST_CHUNK_LEVEL; l <= chklvl::HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l <= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
 +    stats[l].verify();
 +    total_used += stats[l].used_words;
 +  }
@@ -11546,9 +11544,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
  } // end namespace metaspace
  
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,6 +1,6 @@
  /*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -11584,12 +11582,12 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
  
 -  void reset();
 +  // How many chunks per level are checked in.
-+  int num_chunks[chklvl::NUM_CHUNK_LEVELS];
++  int num_chunks[chunklevel::NUM_CHUNK_LEVELS];
  
 -  uintx num() const { return _num; }
 -  size_t cap() const { return _cap; }
 +  // Size, in words, of the sum of all committed areas in this chunk manager, per level.
-+  size_t committed_word_size[chklvl::NUM_CHUNK_LEVELS];
++  size_t committed_word_size[chunklevel::NUM_CHUNK_LEVELS];
  
 -  void add(uintx n, size_t s);
 -  void add(const FreeChunksStatistics& other);
@@ -11715,7 +11713,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
 -  uintx _free_blocks_num;
 -  size_t _free_blocks_cap_words;
 +  // chunk statistics by chunk level
-+  in_use_chunk_stats_t stats[chklvl::NUM_CHUNK_LEVELS];
++  in_use_chunk_stats_t stats[chunklevel::NUM_CHUNK_LEVELS];
 +  uintx free_blocks_num;
 +  size_t free_blocks_word_size;
  
@@ -11796,7 +11794,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/metaspac
  
  #endif // SHARE_MEMORY_METASPACE_METASPACESTATISTICS_HPP
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/occupancyMap.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/occupancyMap.cpp
 --- a/src/hotspot/share/memory/metaspace/occupancyMap.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,135 +0,0 @@
@@ -11935,7 +11933,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/occupanc
 -} // namespace metaspace
 -
 -
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/occupancyMap.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/occupancyMap.hpp
 --- a/src/hotspot/share/memory/metaspace/occupancyMap.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,242 +0,0 @@
@@ -12181,9 +12179,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/occupanc
 -} // namespace metaspace
 -
 -#endif // SHARE_MEMORY_METASPACE_OCCUPANCYMAP_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
 --- a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -12212,9 +12210,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printCLD
    msp->add_to_statistics(&this_cld_stat);
  
    // And add it to the running totals
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
 --- a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -12250,9 +12248,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printCLD
    uintx                           _num_classes;
    uintx                           _num_classes_shared;
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
 --- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,6 +1,6 @@
  /*
 - * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
@@ -12262,9 +12260,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printMet
   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   *
   * This code is free software; you can redistribute it and/or modify it
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
 --- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,6 +1,6 @@
  /*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -12274,9 +12272,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/printMet
   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   *
   * This code is free software; you can redistribute it and/or modify it
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChunkArea.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/rootChunkArea.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/rootChunkArea.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/rootChunkArea.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,557 @@
 +/*
 + * Copyright (c) 2019 SAP SE. All rights reserved.
@@ -12341,7 +12339,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +  assert(_first_chunk == 0, "already have a root");
 +
 +  Metachunk* c = ChunkHeaderPool::pool().allocate_chunk_header();
-+  c->initialize(node, const_cast<MetaWord*>(_base), chklvl::ROOT_CHUNK_LEVEL);
++  c->initialize(node, const_cast<MetaWord*>(_base), chunklevel::ROOT_CHUNK_LEVEL);
 +
 +  _first_chunk = c;
 +
@@ -12359,7 +12357,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +//  free chunks to the freelists.
 +//
 +// Returns NULL if chunk cannot be split at least once.
-+Metachunk* RootChunkArea::split(chklvl_t target_level, Metachunk* c, MetachunkListVector* freelists) {
++Metachunk* RootChunkArea::split(chunklevel_t target_level, Metachunk* c, MetachunkListVector* freelists) {
 +
 +  // Splitting a chunk once works like this:
 +  //
@@ -12394,10 +12392,10 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +  DEBUG_ONLY(check_pointer(c->base());)
 +  assert(c->is_free(), "Can only split free chunks.");
 +
-+  DEBUG_ONLY(chklvl::check_valid_level(target_level));
++  DEBUG_ONLY(chunklevel::check_valid_level(target_level));
 +  assert(target_level > c->level(), "Wrong target level");
 +
-+  const chklvl_t starting_level = c->level();
++  const chunklevel_t starting_level = c->level();
 +
 +  Metachunk* result = c;
 +
@@ -12506,7 +12504,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +
 +  log_trace(metaspace)("Attempting to merge chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
 +
-+  const chklvl_t starting_level = c->level();
++  const chunklevel_t starting_level = c->level();
 +
 +  bool stop = false;
 +  Metachunk* result = NULL;
@@ -12701,7 +12699,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +
 +
 +  assert_lock_strong(MetaspaceExpand_lock);
-+  assert_is_aligned(_base, chklvl::MAX_CHUNK_BYTE_SIZE);
++  assert_is_aligned(_base, chunklevel::MAX_CHUNK_BYTE_SIZE);
 +
 +  // Iterate thru all chunks in this area. They must be ordered correctly,
 +  // being adjacent to each other, and cover the complete area
@@ -12773,7 +12771,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +    const char* letters_for_levels_cap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 +    const char* letters_for_levels =     "abcdefghijklmnopqrstuvwxyz";
 +    while (c != NULL) {
-+      const chklvl_t l = c->level();
++      const chunklevel_t l = c->level();
 +      if (l >= 0 && (size_t)l < strlen(letters_for_levels)) {
 +//        c->print_on(st); st->cr();
 +        st->print("%c", c->is_free() ? letters_for_levels[c->level()] : letters_for_levels_cap[c->level()]);
@@ -12795,16 +12793,16 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +// a given memory range. Memory range must be a multiple of root chunk size.
 +RootChunkAreaLUT::RootChunkAreaLUT(const MetaWord* base, size_t word_size)
 +  : _base(base),
-+    _num((int)(word_size / chklvl::MAX_CHUNK_WORD_SIZE)),
++    _num((int)(word_size / chunklevel::MAX_CHUNK_WORD_SIZE)),
 +    _arr(NULL)
 +{
-+  assert_is_aligned(word_size, chklvl::MAX_CHUNK_WORD_SIZE);
++  assert_is_aligned(word_size, chunklevel::MAX_CHUNK_WORD_SIZE);
 +  _arr = NEW_C_HEAP_ARRAY(RootChunkArea, _num, mtClass);
 +  const MetaWord* this_base = _base;
 +  for (int i = 0; i < _num; i ++) {
 +    RootChunkArea* rca = new(_arr + i) RootChunkArea(this_base);
 +    assert(rca == _arr + i, "Sanity");
-+    this_base += chklvl::MAX_CHUNK_WORD_SIZE;
++    this_base += chunklevel::MAX_CHUNK_WORD_SIZE;
 +  }
 +}
 +
@@ -12835,9 +12833,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +
 +
 +} // end: namespace metaspace
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChunkArea.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/rootChunkArea.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/rootChunkArea.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/rootChunkArea.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,198 @@
 +/*
 + * Copyright (c) 2019 SAP SE. All rights reserved.
@@ -12912,7 +12910,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +  //  free chunks to the freelists.
 +  //
 +  // Returns NULL if chunk cannot be split at least once.
-+  Metachunk* split(chklvl_t target_level, Metachunk* c, MetachunkListVector* freelists);
++  Metachunk* split(chunklevel_t target_level, Metachunk* c, MetachunkListVector* freelists);
 +
 +  // Given a chunk, attempt to merge it recursively with its neighboring chunks.
 +  //
@@ -12942,7 +12940,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +  /// range ///
 +
 +  const MetaWord* base() const  { return _base; }
-+  size_t word_size() const      { return chklvl::MAX_CHUNK_WORD_SIZE; }
++  size_t word_size() const      { return chunklevel::MAX_CHUNK_WORD_SIZE; }
 +  const MetaWord* end() const   { return _base + word_size(); }
 +
 +  // Direct access to the first chunk (use with care)
@@ -12996,7 +12994,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +  // area this address falls into.
 +  int index_by_address(const MetaWord* p) const {
 +    DEBUG_ONLY(check_pointer(p);)
-+    int idx = (int)((p - base()) / chklvl::MAX_CHUNK_WORD_SIZE);
++    int idx = (int)((p - base()) / chunklevel::MAX_CHUNK_WORD_SIZE);
 +    assert(idx >= 0 && idx < _num, "Sanity");
 +    return idx;
 +  }
@@ -13024,7 +13022,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +  /// range ///
 +
 +  const MetaWord* base() const  { return _base; }
-+  size_t word_size() const      { return _num * chklvl::MAX_CHUNK_WORD_SIZE; }
++  size_t word_size() const      { return _num * chunklevel::MAX_CHUNK_WORD_SIZE; }
 +  const MetaWord* end() const   { return _base + word_size(); }
 +
 +  DEBUG_ONLY(void verify(bool slow) const;)
@@ -13037,9 +13035,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/rootChun
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_ROOTCHUNKAREA_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/runningCounters.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/runningCounters.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/runningCounters.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/runningCounters.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,99 @@
 +/*
 + * Copyright (c) 2019 SAP SE. All rights reserved.
@@ -13140,9 +13138,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/runningC
 +} // namespace metaspace
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/runningCounters.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/runningCounters.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/runningCounters.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/runningCounters.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,91 @@
 +/*
 + * Copyright (c) 2019 SAP SE. All rights reserved.
@@ -13235,9 +13233,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/runningC
 +#endif // SHARE_MEMORY_METASPACE_RUNNINGCOUNTERS_HPP
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/settings.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/settings.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/settings.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,178 @@
 +/*
 + * Copyright (c) 2019 SAP SE. All rights reserved.
@@ -13305,7 +13303,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings
 +
 +    _newborn_root_chunks_are_fully_committed = true;
 +
-+    _committed_words_on_fresh_chunks = chklvl::MAX_CHUNK_WORD_SIZE;
++    _committed_words_on_fresh_chunks = chunklevel::MAX_CHUNK_WORD_SIZE;
 +
 +    _uncommit_on_return = false;
 +    _uncommit_on_return_min_word_size = 3; // does not matter; should not be used resp. assert when used.
@@ -13365,7 +13363,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings
 +  }
 +
 +  // Sanity checks.
-+  guarantee(commit_granule_words() <= chklvl::MAX_CHUNK_WORD_SIZE, "Too large granule size");
++  guarantee(commit_granule_words() <= chunklevel::MAX_CHUNK_WORD_SIZE, "Too large granule size");
 +  guarantee(is_power_of_2(commit_granule_words()), "granule size must be a power of 2");
 +
 +#ifdef ASSERT
@@ -13417,9 +13415,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings
 +
 +} // namespace metaspace
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/settings.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/hotspot/share/memory/metaspace/settings.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/settings.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,120 @@
 +/*
 + * Copyright (c) 2019 SAP SE. All rights reserved.
@@ -13471,13 +13469,13 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings
 +  // Size in words. Will be rounded up to the nearest multiple of commit_granule_words.
 +  // (Note: 0 is possible but inefficient, since it will cause the ClassLoaderMetaspace
 +  //        to commit the first granule right away anyway, so nothing is saved.
-+  //        chklvl::MAX_CHUNK_WORD_SIZE pretty much means every chunk is committed thru
++  //        chunklevel::MAX_CHUNK_WORD_SIZE pretty much means every chunk is committed thru
 +  //        from the start.
 +  static size_t _committed_words_on_fresh_chunks;
 +
 +  // The default size of a non-class VirtualSpaceNode (unless created differently).
 +  // Must be a multiple of the root chunk size.
-+  static const size_t _virtual_space_node_default_word_size = chklvl::MAX_CHUNK_WORD_SIZE * 2; // lets go with 8mb virt size. Seems a good compromise betw. virt and mapping fragmentation.
++  static const size_t _virtual_space_node_default_word_size = chunklevel::MAX_CHUNK_WORD_SIZE * 2; // lets go with 8mb virt size. Seems a good compromise betw. virt and mapping fragmentation.
 +
 +  static const size_t _allocation_from_dictionary_limit = 4 * K;
 +
@@ -13541,7 +13539,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/settings
 +} // namespace metaspace
 +
 +#endif // SHARE_MEMORY_METASPACE_BLOCKFREELIST_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/smallBlocks.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/smallBlocks.cpp
 --- a/src/hotspot/share/memory/metaspace/smallBlocks.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,62 +0,0 @@
@@ -13607,7 +13605,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/smallBlo
 -
 -} // namespace metaspace
 -
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/smallBlocks.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/smallBlocks.hpp
 --- a/src/hotspot/share/memory/metaspace/smallBlocks.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,88 +0,0 @@
@@ -13699,9 +13697,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/smallBlo
 -
 -
 -#endif // SHARE_MEMORY_METASPACE_SMALLBLOCKS_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/spaceManager.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/spaceManager.cpp
 --- a/src/hotspot/share/memory/metaspace/spaceManager.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/spaceManager.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/spaceManager.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -13794,17 +13792,17 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/spaceMan
 +
 +  assert_lock_strong(lock());
 +
-+  guarantee(requested_word_size <= chklvl::MAX_CHUNK_WORD_SIZE,
++  guarantee(requested_word_size <= chunklevel::MAX_CHUNK_WORD_SIZE,
 +            "Requested size too large (" SIZE_FORMAT ") - max allowed size per allocation is " SIZE_FORMAT ".",
-+            requested_word_size, chklvl::MAX_CHUNK_WORD_SIZE);
++            requested_word_size, chunklevel::MAX_CHUNK_WORD_SIZE);
 +
 +  // If we have a current chunk, we should have retired it beforehand, unless we do not handle
 +  //  deallocations, or unless we are a micro loader (see: retire_current_chunk(), deallocate_locked()).
 +  assert(current_chunk() == NULL || Settings::handle_deallocations() == false || _is_micro_loader ||
 +         current_chunk()->free_below_committed_words() <= 10, "Must retire chunk beforehand");
 +
-+  const chklvl_t min_level = chklvl::level_fitting_word_size(requested_word_size);
-+  chklvl_t pref_level = _chunk_alloc_sequence->get_next_chunk_level(_chunks.count());
++  const chunklevel_t min_level = chunklevel::level_fitting_word_size(requested_word_size);
++  chunklevel_t pref_level = _chunk_alloc_sequence->get_next_chunk_level(_chunks.count());
 +
 +  if (pref_level > min_level) {
 +    pref_level = min_level;
@@ -14608,9 +14606,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/spaceMan
  #endif // ASSERT
  
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/spaceManager.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/spaceManager.hpp
 --- a/src/hotspot/share/memory/metaspace/spaceManager.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/spaceManager.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/spaceManager.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -14904,9 +14902,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/spaceMan
  } // namespace metaspace
  
  #endif // SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualSpaceList.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/virtualSpaceList.cpp
 --- a/src/hotspot/share/memory/metaspace/virtualSpaceList.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/virtualSpaceList.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/virtualSpaceList.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -15527,9 +15525,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 -#endif // ASSERT
 -
  } // namespace metaspace
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualSpaceList.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/virtualSpaceList.hpp
 --- a/src/hotspot/share/memory/metaspace/virtualSpaceList.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/virtualSpaceList.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/virtualSpaceList.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -15747,9 +15745,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
  
  #endif // SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
 +
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp
 --- a/src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
 - * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
@@ -16041,8 +16039,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +  // Update reserved counter in vslist
 +  _total_reserved_words_counter->increment_by(_word_size);
 +
-+  assert_is_aligned(_base, chklvl::MAX_CHUNK_BYTE_SIZE);
-+  assert_is_aligned(_word_size, chklvl::MAX_CHUNK_WORD_SIZE);
++  assert_is_aligned(_base, chunklevel::MAX_CHUNK_BYTE_SIZE);
++  assert_is_aligned(_word_size, chunklevel::MAX_CHUNK_WORD_SIZE);
 +
 +}
 +
@@ -16054,10 +16052,10 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +                                                SizeCounter* commit_words_counter)
 +{
 +
-+  DEBUG_ONLY(assert_is_aligned(word_size, chklvl::MAX_CHUNK_WORD_SIZE);)
++  DEBUG_ONLY(assert_is_aligned(word_size, chunklevel::MAX_CHUNK_WORD_SIZE);)
 +
 +#ifdef ASSERT
-+  size_t alignment = chklvl::MAX_CHUNK_BYTE_SIZE;
++  size_t alignment = chunklevel::MAX_CHUNK_BYTE_SIZE;
 +#endif
 +
 +  ReservedSpace rs(word_size * BytesPerWord,
@@ -16072,7 +16070,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 -  const size_t spec_chunk_size = is_class ? ClassSpecializedChunk : SpecializedChunk;
 -  const size_t small_chunk_size = is_class ? ClassSmallChunk : SmallChunk;
 -  const size_t med_chunk_size = is_class ? ClassMediumChunk : MediumChunk;
-+  assert_is_aligned(rs.base(), chklvl::MAX_CHUNK_BYTE_SIZE);
++  assert_is_aligned(rs.base(), chunklevel::MAX_CHUNK_BYTE_SIZE);
  
 -  int line_len = 100;
 -  const size_t section_len = align_up(spec_chunk_size * line_len, med_chunk_size);
@@ -16296,12 +16294,12 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +
 +  assert_lock_strong(MetaspaceExpand_lock);
 +
-+  assert_is_aligned(free_words(), chklvl::MAX_CHUNK_WORD_SIZE);
++  assert_is_aligned(free_words(), chunklevel::MAX_CHUNK_WORD_SIZE);
 +
-+  if (free_words() >= chklvl::MAX_CHUNK_WORD_SIZE) {
++  if (free_words() >= chunklevel::MAX_CHUNK_WORD_SIZE) {
 +
 +    MetaWord* loc = _base + _used_words;
-+    _used_words += chklvl::MAX_CHUNK_WORD_SIZE;
++    _used_words += chunklevel::MAX_CHUNK_WORD_SIZE;
 +
 +    RootChunkArea* rca = _root_chunk_area_lut.get_area_by_address(loc);
 +
@@ -16343,7 +16341,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +//  free chunks to the freelists.
 +//
 +// Returns NULL if chunk cannot be split at least once.
-+Metachunk* VirtualSpaceNode::split(chklvl_t target_level, Metachunk* c, MetachunkListVector* freelists) {
++Metachunk* VirtualSpaceNode::split(chunklevel_t target_level, Metachunk* c, MetachunkListVector* freelists) {
 +
 +  assert_lock_strong(MetaspaceExpand_lock);
 +
@@ -16743,12 +16741,12 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +  assert(base() == (MetaWord*)_rs.base() &&
 +         word_size() == _rs.size() / BytesPerWord,
 +         "Sanity");
-+  assert_is_aligned(base(), chklvl::MAX_CHUNK_BYTE_SIZE);
++  assert_is_aligned(base(), chunklevel::MAX_CHUNK_BYTE_SIZE);
 +  assert(used_words() <= word_size(), "Sanity");
 +
 +  // Since we only ever hand out root chunks from a vsnode, top should always be aligned
 +  // to root chunk size.
-+  assert_is_aligned(used_words(), chklvl::MAX_CHUNK_WORD_SIZE);
++  assert_is_aligned(used_words(), chunklevel::MAX_CHUNK_WORD_SIZE);
 +
 +  _commit_mask.verify(slow);
 +  assert(committed_words() <= word_size(), "Sanity");
@@ -16761,9 +16759,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +
 +
  } // namespace metaspace
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualSpaceNode.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspace/virtualSpaceNode.hpp
 --- a/src/hotspot/share/memory/metaspace/virtualSpaceNode.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspace/virtualSpaceNode.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspace/virtualSpaceNode.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
@@ -16958,7 +16956,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
 +  //  free chunks to the freelists.
 +  //
 +  // Returns NULL if chunk cannot be split at least once.
-+  Metachunk* split(chklvl_t target_level, Metachunk* c, MetachunkListVector* freelists);
++  Metachunk* split(chunklevel_t target_level, Metachunk* c, MetachunkListVector* freelists);
  
 -  // address of next available space in _virtual_space;
 -  // Accessors
@@ -17105,9 +17103,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspace/virtualS
  } // namespace metaspace
  
  #endif // SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
 --- a/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -25,6 +25,7 @@
  #ifndef SHARE_MEMORY_METASPACECHUNKFREELISTSUMMARY_HPP
  #define SHARE_MEMORY_METASPACECHUNKFREELISTSUMMARY_HPP
@@ -17116,9 +17114,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceChunkFree
  
  class MetaspaceChunkFreeListSummary {
    size_t _num_specialized_chunks;
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceClosure.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspaceClosure.hpp
 --- a/src/hotspot/share/memory/metaspaceClosure.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspaceClosure.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspaceClosure.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -106,7 +106,7 @@
    //         Symbol*     bar() { return (Symbol*)    _obj; }
    //
@@ -17128,9 +17126,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceClosure.h
      Writability _writability;
      Ref* _next;
      NONCOPYABLE(Ref);
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceCounters.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspaceCounters.cpp
 --- a/src/hotspot/share/memory/metaspaceCounters.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspaceCounters.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspaceCounters.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -29,7 +29,7 @@
  #include "runtime/perfData.hpp"
  #include "utilities/exceptions.hpp"
@@ -17140,7 +17138,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceCounters.
    friend class VMStructs;
    PerfVariable*      _capacity;
    PerfVariable*      _used;
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceGCThresholdUpdater.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspaceGCThresholdUpdater.hpp
 --- a/src/hotspot/share/memory/metaspaceGCThresholdUpdater.hpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,52 +0,0 @@
@@ -17196,9 +17194,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceGCThresho
 -};
 -
 -#endif // SHARE_MEMORY_METASPACEGCTHRESHOLDUPDATER_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceShared.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspaceShared.cpp
 --- a/src/hotspot/share/memory/metaspaceShared.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspaceShared.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspaceShared.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -191,7 +191,7 @@
  
  void DumpRegion::pack(DumpRegion* next) {
@@ -17208,9 +17206,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceShared.cp
    _is_packed = true;
    if (next != NULL) {
      next->_rs = _rs;
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceTracer.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/metaspaceTracer.hpp
 --- a/src/hotspot/share/memory/metaspaceTracer.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/metaspaceTracer.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/metaspaceTracer.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -27,7 +27,7 @@
  
  #include "memory/allocation.hpp"
@@ -17220,9 +17218,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/metaspaceTracer.hp
  
  class ClassLoaderData;
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/universe.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/memory/universe.cpp
 --- a/src/hotspot/share/memory/universe.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/memory/universe.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/memory/universe.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -1104,7 +1104,7 @@
  #endif
    if (should_verify_subset(Verify_MetaspaceUtils)) {
@@ -17232,9 +17230,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/memory/universe.cpp
    }
    if (should_verify_subset(Verify_JNIHandles)) {
      log_debug(gc, verify)("JNIHandles");
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/arguments.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/runtime/arguments.cpp
 --- a/src/hotspot/share/runtime/arguments.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/runtime/arguments.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/runtime/arguments.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -550,6 +550,9 @@
  #endif // !X86
    { "UseAdaptiveGCBoundary",         JDK_Version::undefined(), JDK_Version::jdk(15), JDK_Version::jdk(16) },
@@ -17245,9 +17243,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/arguments.cpp
  
  #ifdef TEST_VERIFY_SPECIAL_JVM_FLAGS
    // These entries will generate build errors.  Their purpose is to test the macros.
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/globals.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/runtime/globals.hpp
 --- a/src/hotspot/share/runtime/globals.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/runtime/globals.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/runtime/globals.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -177,10 +177,6 @@
    develop(bool, LargePagesIndividualAllocationInjectError, false,           \
            "Fail large pages individual allocation")                         \
@@ -17291,9 +17289,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/globals.hpp
    manageable(uintx, MinHeapFreeRatio, 40,                                   \
            "The minimum percentage of heap free after GC to avoid expansion."\
            " For most GCs this applies to the old generation. In G1 and"     \
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/os.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/runtime/os.hpp
 --- a/src/hotspot/share/runtime/os.hpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/runtime/os.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/runtime/os.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -399,6 +399,8 @@
    static bool   can_execute_large_page_memory();
  
@@ -17303,9 +17301,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/os.hpp
    static bool    is_readable_pointer(const void* p);
    static bool    is_readable_range(const void* from, const void* to);
  
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/vmOperations.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/runtime/vmOperations.cpp
 --- a/src/hotspot/share/runtime/vmOperations.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/runtime/vmOperations.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/runtime/vmOperations.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -33,6 +33,7 @@
  #include "logging/logStream.hpp"
  #include "logging/logConfiguration.hpp"
@@ -17323,9 +17321,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/vmOperations.cpp
  }
  
  VM_FindDeadlocks::~VM_FindDeadlocks() {
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/vmStructs.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/runtime/vmStructs.cpp
 --- a/src/hotspot/share/runtime/vmStructs.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/runtime/vmStructs.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/runtime/vmStructs.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -52,7 +52,6 @@
  #include "memory/allocation.hpp"
  #include "memory/allocation.inline.hpp"
@@ -17334,9 +17332,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/runtime/vmStructs.cpp
  #include "memory/padded.hpp"
  #include "memory/referenceType.hpp"
  #include "memory/universe.hpp"
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/services/memReporter.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/services/memReporter.cpp
 --- a/src/hotspot/share/services/memReporter.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/services/memReporter.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/services/memReporter.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -23,7 +23,10 @@
   */
  #include "precompiled.hpp"
@@ -17458,9 +17456,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/services/memReporter.cpp
    if (diff_waste != 0) {
      out->print(" %+ld%s", diff_waste, scale);
    }
-diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/services/virtualMemoryTracker.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 src/hotspot/share/services/virtualMemoryTracker.cpp
 --- a/src/hotspot/share/services/virtualMemoryTracker.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/src/hotspot/share/services/virtualMemoryTracker.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/src/hotspot/share/services/virtualMemoryTracker.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -618,9 +618,9 @@
    mss._committed_in_bytes[type]  = MetaspaceUtils::committed_bytes(type);
    mss._used_in_bytes[type]       = MetaspaceUtils::used_bytes(type);
@@ -17474,7 +17472,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d src/hotspot/share/services/virtualMemoryTra
    mss._free_in_bytes[type] = free_in_bytes;
  }
  
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_chunkManager.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_chunkManager.cpp
 --- a/test/hotspot/gtest/memory/test_chunkManager.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,69 +0,0 @@
@@ -17547,7 +17545,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_chunkManager
 -}
 -
 -#endif // ASSERT
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_is_metaspace_obj.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_is_metaspace_obj.cpp
 --- a/test/hotspot/gtest/memory/test_is_metaspace_obj.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,115 +0,0 @@
@@ -17666,7 +17664,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_is_metaspace
 -  do_test(Metaspace::ClassType);
 -}
 -
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_metachunk.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_metachunk.cpp
 --- a/test/hotspot/gtest/memory/test_metachunk.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,98 +0,0 @@
@@ -17768,7 +17766,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_metachunk.cp
 -
 -  free(memory);
 -}
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_metaspace.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_metaspace.cpp
 --- a/test/hotspot/gtest/memory/test_metaspace.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,86 +0,0 @@
@@ -17858,7 +17856,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_metaspace.cp
 -  large_size += (os::vm_page_size() / BytesPerWord);
 -  vs_list->get_new_chunk(large_size, 0);
 -}
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_metaspace_allocation.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_metaspace_allocation.cpp
 --- a/test/hotspot/gtest/memory/test_metaspace_allocation.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,273 +0,0 @@
@@ -18135,7 +18133,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_metaspace_al
 -  do_test(Metaspace::NonClassType, NUM_PARALLEL_METASPACES, 100, 1000, .006f);
 -}
 -
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_spaceManager.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_spaceManager.cpp
 --- a/test/hotspot/gtest/memory/test_spaceManager.cpp	Sat May 09 13:42:16 2020 -0700
 +++ /dev/null	Thu Jan 01 00:00:00 1970 +0000
 @@ -1,74 +0,0 @@
@@ -18213,9 +18211,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_spaceManager
 -}
 -
 -#endif // ASSERT
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_virtualspace.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/memory/test_virtualspace.cpp
 --- a/test/hotspot/gtest/memory/test_virtualspace.cpp	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/gtest/memory/test_virtualspace.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/memory/test_virtualspace.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -28,6 +28,7 @@
  #include "utilities/align.hpp"
  #include "unittest.hpp"
@@ -18231,9 +18229,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/memory/test_virtualspace
 +
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,173 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -18408,9 +18406,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/metaspaceTests
 +}
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,282 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -18497,14 +18495,14 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/metaspaceTests
 +using metaspace::VirtualSpaceList;
 +using metaspace::VirtualSpaceNode;
 +
-+using metaspace::chklvl_t;
-+using metaspace::chklvl::HIGHEST_CHUNK_LEVEL;
-+using metaspace::chklvl::MAX_CHUNK_WORD_SIZE;
-+using metaspace::chklvl::MAX_CHUNK_BYTE_SIZE;
-+using metaspace::chklvl::MIN_CHUNK_WORD_SIZE;
-+using metaspace::chklvl::MIN_CHUNK_BYTE_SIZE;
-+using metaspace::chklvl::LOWEST_CHUNK_LEVEL;
-+using metaspace::chklvl::NUM_CHUNK_LEVELS;
++using metaspace::chunklevel_t;
++using metaspace::chunklevel::HIGHEST_CHUNK_LEVEL;
++using metaspace::chunklevel::MAX_CHUNK_WORD_SIZE;
++using metaspace::chunklevel::MAX_CHUNK_BYTE_SIZE;
++using metaspace::chunklevel::MIN_CHUNK_WORD_SIZE;
++using metaspace::chunklevel::MIN_CHUNK_BYTE_SIZE;
++using metaspace::chunklevel::LOWEST_CHUNK_LEVEL;
++using metaspace::chunklevel::NUM_CHUNK_LEVELS;
 +
 +
 +/////////////////////////////////////////////////////////////////////
@@ -18694,9 +18692,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/metaspaceTests
 +};
 +
 +#endif // GTEST_METASPACE_METASPACETESTCOMMON_HPP
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_binlist.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_binlist.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_binlist.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_binlist.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,234 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -18932,9 +18930,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_binlist.c
 +TEST_VM(metaspace, BinList_random_test_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::random_test(); }
 +TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::random_test(); }
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_blocktree.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_blocktree.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_blocktree.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_blocktree.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,367 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -19303,9 +19301,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_blocktree
 +
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkManager.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_chunkManager.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_chunkManager.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_chunkManager.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,312 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -19350,20 +19348,20 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +  MemRangeCounter _counter;
 +
 +  // Note: [min_level ... max_level] (inclusive max)
-+  static chklvl_t get_random_level(chklvl_t min_level, chklvl_t max_level) {
++  static chunklevel_t get_random_level(chunklevel_t min_level, chunklevel_t max_level) {
 +    int range = max_level - min_level + 1; // [ ]
-+    chklvl_t l = min_level + (os::random() % range);
++    chunklevel_t l = min_level + (os::random() % range);
 +    return l;
 +  }
 +
-+  struct chklvl_range_t { chklvl_t from; chklvl_t to; };
++  struct chunklevel_range_t { chunklevel_t from; chunklevel_t to; };
 +
 +  // Note: [min_level ... max_level] (inclusive max)
-+  static void get_random_level_range(chklvl_t min_level, chklvl_t max_level, chklvl_range_t* out) {
-+    chklvl_t l1 = get_random_level(min_level, max_level);
-+    chklvl_t l2 = get_random_level(min_level, max_level);
++  static void get_random_level_range(chunklevel_t min_level, chunklevel_t max_level, chunklevel_range_t* out) {
++    chunklevel_t l1 = get_random_level(min_level, max_level);
++    chunklevel_t l2 = get_random_level(min_level, max_level);
 +    if (l1 > l2) {
-+      chklvl_t l = l2;
++      chunklevel_t l = l2;
 +      l1 = l2;
 +      l2 = l;
 +    }
@@ -19392,9 +19390,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +    return true;
 +  }
 +
-+  bool attempt_allocate_at(size_t index, chklvl_t max_level, chklvl_t pref_level, bool fully_commit = false) {
++  bool attempt_allocate_at(size_t index, chunklevel_t max_level, chunklevel_t pref_level, bool fully_commit = false) {
 +
-+    LOG("attempt_allocate_at " SIZE_FORMAT ". (" CHKLVL_FORMAT "-" CHKLVL_FORMAT ")", index, max_level, pref_level);
++    LOG("attempt_allocate_at " SIZE_FORMAT ". (" chunklevel_FORMAT "-" chunklevel_FORMAT ")", index, max_level, pref_level);
 +
 +    if (_elems[index] != NULL) {
 +      return false;
@@ -19423,12 +19421,12 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +  }
 +
 +  // Note: [min_level ... max_level] (inclusive max)
-+  void allocate_n_random_chunks(int n, chklvl_t min_level, chklvl_t max_level) {
++  void allocate_n_random_chunks(int n, chunklevel_t min_level, chunklevel_t max_level) {
 +
 +    assert(n <= max_num_chunks, "Sanity");
 +
 +    for (int i = 0; i < n; i ++) {
-+      chklvl_range_t r;
++      chunklevel_range_t r;
 +      get_random_level_range(min_level, max_level, &r);
 +      attempt_allocate_at(i, r.to, r.from);
 +    }
@@ -19442,7 +19440,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +    assert(_counter.zero(), "Sanity");
 +  }
 +
-+  void random_alloc_free(int iterations, chklvl_t min_level, chklvl_t max_level) {
++  void random_alloc_free(int iterations, chunklevel_t min_level, chunklevel_t max_level) {
 +    for (int i = 0; i < iterations; i ++) {
 +      int index = os::random() % max_num_chunks;
 +      if ((os::random() % 100) > 50) {
@@ -19463,7 +19461,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +    memset(_elems, 0, sizeof(_elems));
 +  }
 +
-+  void test(int iterations, chklvl_t min_level, chklvl_t max_level) {
++  void test(int iterations, chunklevel_t min_level, chunklevel_t max_level) {
 +    for (int run = 0; run < iterations; run ++) {
 +      allocate_n_random_chunks(max_num_chunks, min_level, max_level);
 +      random_alloc_free(iterations, min_level, max_level);
@@ -19486,7 +19484,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +    ASSERT_EQ(num_splinter_chunks, NUM_CHUNK_LEVELS - 1);
 +
 +    // Now enlarge n-1 times until c is of root chunk level size again.
-+    for (chklvl_t l = HIGHEST_CHUNK_LEVEL; l > LOWEST_CHUNK_LEVEL; l --) {
++    for (chunklevel_t l = HIGHEST_CHUNK_LEVEL; l > LOWEST_CHUNK_LEVEL; l --) {
 +      bool rc = _cm->attempt_enlarge_chunk(c);
 +      ASSERT_TRUE(rc);
 +      ASSERT_EQ(c->level(), l - 1);
@@ -19499,7 +19497,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +
 +    // test that if a chunk is committed again, already committed content stays.
 +    assert(_cm->total_num_chunks() == 0, "Call this on an empty cm.");
-+    const chklvl_t lvl = metaspace::chklvl::level_fitting_word_size(Settings::commit_granule_words());
++    const chunklevel_t lvl = metaspace::chunklevel::level_fitting_word_size(Settings::commit_granule_words());
 +    Metachunk* c = _cm->get_chunk(lvl, lvl);
 +    ASSERT_NOT_NULL(c);
 +    ASSERT_EQ(c->level(), lvl);
@@ -19539,7 +19537,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +
 +    while (_counter.count() < max_num_chunks &&
 +           _counter.total_size() < min_words_to_allocate) {
-+      const chklvl_t lvl = LOWEST_CHUNK_LEVEL + os::random() % 4;
++      const chunklevel_t lvl = LOWEST_CHUNK_LEVEL + os::random() % 4;
 +      attempt_allocate_at(_counter.count(), lvl, lvl, true); // < fully committed please
 +    }
 +
@@ -19619,9 +19617,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkMana
 +  ct.test_wholesale_reclaim();
 +}
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,119 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -19742,9 +19740,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_chunkhead
 +TEST_VM(metaspace, chunk_header_pool) {
 +  ChunkHeaderPoolTest::run_tests();
 +}
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_commitmask.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_commitmask.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_commitmask.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_commitmask.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,348 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -20094,9 +20092,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_commitmas
 +  }
 +
 +}
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_freeblocks.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_freeblocks.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_freeblocks.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_freeblocks.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,232 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -20330,9 +20328,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_freeblock
 +  FreeBlocksTest::test_large_allocations();
 +}
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_is_metaspace_obj.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_is_metaspace_obj.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_is_metaspace_obj.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_is_metaspace_obj.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,114 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -20448,9 +20446,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_is_metasp
 +  test.do_test(Metaspace::ClassType);
 +}
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metachunk.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_metachunk.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_metachunk.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_metachunk.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,193 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -20487,7 +20485,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metachunk
 +  VirtualSpaceList _vs_list;
 +  ChunkManager _cm;
 +
-+  Metachunk* alloc_chunk(chklvl_t lvl) {
++  Metachunk* alloc_chunk(chunklevel_t lvl) {
 +
 +    Metachunk* c = _cm.get_chunk(lvl, lvl);
 +    EXPECT_NOT_NULL(c);
@@ -20506,7 +20504,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metachunk
 +    EXPECT_TRUE(_vs_list.contains(c->base()));
 +    EXPECT_TRUE(is_aligned(c->base(), MAX_CHUNK_BYTE_SIZE));
 +    EXPECT_TRUE(is_aligned(c->word_size(), MIN_CHUNK_WORD_SIZE));
-+    EXPECT_TRUE(metaspace::chklvl::is_valid_level(c->level()));
++    EXPECT_TRUE(metaspace::chunklevel::is_valid_level(c->level()));
 +
 +    if (c->next() != NULL) EXPECT_EQ(c->next()->prev(), c);
 +    if (c->prev() != NULL) EXPECT_EQ(c->prev()->next(), c);
@@ -20600,8 +20598,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metachunk
 +
 +  // Test that allocating the full MetaChunk works and leaves no space.
 +  void test_full_chunk() {
-+    for (chklvl_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl ++) {
-+      const size_t word_size = metaspace::chklvl::word_size_for_level(lvl);
++    for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl ++) {
++      const size_t word_size = metaspace::chunklevel::word_size_for_level(lvl);
 +      Metachunk* c = alloc_chunk(lvl);
 +      ASSERT_NOT_NULL(c);
 +      ASSERT_EQ(c->used_words(), (size_t)0);
@@ -20645,9 +20643,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metachunk
 +  test.test_full_chunk();
 +
 +}
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,74 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -20723,9 +20721,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_metaspace
 +  EXPECT_LE(committed_class, committed);
 +}
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_spacemanager.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_spacemanager.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_spacemanager.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_spacemanager.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,624 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -21235,7 +21233,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_spacemana
 +    SpaceManagerTestBed* bed = testbed_at(0); // new bed
 +
 +    const int num_loops = 5;
-+    const size_t max_alloc_size = metaspace::chklvl::MIN_CHUNK_WORD_SIZE / num_loops * 2;
++    const size_t max_alloc_size = metaspace::chunklevel::MIN_CHUNK_WORD_SIZE / num_loops * 2;
 +
 +    // Doing this multiple times should work too as long as we keep the
 +    // reverse allocation order.
@@ -21351,9 +21349,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_spacemana
 +
 +
 +
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualspacenode.cpp
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/gtest/metaspace/test_virtualspacenode.cpp
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp	Mon May 11 07:15:35 2020 +0200
 @@ -0,0 +1,572 @@
 +/*
 + * Copyright (c) 2019, SAP SE. All rights reserved.
@@ -21403,7 +21401,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +
 +  void verify() const {
 +
-+    ASSERT_EQ(_root_chunks.count() * metaspace::chklvl::MAX_CHUNK_WORD_SIZE,
++    ASSERT_EQ(_root_chunks.count() * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
 +              _node->used_words());
 +
 +    ASSERT_GE(_commit_limit,                      _counter_committed_words.get());
@@ -21449,7 +21447,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +      EXPECT_NOT_NULL(c);
 +      EXPECT_TRUE(c->is_root_chunk());
 +      EXPECT_TRUE(c->is_free());
-+      EXPECT_EQ(c->word_size(), metaspace::chklvl::MAX_CHUNK_WORD_SIZE);
++      EXPECT_EQ(c->word_size(), metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +
 +      if (!may_hit_commit_limit) {
 +        if (Settings::newborn_root_chunks_are_fully_committed()) {
@@ -21550,13 +21548,13 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +
 +  } // uncommit_chunk
 +
-+  Metachunk* split_chunk_with_checks(Metachunk* c, chklvl_t target_level, MetachunkListVector* freelist) {
++  Metachunk* split_chunk_with_checks(Metachunk* c, chunklevel_t target_level, MetachunkListVector* freelist) {
 +
 +    DEBUG_ONLY(c->verify(true);)
 +
-+    const chklvl_t orig_level = c->level();
++    const chunklevel_t orig_level = c->level();
 +    assert(orig_level < target_level, "Sanity");
-+    DEBUG_ONLY(metaspace::chklvl::check_valid_level(target_level);)
++    DEBUG_ONLY(metaspace::chunklevel::check_valid_level(target_level);)
 +
 +    const int total_num_chunks_in_freelist_before = freelist->total_num_chunks();
 +    const size_t total_word_size_in_freelist_before = freelist->total_word_size();
@@ -21580,8 +21578,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +    // buddy chunk to appear of level + 1 (aka, half size).
 +    size_t expected_wordsize_increase = 0;
 +    int expected_num_chunks_increase = 0;
-+    for (chklvl_t l = orig_level + 1; l <= target_level; l ++) {
-+      expected_wordsize_increase += metaspace::chklvl::word_size_for_level(l);
++    for (chunklevel_t l = orig_level + 1; l <= target_level; l ++) {
++      expected_wordsize_increase += metaspace::chunklevel::word_size_for_level(l);
 +      expected_num_chunks_increase ++;
 +    }
 +
@@ -21596,9 +21594,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +  } // end: split_chunk_with_checks
 +
 +
-+  Metachunk* merge_chunk_with_checks(Metachunk* c, chklvl_t expected_target_level, MetachunkListVector* freelist) {
++  Metachunk* merge_chunk_with_checks(Metachunk* c, chunklevel_t expected_target_level, MetachunkListVector* freelist) {
 +
-+    const chklvl_t orig_level = c->level();
++    const chunklevel_t orig_level = c->level();
 +    assert(expected_target_level < orig_level, "Sanity");
 +
 +    const int total_num_chunks_in_freelist_before = freelist->total_num_chunks();
@@ -21620,8 +21618,8 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +    // of the original chunk (each size doubling) we should see one buddy chunk swallowed up.
 +    size_t expected_wordsize_decrease = 0;
 +    int expected_num_chunks_decrease = 0;
-+    for (chklvl_t l = orig_level; l > expected_target_level; l --) {
-+      expected_wordsize_decrease += metaspace::chklvl::word_size_for_level(l);
++    for (chunklevel_t l = orig_level; l > expected_target_level; l --) {
++      expected_wordsize_decrease += metaspace::chunklevel::word_size_for_level(l);
 +      expected_num_chunks_decrease ++;
 +    }
 +
@@ -21783,7 +21781,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +
 +      verify();
 +
-+      for (chklvl_t target_level = LOWEST_CHUNK_LEVEL + 1;
++      for (chunklevel_t target_level = LOWEST_CHUNK_LEVEL + 1;
 +           target_level <= HIGHEST_CHUNK_LEVEL; target_level ++) {
 +
 +        // Split:
@@ -21831,7 +21829,7 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +
 +  MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
 +
-+  const size_t word_size = metaspace::chklvl::MAX_CHUNK_WORD_SIZE * 10;
++  const size_t word_size = metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 10;
 +
 +  SizeCounter scomm;
 +  SizeCounter sres;
@@ -21877,38 +21875,38 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +// should be pretty independent since we need things like os::vm_page_size()
 +// which in turn need OS layer initialization.
 +TEST_VM(metaspace, virtual_space_node_test_1) {
-+  VirtualSpaceNodeTest test(metaspace::chklvl::MAX_CHUNK_WORD_SIZE,
-+      metaspace::chklvl::MAX_CHUNK_WORD_SIZE);
++  VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
++      metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +  test.test_simple();
 +}
 +
 +TEST_VM(metaspace, virtual_space_node_test_2) {
 +  // Should not hit commit limit
-+  VirtualSpaceNodeTest test(3 * metaspace::chklvl::MAX_CHUNK_WORD_SIZE,
-+      3 * metaspace::chklvl::MAX_CHUNK_WORD_SIZE);
++  VirtualSpaceNodeTest test(3 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
++      3 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +  test.test_simple();
 +  test.test_exhaust_node();
 +}
 +
 +TEST_VM(metaspace, virtual_space_node_test_3) {
 +  // Should hit commit limit
-+  VirtualSpaceNodeTest test(10 * metaspace::chklvl::MAX_CHUNK_WORD_SIZE,
-+      3 * metaspace::chklvl::MAX_CHUNK_WORD_SIZE);
++  VirtualSpaceNodeTest test(10 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
++      3 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +  test.test_exhaust_node();
 +}
 +
 +TEST_VM(metaspace, virtual_space_node_test_4) {
 +  // Test committing uncommitting arbitrary ranges
-+  VirtualSpaceNodeTest test(metaspace::chklvl::MAX_CHUNK_WORD_SIZE,
-+      metaspace::chklvl::MAX_CHUNK_WORD_SIZE);
++  VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
++      metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +  test.test_arbitrary_commits();
 +}
 +
 +TEST_VM(metaspace, virtual_space_node_test_5) {
 +  // Test committing uncommitting arbitrary ranges
 +  for (int run = 0; run < 100; run ++) {
-+    VirtualSpaceNodeTest test(metaspace::chklvl::MAX_CHUNK_WORD_SIZE,
-+        metaspace::chklvl::MAX_CHUNK_WORD_SIZE);
++    VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
++        metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +    test.test_split_and_merge_chunks();
 +  }
 +}
@@ -21916,20 +21914,20 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/gtest/metaspace/test_virtualsp
 +TEST_VM(metaspace, virtual_space_node_test_7) {
 +  // Test large allocation and freeing.
 +  {
-+    VirtualSpaceNodeTest test(metaspace::chklvl::MAX_CHUNK_WORD_SIZE * 100,
-+        metaspace::chklvl::MAX_CHUNK_WORD_SIZE * 100);
++    VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100,
++        metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100);
 +    test.test_exhaust_node();
 +  }
 +  {
-+    VirtualSpaceNodeTest test(metaspace::chklvl::MAX_CHUNK_WORD_SIZE * 100,
-+        metaspace::chklvl::MAX_CHUNK_WORD_SIZE * 100);
++    VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100,
++        metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100);
 +    test.test_exhaust_node();
 +  }
 +
 +}
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/gc/TestSystemGC.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/gc/TestSystemGC.java
 --- a/test/hotspot/jtreg/gc/TestSystemGC.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/gc/TestSystemGC.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/gc/TestSystemGC.java	Mon May 11 07:15:35 2020 +0200
 @@ -47,8 +47,7 @@
   * @run main/othervm -XX:+UseG1GC gc.TestSystemGC
   * @run main/othervm -XX:+UseG1GC -XX:+ExplicitGCInvokesConcurrent gc.TestSystemGC
@@ -21940,9 +21938,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/gc/TestSystemGC.java
  
  /*
   * @test TestSystemGCShenandoah
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/gc/class_unloading/TestG1ClassUnloadingHWM.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/gc/class_unloading/TestG1ClassUnloadingHWM.java
 --- a/test/hotspot/jtreg/gc/class_unloading/TestG1ClassUnloadingHWM.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/gc/class_unloading/TestG1ClassUnloadingHWM.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/gc/class_unloading/TestG1ClassUnloadingHWM.java	Mon May 11 07:15:35 2020 +0200
 @@ -103,12 +103,18 @@
        // Allocate past the MetaspaceSize limit
        long metaspaceSize = Long.parseLong(args[0]);
@@ -21964,9 +21962,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/gc/class_unloading/TestG
      }
  
      public static void triggerYoungGCs(long youngGenSize) {
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/gc/metaspace/CompressedClassSpaceSizeInJmapHeap.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/gc/metaspace/CompressedClassSpaceSizeInJmapHeap.java
 --- a/test/hotspot/jtreg/gc/metaspace/CompressedClassSpaceSizeInJmapHeap.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/gc/metaspace/CompressedClassSpaceSizeInJmapHeap.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/gc/metaspace/CompressedClassSpaceSizeInJmapHeap.java	Mon May 11 07:15:35 2020 +0200
 @@ -32,7 +32,7 @@
   * @library /test/lib
   * @modules java.base/jdk.internal.misc
@@ -21985,9 +21983,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/gc/metaspace/CompressedC
          out.delete();
      }
  
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java
 --- a/test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java	Mon May 11 07:15:35 2020 +0200
 @@ -233,7 +233,6 @@
          excludeTestMaxRange("G1RSetRegionEntries");
          excludeTestMaxRange("G1RSetSparseRegionEntries");
@@ -21996,9 +21994,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/CommandLine/Opti
          excludeTestMaxRange("InitialHeapSize");
          excludeTestMaxRange("MaxHeapSize");
          excludeTestMaxRange("MaxRAM");
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java
 --- a/test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java	Mon May 11 07:15:35 2020 +0200
 @@ -36,7 +36,6 @@
      public static void main(String... args) throws Exception {
          ProcessBuilder pb = ProcessTools.createJavaProcessBuilder(
@@ -22007,9 +22005,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/Metaspace/MaxMet
              "-XX:MaxMetaspaceSize=4195328",
              "-XX:+UseCompressedClassPointers",
              "-XX:CompressedClassSpaceSize=1g",
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java
 --- a/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java	Mon May 11 07:15:35 2020 +0200
 @@ -89,10 +89,19 @@
          pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "by-chunktype"});
          output = new OutputAnalyzer(pb.start());
@@ -22047,9 +22045,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/Metaspace/PrintM
          // Test with different scales
          pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=G"});
          output = new OutputAnalyzer(pb.start());
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/cds/MaxMetaspaceSize.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/runtime/cds/MaxMetaspaceSize.java
 --- a/test/hotspot/jtreg/runtime/cds/MaxMetaspaceSize.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/runtime/cds/MaxMetaspaceSize.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/runtime/cds/MaxMetaspaceSize.java	Mon May 11 07:15:35 2020 +0200
 @@ -44,9 +44,8 @@
      processArgs.add("-Xshare:dump");
  
@@ -22061,9 +22059,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/cds/MaxMetaspace
      } else {
        processArgs.add("-XX:MaxMetaspaceSize=1m");
      }
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/cds/appcds/sharedStrings/LargePages.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/runtime/cds/appcds/sharedStrings/LargePages.java
 --- a/test/hotspot/jtreg/runtime/cds/appcds/sharedStrings/LargePages.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/runtime/cds/appcds/sharedStrings/LargePages.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/runtime/cds/appcds/sharedStrings/LargePages.java	Mon May 11 07:15:35 2020 +0200
 @@ -46,8 +46,8 @@
  
          SharedStringsUtils.dump(TestCommon.list("HelloString"),
@@ -22075,9 +22073,9 @@ diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/runtime/cds/appcds/share
 +            "-XX:+UseLargePages");
      }
  }
-diff -r 158e145e3a42 -r 06a0c28de79d test/hotspot/jtreg/vmTestbase/metaspace/gc/MetaspaceBaseGC.java
+diff -r 158e145e3a42 -r 4a2c1b61d065 test/hotspot/jtreg/vmTestbase/metaspace/gc/MetaspaceBaseGC.java
 --- a/test/hotspot/jtreg/vmTestbase/metaspace/gc/MetaspaceBaseGC.java	Sat May 09 13:42:16 2020 -0700
-+++ b/test/hotspot/jtreg/vmTestbase/metaspace/gc/MetaspaceBaseGC.java	Sun May 10 11:20:49 2020 +0200
++++ b/test/hotspot/jtreg/vmTestbase/metaspace/gc/MetaspaceBaseGC.java	Mon May 11 07:15:35 2020 +0200
 @@ -101,7 +101,6 @@
  
      protected void configure(String args[]) {
