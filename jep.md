@@ -271,4 +271,4 @@ There are several ways to work around this limit should this turn out to be a pr
 [2] https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/test/test-mallocwhynot/malloc-only-vs-patched.svg
 
 <a name="footnote3"></a>
-[3] https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/test/test-mallocwhynot/readme.md
+[3] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/test/test-mallocwhynot/readme.md
