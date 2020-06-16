@@ -20,18 +20,18 @@ Even though it would be a possible future enhancement, it does not extend the us
 Motivation
 ----------
 
-Since its inception, metaspace has been somewhat notorious for high memory usage; while most normal applications don't experience problems, it is easy to arrive at pathological situations which tickle the metaspace allocator in just the wrong way to cause excessive memory waste. This should be improved.
+Since its inception, metaspace has been somewhat notorious for high off-heap memory usage; while most normal applications don't have problems, it is easy to tickle the metaspace allocator in just the wrong way to cause excessive memory waste. Unfortunately these types of pathological cases are not uncommon. This can be improved.
 
-Moreover, metaspace coding has grown over time, becoming difficult to maintain. A clean rewrite would make it easier to maintain and test.
+Moreover, metaspace coding has grown complex over time and became difficult to maintain. A clean rewrite would help.
 
 Description
 -----------
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Since their lifetime are usually bound to that of the loading class loader, the metaspace allocator is in its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Their lifetime are mostly bound to that of the loading class loader, so the metaspace allocator is in its heart an arena-based allocator [\[2\]](#footnote2).
 
-It manages memory in per-classloader arenas, from which the class loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace and put into freelists for future reuse.
+It manages memory in per-classloader arenas, from which the class loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
 ### Proposed improvements
 
@@ -39,9 +39,9 @@ There are several waste areas within metaspace which a rewrite will address:
 
 #### Elasticity
 
-Memory returned to the metaspace by a collected loader is mostly kept around for later reuse; however, that reuse may never happen, so applications with heavy class loading and -unloading may accrue a lot of unused space in the metaspace freelists.
+Memory returned to the metaspace by a collected loader is mostly kept in freelists for later reuse; however, that reuse may never happen, so applications with heavy class loading and -unloading may accrue a lot of unused space in the metaspace freelists.
 
-Since memory in these freelists can only be reused for one specific purpose - further class loading - it would be better to return that memory to the Operating System for use in different areas. That would give us increased elasticity.
+Since memory in these freelists can only be reused for one specific purpose - further class loading - it would be better to return that memory to the Operating System for use in different areas. That would result in increased elasticity.
 
 #### Per Classloader Overhead
 
