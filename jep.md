@@ -135,7 +135,7 @@ Should this be a problem, there would be several ways to work around this limit,
 [5] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/test/test-mallocwhynot/malloc-only-vs-patched.svg
 
 <a name="footnote6"></a>
-[6] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/review-guide/
+[6] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/review-guide/review-guide-1.0.html
 
 <a name="footnote7"></a>
 [7] http://hg.openjdk.java.net/jdk/sandbox/shortlog/38a706be96d4
