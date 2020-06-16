@@ -1,274 +1,132 @@
 Summary
 -------
 
-Promptly return unused Metaspace memory to the operating system and reduce Metaspace memory footprint.
-
+Return unused class-metadata (i.e., _metaspace_) memory to the operating system more promptly, and reduce metaspace memory footprint.
 
 Goals
 -----
 
-- A more elastic Metaspace. It should recover from usage spikes much more readily, returning memory to the operating system after class unloading.
-- Reduced Metaspace memory footprint
-- A cleaner implementation which is less difficult to maintain
-
+- Reduced metaspace memory footprint
+- Better elasticity: metaspace should recover from usage spikes much more readily, returning memory to the operating system when possible.
+- A cleaner metaspace implementation which should be less difficult to maintain
 
 Non-Goals
 ---------
 
-This proposal does not touch the way compressed class pointer encoding works or the way the compressed class space is implemented.
+This proposal will not change the way compressed class pointer encoding works nor the fact that a compressed class space exists.
 
-
+Even though it would be a possible future enhancement, it does not extend the use of the metaspace allocator to other areas of the hotspot. Its callers remain mostly unchanged.
 
 Motivation
 ----------
 
-### Preface
+Since its inception, metaspace has been somewhat notorious for high memory usage; while most normal applications don't experience problems, it is easy to arrive at pathological situations which tickle the metaspace allocator in just the wrong way to cause excessive memory waste. This should be improved.
 
-Class metadata live in non-java-heap, native memory. Their lifetime is bound to that of the loading class loader.
-
-At the lowest level, memory is reserved from the OS, committed as needed, and handed out in chunks of varying (larger) sizes to the class loader. From that point on, these chunks are owned by the class loader.  The class loader does simple pointer bump allocation to serve metadata allocation requests from these chunks.
-
-If the current chunk is exhausted - its leftover space too small to serve an incoming metadata allocation - a new chunk is handed to the class loader and allocation continues from that new chunk. The current chunk is "retired" and the leftover space squirreled away for possible later reuse.
-
-When the class loader is unloaded the Metaspace memory it accumulated over its lifetime can be freed: all its chunks are returned to the Metaspace allocator. They are added to a freelist and may be reused for future class loading.  The Metaspace allocator attempts to return memory to the OS; however, this heavily depends on Metaspace fragmentation and rarely works.
-
-
-### Goal: Make Metaspace more elastic
-
-Allocating memory for class metadata from Metaspace incurs overhead. With the current Metaspace allocator the overhead-to-payload ratio can get excessive.
-
-Two waste areas stick out:
-
-_Waste in free lists_
-
-The size of the free lists can get very excessive. We have seen ratios of up to 70% waste (70% of committed Metaspace memory idling in free lists) after class unloading. Even though there is a mechanism in place to reclaim free metaspace memory and return it to the OS, it is largely ineffective and easily defeated by metaspace fragmentation. Metaspace fragmentation in this case means interleaved placement of chunks from class loaders which have different life spans.
-
-_Intra-chunk waste for active allocations_
-
-Class loaders get assigned a chunk of Metaspace memory; they allocate from it via pointer-bump allocation. Typically, at some point the class loader will stop loading classes and has no further need for Metaspace memory; the remaining space in its current chunk is wasted.
-
-Space wasted this way typically amounts to about 5-20% of committed Metaspace. Note that the more small class loaders exist - loaders only loading few or a single class each - the higher this percentage becomes. Typical examples include loaders for Reflection delegator classes and for hidden classes backing Lambdas. 
-
-A second waste point is leftover space in retired chunks: when the free space left in a chunk is too small to satisfy an allocation, the class loader requests a new chunk; an attempt is made to reuse the leftover space of the old chunk, but often fails. 
-
-Space wasted this way typically amounts to about 1-3% of committed Metaspace.
-
+Moreover, metaspace coding has grown over time, becoming difficult to maintain. A clean rewrite would make it easier to maintain and test.
 
 Description
 -----------
 
-We propose the following implementation changes (which are already implemented as a prototype [\[1\](#footnote1)):
+### Preface
 
-### A) Commit chunks on demand and uncommit free chunks
+Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Since their lifetime are usually bound to that of the loading class loader, the metaspace allocator is in its heart an arena-based allocator [\[2\]](#footnote2).
 
-Currently memory is committed up-front, in a coarse-grained fashion, in the lowest allocation layer. A chunk is living in completely committed memory and remains so for its whole life time, regardless whether it is in use or not.
+It manages memory in per-classloader arenas, from which the class loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace and put into freelists for future reuse.
 
-#### Proposal 
+### Proposed improvements
 
-Chunks shall be individually committable and uncommittable. Chunks in free lists should be uncommitted where it makes sense and thus would not count towards the working set size of the VM process.
+There are several waste areas within metaspace which a rewrite will address:
 
-Larger chunks should not be committed as a whole but only on demand, similar to thread stacks. That way larger chunks can get handed to class loaders but the full price would not have to be paid up front.
+#### Elasticity
 
-#### Commit granules
+Memory returned to the metaspace by a collected loader is mostly kept around for later reuse; however, that reuse may never happen, so applications with heavy class loading and -unloading may accrue a lot of unused space in the metaspace freelists.
 
-Where today Metaspace is committed bottom-to-top with a high water mark, in this proposal the Metaspace would become "checkered", consisting of committed and uncommitted ranges. 
+Since memory in these freelists can only be reused for one specific purpose - further class loading - it would be better to return that memory to the Operating System for use in different areas. That would give us increased elasticity.
 
-In order to keep virtual memory fragmentation at bay, memory needs to be committed and uncommitted in a sufficiently coarse - and tunable - granularity.
+#### Per Classloader Overhead
 
-This JEP proposes to section the Metaspace memory into homogeneous units for the purpose of committing and uncommitting ("commit granules"). A commit granule can only be committed and uncommitted as a whole. The underlying mapped region shall keep track of the commit state of the granules it contains. Upper layers can request committing and uncommitting ranges of commit granules.
+There is a per-loader overhead in memory usage mainly caused by the granularity by which metaspace arenas can grow (_metaspace chunk size_). That granularity is somewhat coarse which can cause applications with fine granular class loader schemes suffer unreasonably high metaspace usage.
 
-The size of these commit granules shall be tunable and by default large enough to keep virtual memory fragmentation manageable.
+To improve this, it is proposed to change the allocator to a finer-granular growing scheme. Arenas can start off smaller and grow in a more fine controlled fashion, which would reduce the overhead per class loader especially for small loaders.
 
+This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven allocation scheme used successfully e.g. in the Linux kernel. Not only would it reduce per-classloader overhead, it would also give us superior defragmentation on class unloading.
 
-### B) Replace hard-wired chunk geometry with a buddy allocation scheme
+In addition to that, it is proposed to commit arenas lazily, only on demand. That would help loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
 
-The current chunk allocation scheme knows three kinds of chunks, sized 1K/4K/64K respectively, and so-called humongous chunks which are individually sized and larger than 64K. Since JDK-8198423 chunks can be combined and split (e.g. 16 4K chunks can form one 64K chunk). 
+#### Checkered committing
 
-The current allocation scheme has a number of disadvantages:
+In order for these proposals to work, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
-- Ideally, upon returning a chunk to the free list, the chunk would be combined with free neighbors as much as possible to form large contiguous free memory ranges which then could get uncommitted. However, due to the odd chunk geometry, this remains difficult even after JDK-8198423.
-
-- Since there are only three chunk sizes to choose from (disregarding humongous chunks) there is a higher chance of intra-chunk waste. For example, a class loader needing to store a data item of size 5K will require a 64K chunk.
-
-- Chunks have headers, and these headers precede the chunk payload area. They must be present even if the chunk is in a free list. Hence, the page containing the chunk header cannot be uncommitted. This means even if we were to uncommit chunk payload areas, they always would be preceded by a single committed page, increasing virtual memory fragmentation and wasting memory.
-
-- Humongous chunks, currently needed to handle large singular Metadata allocations, always need special treatment.
-
-#### Proposal: 
-
-_Replace the current scheme with a power-2-based buddy allocator._
-
-In the buddy allocator scheme, chunks are sized in power-of-two steps from a minimum size up to a maximum size (these chunk sizes apply to both class and non-class space).
-
-The maximum chunk size shall be large enough to serve any possible Metaspace allocation ("root chunk"). The memory range of a VirtualSpaceNode would consist of a series of n root chunks. Its borders would be aligned to root chunk size.
-
-The minimum chunk size shall be small enough to house the majority of InstanceKlass instances in class space (1K for a 64bit VM).
-
-_Remove humongous chunks:_ Since root chunks would be large enough for the largest possible metadata allocation, and chunks can get committed on demand, there is no need for humongous chunks anymore. That significantly reduces code complexity.
-
-_Split chunk headers from payload:_ chunk headers are to be housed in a separate chunk header pool. Separating chunk headers from their chunks would mean chunks could get fully uncommitted without affecting the headers. Two neighboring uncommitted chunks would then form a single contiguous memory mapping on the OS layer, reducing virtual memory fragmentation.
-
-_Let Chunks grow in place if possible:_ in a power-2 buddy allocation scheme, chunks have a good chance to grow in place if they are too small to house a new Metaspace allocation: if the chunk is followed by an empty buddy chunk, they can be fused to one chunk. 
-
-Advantages:
-
-- Much better defragmentation, also in long running VMs with many class load/unload cycles. More efficient coalescation of free chunks, allowing for larger contiguous memory ranges. Together with the separation of chunk headers from their payload this allows for uncommitting larger memory areas while keeping virtual memory fragmentation to a minimum.
-
-- More chunk sizes to choose from would result in less intra-chunk waste. The fact that chunks can grow in place is a nice bonus.
-
-- Code clarity: the buddy allocator is a simple standard algorithm which is well known and understood. This improves maintainability. It is also cheap to implement.
-
-
-### Example: stepping through memory allocation
-
-Given the new allocation scheme, allocation requires the following steps (leaving out small details like handling of leftover space from retired chunks):
-
-- A class loader requests n words of Metaspace memory. 
-
-- The loader attempts to allocate from its current chunk via pointer-bump. This may lead to committing memory if the allocation spans the boundary of an uncommitted commit granule. If committing memory fails (hitting limit or GC threshold), allocation fails.
-
-- If the chunk is too small to house the allocation, first an attempt is made to grow it in-place by fusing it with its buddy chunk, if that buddy chunk happens to be free.
-
-- Failing that, an attempt is made to take a new chunk from the global free lists.
-
-- If only a larger chunk is available in the global free lists, it is taken from its corresponding list and split in power-of-two-steps to produce the desired output chunk. The resulting splinter chunks are re-added to their corresponding freelist.
-
-- If no free chunk is found in the free lists, a new root chunk is retrieved from the underlying memory region. Note that this chunk does not necessarily have to be committed. Again, this chunk is split in buddy style fashion to produce the result chunk, and any splinter chunks are added to the free list.
-
-- The result chunk is given to the requesting class loader.
-
-- Prior to use, the first (n, adjustable) commit granules of the chunk are committed. The originally requested n words of memory are allocated from the top of the chunk and returned.
-
-- In subsequent allocations, more words will be taken from the chunk. Further granules will be committed as needed. This continues until the chunk is used up, when the cycle repeats with a new chunk.
-
-
-### Example: bulk-deallocation
-
-- A class loader is collected, its metadata to be released
-
-- All chunks owned by this class loader are returned to the Metaspace allocator.
-    
-- For each returned chunk, an attempt is made to fuse it with its buddy chunk, should that be free. That process is repeated until a buddy chunk is encountered which is not free, or until the resulting chunk is a root chunk. The resulting chunk is put into its corresponding free list.
-    
-- Chunks surpassing a certain - tunable - size threshold will be uncommitted. Obviously, that threshold has to be a multiple of the commit granule size.
-
-- Alternatively, or in combination with the last point, when a Metaspace is purged after a GC, free chunks larger than a given threshold can be uncommitted.
-
-
-### Memory overhead
-
-Memory overhead of the old implementation and the proposed new one - as implemented in the current prototype - is roughly equivalent and in any case very minuscule compared to the size of the Metaspace itself.
-
-A bitmap per memory region storing the state of commit granules. For a 1 GB Metaspace, this would amount to 2 KB.
-
-The buddy allocator needs to keep state. Two extra fields per chunk header are used for this, increasing chunk header size by 16 bytes. For a typical application allocating about 10000 chunks, this amounts to increase amounts to about 156KB.
-
-We do not need the Occupancy Bitmaps anymore. That reduces memory costs by 128 KB per GB Metaspace.
-
-
-### Tunable parameters
-
-There are many ways to fine-tune the behavior of the Metaspace allocator, the most important being:
-
-- Commit granule size: a coarser size would reduce the beneficial effects of uncommitting memory but decrease the virtual memory fragmentation at the OS layer.
-- Whether chunks handed to class loaders should be fully committed, partly committed or left uncommitted. Fully committing chunks at that stage disables the committing-on-demand feature; it will save some calls into the Metaspace allocator later on at the cost of using more memory. In practice, that effect has been shown to be not measurable however and a good practice seems to be to just commit the first granule of a chunk and leave subsequent areas uncommitted.
-
-In practice, it was found that fine tuning all these parameters independently from each other was unnecessary, so just one new switch was introduced to set behavior to reasonable defaults:
-
-`-XX:MetaspaceReclaimStrategy=(none|balanced|aggressive)`, with `balanced` being the default.
-
-- `balanced` aims to give the best compromise between memory reclamation and overhead.
-- `aggressive` reclaims more memory a the cost of more fragmentation at the virtual memory area layer.
-- `none` is a fallback setting disabling memory reclamation altogether. No overhead is being paid but no memory is being reclaimed apart from unmapping completely evacuated virtual space regions. In practice, this setting reinstates the behavior Metaspace currently has.
-
-
-### Backward compatibility
-
-#### Memory usage, MaxMetaspaceSize and CompressedClassSpaceSize
-
-We will be backward compatible in terms of memory usage. The VM should not use more committed memory than it did before. Existing installations which manually limit Metaspace size using `-XX:MaxMetaspaceSize=xxx` should not be disturbed, e.g. suddenly receive OOMs, as a result of this work.
-
-The proposed buddy allocator imposes a granularity to the reserved size of Metaspace. This will affect the reservation of class space such that its size can only be a multiple of a commit granule size, which is currently designed to be 4M. This means that if the class space size is specified via `-XX:CompressedClassSpaceSize=xxx`, the effective size of class space will be rounded up to the next 4M boundary. This may very slightly increase the reserved size of class space. This does not affect the size of committed memory.
-
-#### InitialBootClassLoaderMetaspaceSize
-
-The option `InitialBootClassLoaderMetaspaceSize` is not needed anymore and we can get rid of it to reduce complexity. 
-
-This option existed to fine tune the size of the initial chunk handed over to the boot class loader. That was done to speed up loading, since it was assumed that the boot class loader loads many classes and that the number of classes it loads is known and quite static. The speed up would result from the fact that the boot class loader calls less often back into the Metaspace allocator to obtain a new chunk.
-
-However the underlying assumption that the number of classes loaded by the boot class loader is static and known is wrong since with the advent of CDS that number can vary greatly. Secondly, since with this proposal we are now able to commit large chunks on-demand, we can just hand a large uncommitted chunk to the boot class loader and let it commit that chunk as it allocates.
-
+Where today metaspace is committed using a simple high-watermark technique - and never really uncommitted - we would switch this to a scheme where metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
 
 Alternatives
 ------------
 
+Instead of modernizing metaspace, we could remove it and allocate class metadata directly from C heap. The advantage of such a move would be reduced code complexity.
 
-Instead of modernizing the Metaspace allocator, we could get rid of it and allocate class metadata directly from C heap. The perceived advantage of such a move would be reduced code complexity.
+Moving to the C-heap allocator would have the following disadvantages:
 
-The Metaspace allocator (both in its current and in its proposed improved form) is an arena-based allocator, similar to ResourceAreas or Compiler Arenas. An arena-based allocator exploits the fact that data are not released individually but have a common lifetime and can be released in bulk. In case of Metadata that lifetime is bound to the class loader.
+- As an arena-based allocator metaspace exploits the fact that class metadata are bulk-freed. The C-heap allocator does not have that luxury; using it would mean we would have to track and release each single meta datum individually which would increase runtime overhead, and, depending on how they are tracked, code complexity and/or memory usage.
 
-A general purpose allocator like malloc on the other hand needs to be able to release and reuse individual allocations at any time. Providing that ability comes at the cost of memory and CPU overhead. Because of that disadvantage, a customized arena based allocator will always be faster and achieve tighter memory packing than a general purpose allocator.
+- As an arena-based allocator metaspace uses pointer-bump allocation which achieves very tight memory packing. A C-heap allocator typically incurs more overhead per allocation.
 
-The C Heap allocator in particular has some further disadvantages:
+- Using the C-heap allocator would mean we could not implement the compressed class space as we do today and would have to come up with a different solution for compressed class pointers.
 
-- Since allocations cannot be placed into pre-reserved ranges, we cannot use them to allocate Klass structures and convert their pointers into a narrow format by adding a common offset. In other words, the Compressed Class Space as it exists today would not work, we would have to re-imagine the way class pointers are encoded into their narrow format. The current encoding scheme is very effective and it would be difficult to find a similarly effective way to encode them.
+- Relying too much on the libc allocator brings its own risk. C-heap allocators can come with their own set of problems, e.g. high fragmentation, poor elasticity and sbrk issues. Since these issues are not under our control, solving them requires cooperation with platform vendors, which can be work intensive and easily negate the advantage of reduced code complexity. This is based on the experience of long-term maintenance of software across many platforms at SAP.
 
-- Relying too much on the libc allocator for a product which spans multiple platforms brings its own risk. At SAP we have experience with porting software across a large range of platforms. libc allocators can come with their own set of problems, which include but are not limited to high fragmentation, inelasticity and the infamous sbrk-hits-java-heap issue. Working together with vendors to solve these problems can be work- and time-intensive, if possible at all, and easily negate the advantage of reduced code complexity.
+Nevertheless, a prototype was tested which rewired Metadata allocation to C Heap [\[4\]](#footnote4). This experiment was done on Debian with glibc 2.23. The VM as well as a comparison VM using the new metaspace prototype were ran through a micro benchmark which involved heavy class loading and unloading. The compressed class space was switched off for this test since it would not work with C-heap allocation.
 
-Nevertheless, a prototype was tested which completely rewires Metadata allocations to C Heap - so, every Metadata allocation was allocated with malloc(), and upon Class Loader death, each of these allocations was freed via free() [\[3\]](#footnote3). This experiment was done on Debian with glibc 2.23. The VM as well as a comparison VM using the new Metaspace prototype were ran through a micro benchmark involving heavy class loading and unloading. CompressedClassPointers were switched off as to not disadvantage the malloc-only variant.
-
-The malloc-only variant showed the following differences to the comparison VM:
+The following issues with the malloc-only variant were observed:
 
 - Performance was reduced by about 8-12% depending on the number and size of loaded classes.
-- Memory usage (process RSS) went up by 15-18% for class load peaks without class unloading involved [\[2\](#footnote2).
-- With class unloading it was observed that process RSS did not recover at all from usage spikes. The VM became very inelastic. This led to a difference in memory usage of 153% [\[2\](#footnote2).
+- Memory usage (process RSS) went up by 15-18% for class load peaks _without_ class unloading involved ([\[5\](#footnote5)).
+- With class unloading, it was observed that process RSS did not recover at all from usage spikes. The VM became very inelastic. This led to a difference in memory usage of 153% ([\[5\](#footnote5)).
 
-Note that the test was done with the compressed class space switched off. Since compressed class space comes with its own benefits in terms of memory footprint, the comparison would be even worse for the malloc variant.
-
+Note that these numbers hide the memory penalty caused switching off the compressed class space; taking that into consideration would make the comparison even more unfavorable for the malloc-only variant.
 
 Testing
 -------
 
-A side effect of a new Metaspace implementation would be better isolation of sub components which makes for better testability. This will result in more and better gtests.
-
-Extensive function- and performance tests will be part of this work.
+Part of this work will be:
+- a new set of gtests
+- one or more jtreg tests verifying the uncommit capability
 
 Risks and Assumptions
 ---------------------
 
-### Virtual memory fragmentation and uncommit speed
+### Virtual memory fragmentation
 
-An important part of this proposal is the ability to uncommit and recommit at reasonable speed. We are at the mercy of the underlying OS here. In particular, two potential issues stick out:
+Every OS manages its virtual memory ranges in some way (e.g. the Linux kernel uses a red-black tree). Uncommitting memory may fragment these ranges and increase their number. This may affect performance of certain memory operations. It also may cause the VM process to trigger system limits to the maximum number of memory mappings.
 
-1) Uncommitting memory may be slow. We never saw this in practice but it may happen in theory. Metaspace reclamation happens as part of class unloading which may, depending on the collector involved, happen in a GC pause. Slow uncommitting would increase the pause time.
+In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been observed to be modest.
 
-2) Every OS needs to manage virtual memory ranges. Uncommitting memory may fragment these ranges and increase their number. On Linux in particular, vm ranges are represented by an instance of vm_area_struct, which are kept in both a list and a lookup tree. Increasing the number of ranges may increase lookup time for virtual memory areas. Also, there are limits to how many mappings (areas) a process can have.
+Mitigation: increasing the commit granule size would lead to coarser uncommitting, loosing some of its memory benefits but reducing the number of memory mappings.
 
-Note that both issues have been no concern in reality so far.
+### Uncommit speed
 
-Mitigation/Contingency plans:
+Uncommitting large ranges of memory may be slow, depending on how the platform implements page tables and how densely the range had been populated before. Since metaspace reclamation may happen during a GC pause, this may be a potential problem.
 
-For (1), should uncommit times turn out to be problematic, uncommitting could be offloaded to an own thread and be done concurrently to the running application outside of a GC pause. This would increase coding complexity, so it should only be done if necessary.
-
-For both (1) and (2), increasing commit granule size and/or uncommit threshold would decrease virtual memory fragmentation and decrease number of uncommit operations. In extreme cases we could switch off uncommitting altogether. The result would be a allocator working very similar to how Metaspace works now.
+Mitigation: should uncommit times turn out to be problematic, uncommitting should be offloaded to an own thread and be done concurrently to the running application outside a GC pause.
 
 ### Maximum size of metadata
 
-The proposed design imposes an implicit limit to the maximum size a single piece of metadata can have, which is limited by the largest chunk size (root chunk size). The root chunk size is currently designed to be 4M, which is sized to be comfortably larger than the largest possible size of an InstanceKlass (about ~512K).
+The proposed design would impose an implicit limit to the maximum size of a single unit of metadata, since it cannot be larger than the largest chunk size the buddy allocator can manage ("_root chunk size_"). That root chunk size is currently designed to be 4M and it is comfortably larger than the largest metadata we could allocate.
 
-There are several ways to work around this limit should this turn out to be a problem:
-
-- Easiest would be to increase the root chunk size. This is generally harmless but has subtle consequences for the granularity of reserved space, see Backward compatibility notes.
-
-- Alternatively, should that not be sufficient, multiple neighboring root chunks can be chained together to house the metadata.
+Should this be a problem, there would be several ways to work around this limit, from simply increasing the root chunk size to merging two root chunks together.
 
 ----
 
 <a name="footnote1"></a>
-[1] See jdk/sandbox repository, "stuefe-new-metaspace-branch": http://hg.openjdk.java.net/jdk/sandbox/shortlog/b537e6386306
+[1] https://openjdk.java.net/jeps/122
 
 <a name="footnote2"></a>
-[2] https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/test/test-mallocwhynot/malloc-only-vs-patched.svg
+[2] https://en.wikipedia.org/wiki/Region-based_memory_management
 
 <a name="footnote3"></a>
-[3] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/test/test-mallocwhynot/readme.md
+[3] https://en.wikipedia.org/wiki/Buddy_memory_allocation
+
+<a name="footnote4"></a>
+[4] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/test/test-mallocwhynot/readme.md
+
+<a name="footnote5"></a>
+[5] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/test/test-mallocwhynot/malloc-only-vs-patched.svg
