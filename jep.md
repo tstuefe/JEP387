@@ -29,7 +29,7 @@ Description
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Their lifetime are mostly bound to that of the loading class loader, so the metaspace allocator is in its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Their lifetime is mostly bound to that of the loading class loader, so the metaspace allocator is in its heart an arena-based allocator [\[2\]](#footnote2).
 
 It manages memory in per-classloader arenas, from which the class loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
@@ -119,8 +119,6 @@ The proposed design would impose an implicit limit to the maximum size of a sing
 Should this be a problem, there would be several ways to work around this limit, from simply increasing the root chunk size to merging two neighboring root chunks together.
 
 ## Notes
-
-
 
 ----
 
