@@ -49,19 +49,19 @@ There is a per-loader overhead in memory usage mainly caused by the granularity 
 
 To improve this, it is proposed to change the allocator to a finer-granular growing scheme. Arenas can start off smaller and grow in a more fine controlled fashion, which would reduce the overhead per class loader especially for small loaders.
 
-This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven allocation scheme used successfully e.g. in the Linux kernel. Not only would it reduce per-classloader overhead, it would also give us superior defragmentation on class unloading.
+This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only would it reduce per-classloader overhead, it would also give us superior metaspace defragmentation on class unloading.
 
-In addition to that, it is proposed to commit arenas lazily, only on demand. That would help loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
+In addition to that, it is proposed to commit arenas lazily, only on demand. That would reduce footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
 
 #### Checkered committing
 
 In order for these proposals to work, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
-Where today metaspace is committed using a simple high-watermark scheme - and never really uncommitted - we would change that scheme to one in which metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
+Where today metaspace is committed using a simple high-watermark system - and never really uncommitted - we would change that to one in which metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
 
 ### Further information
 
-More detailed descriptions of the proposal can be found at [\[6\]](#footnote6). A working prototype exists as a branch in the jdk-sandbox repository [\[7\]](#footnote7).
+A document detailing the proposal can be found at [\[6\]](#footnote6). A working prototype exists as a branch in the jdk-sandbox repository [\[7\]](#footnote7).
 
 Alternatives
 ------------
@@ -108,7 +108,7 @@ In practice, since the defragmentation capabilities of the buddy allocator are q
 
 Uncommitting large ranges of memory may be slow, depending on how the platform implements page tables and how densely the range had been populated before. Since metaspace reclamation may happen during a GC pause, this could be a problem.
 
-No adverse affects of uncommitting have been observed so far; but should uncommit times turn out to be problematic, uncommitting could be offloaded to an own thread and be done concurrently.
+No adverse affects of uncommitting have been observed so far; but should uncommit times be an issue, uncommitting could be offloaded to a separate thread to be done outside the GC pause.
 
 ### Maximum size of metadata
 
