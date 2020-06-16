@@ -29,7 +29,7 @@ Description
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Their lifetime is mostly bound to that of the loading class loader, so the metaspace allocator is in its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Their lifetime is mostly bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
 
 It manages memory in per-classloader arenas, from which the class loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
@@ -39,7 +39,7 @@ There are several waste areas within metaspace which a rewrite will address:
 
 #### Elasticity
 
-Memory returned to the metaspace by a collected loader is mostly kept in freelists for later reuse; however, that reuse may never happen, so applications with heavy class loading and -unloading may accrue a lot of unused space in the metaspace freelists.
+Memory returned to the metaspace by a collected loader is mostly kept in freelists for later reuse; however, that reuse may not happen for a long time, or it may never happen. Therefore applications with heavy class loading and -unloading may accrue a lot of unused space in the metaspace freelists.
 
 Since memory in these freelists can only be reused for one specific purpose - further class loading - it would be better to return that memory to the Operating System for use in different areas. That would result in increased elasticity.
 
@@ -57,11 +57,11 @@ In addition to that, it is proposed to commit arenas lazily, only on demand. Tha
 
 In order for these proposals to work, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
-Where today metaspace is committed using a simple high-watermark technique - and never really uncommitted - we would switch this to a scheme where metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
+Where today metaspace is committed using a simple high-watermark scheme - and never really uncommitted - we would change that scheme to one in which metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
 
 ### Further information
 
-More detailed descriptions of the proposal can be found at [6]. A working prototype exists as a branch in the jdk-sandbox repository [7].
+More detailed descriptions of the proposal can be found at [\[6\]](#footnote6). A working prototype exists as a branch in the jdk-sandbox repository [\[7\]](#footnote7).
 
 Alternatives
 ------------
@@ -102,15 +102,13 @@ Risks and Assumptions
 
 Every OS manages its virtual memory ranges in some way (e.g. the Linux kernel uses a red-black tree). Uncommitting memory may fragment these ranges and increase their number. This may affect performance of certain memory operations. It also may cause the VM process to trigger system limits to the maximum number of memory mappings.
 
-In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been observed to be very modest.
-
-Mitigation: increasing the commit granule size would lead to coarser uncommitting, loosing some of its memory benefits but reducing the number of memory mappings.
+In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been very modest so far. Should the increased number of mappings be a problem, we would increase the commit granule size, which would lead to coarser uncommitting. That would reduce the number of virtual memory mappings at the cost of some lost uncommit opportunities.
 
 ### Uncommit speed
 
-Uncommitting large ranges of memory may be slow, depending on how the platform implements page tables and how densely the range had been populated before. Since metaspace reclamation may happen during a GC pause, this may be a potential problem.
+Uncommitting large ranges of memory may be slow, depending on how the platform implements page tables and how densely the range had been populated before. Since metaspace reclamation may happen during a GC pause, this could be a problem.
 
-Should uncommit times turn out to be problematic, uncommitting could be offloaded to an own thread and be done concurrently to the running application outside a GC pause.
+No adverse affects of uncommitting have been observed so far; but should uncommit times turn out to be problematic, uncommitting could be offloaded to an own thread and be done concurrently.
 
 ### Maximum size of metadata
 
@@ -118,7 +116,6 @@ The proposed design would impose an implicit limit to the maximum size of a sing
 
 Should this be a problem, there would be several ways to work around this limit, from simply increasing the root chunk size to merging two neighboring root chunks together.
 
-## Notes
 
 ----
 
