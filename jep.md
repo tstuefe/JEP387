@@ -29,9 +29,9 @@ Description
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in non-java-heap memory ("metaspace"). Their lifetime is mostly bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in off-heap memory ("metaspace"). Their lifetime is mostly bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
 
-It manages memory in per-classloader arenas, from which the class loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
+It manages memory in per-class-loader arenas, from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
 ### Proposed improvements
 
@@ -49,7 +49,7 @@ There is a per-loader overhead in memory usage mainly caused by the granularity 
 
 To improve this, it is proposed to change the allocator to a finer-granular growing scheme. Arenas can start off smaller and grow in a more fine controlled fashion, which would reduce the overhead per class loader especially for small loaders.
 
-This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only would it reduce per-classloader overhead, it would also give us superior metaspace defragmentation on class unloading.
+This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only would it reduce per-class-loader overhead, it would also give us superior metaspace defragmentation on class unloading.
 
 In addition to that, it is proposed to commit arenas lazily, only on demand. That would reduce footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
 
@@ -57,7 +57,7 @@ In addition to that, it is proposed to commit arenas lazily, only on demand. Tha
 
 In order for these proposals to work, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
-Where today metaspace is committed using a simple high-watermark system - and never really uncommitted - we would change that to one in which metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
+Where today metaspace is committed using a simple high-watermark system - and never really uncommitted - we would change that to one in which metaspace is segmented into homogeneously sized regions which could be committed independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules could be modified at VM start via a VM flag, which would be a simple way to control virtual memory fragmentation.
 
 ### Further information
 
@@ -100,9 +100,9 @@ Risks and Assumptions
 
 ### Virtual memory fragmentation
 
-Every OS manages its virtual memory ranges in some way (e.g. the Linux kernel uses a red-black tree). Uncommitting memory may fragment these ranges and increase their number. This may affect performance of certain memory operations. It also may cause the VM process to trigger system limits to the maximum number of memory mappings.
+Every OS manages its virtual memory ranges in some way (e.g. the Linux kernel uses a red-black tree). Uncommitting memory may fragment these ranges and increase their number. This may affect performance of certain memory operations. Depending on the OS, it also may cause the VM process to trigger system limits to the maximum number of memory mappings.
 
-In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been very modest so far. Should the increased number of mappings be a problem, we would increase the commit granule size, which would lead to coarser uncommitting. That would reduce the number of virtual memory mappings at the cost of some lost uncommit opportunities.
+In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been observed as very modest. Should the increased number of mappings be a problem, we would increase the commit granule size, which would lead to coarser uncommitting. That would reduce the number of virtual memory mappings at the expense of some lost uncommit opportunities.
 
 ### Uncommit speed
 
