@@ -59,6 +59,10 @@ In order for these proposals to work, the ability to commit and uncommit arbitra
 
 Where today metaspace is committed using a simple high-watermark technique - and never really uncommitted - we would switch this to a scheme where metaspace is segmented into homogeneously sized regions which could be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which will be a simple way to tweak the trade off between commit granularity (and hence, memory savings by uncommit) and virtual memory fragmentation.
 
+### Further information
+
+More detailed descriptions of the proposal can be found at [6]. A working prototype exists as a branch in the jdk-sandbox repository [7].
+
 Alternatives
 ------------
 
@@ -79,8 +83,8 @@ Nevertheless, a prototype was tested which rewired Metadata allocation to C Heap
 The following issues with the malloc-only variant were observed:
 
 - Performance was reduced by about 8-12% depending on the number and size of loaded classes.
-- Memory usage (process RSS) went up by 15-18% for class load peaks _without_ class unloading involved ([\[5\](#footnote5)).
-- With class unloading, it was observed that process RSS did not recover at all from usage spikes. The VM became very inelastic. This led to a difference in memory usage of 153% ([\[5\](#footnote5)).
+- Memory usage (process RSS) went up by 15-18% for class load peaks _without_ class unloading involved [\[5\](#footnote5).
+- With class unloading, it was observed that process RSS did not recover at all from usage spikes. Metaspace was completely inelastic. This led to a difference in memory usage of up to 153% [\[5\](#footnote5).
 
 Note that these numbers hide the memory penalty caused switching off the compressed class space; taking that into consideration would make the comparison even more unfavorable for the malloc-only variant.
 
@@ -98,7 +102,7 @@ Risks and Assumptions
 
 Every OS manages its virtual memory ranges in some way (e.g. the Linux kernel uses a red-black tree). Uncommitting memory may fragment these ranges and increase their number. This may affect performance of certain memory operations. It also may cause the VM process to trigger system limits to the maximum number of memory mappings.
 
-In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been observed to be modest.
+In practice, since the defragmentation capabilities of the buddy allocator are quite good, the increase in memory mappings by this proposal have been observed to be very modest.
 
 Mitigation: increasing the commit granule size would lead to coarser uncommitting, loosing some of its memory benefits but reducing the number of memory mappings.
 
@@ -106,13 +110,17 @@ Mitigation: increasing the commit granule size would lead to coarser uncommittin
 
 Uncommitting large ranges of memory may be slow, depending on how the platform implements page tables and how densely the range had been populated before. Since metaspace reclamation may happen during a GC pause, this may be a potential problem.
 
-Mitigation: should uncommit times turn out to be problematic, uncommitting should be offloaded to an own thread and be done concurrently to the running application outside a GC pause.
+Should uncommit times turn out to be problematic, uncommitting could be offloaded to an own thread and be done concurrently to the running application outside a GC pause.
 
 ### Maximum size of metadata
 
-The proposed design would impose an implicit limit to the maximum size of a single unit of metadata, since it cannot be larger than the largest chunk size the buddy allocator can manage ("_root chunk size_"). That root chunk size is currently designed to be 4M and it is comfortably larger than the largest metadata we could allocate.
+The proposed design would impose an implicit limit to the maximum size of a single meta datum, since it cannot be larger than the largest chunk size the buddy allocator manages ("_root chunk size_"). That root chunk size is currently set to be 4M and it is comfortably larger than anything we would want to allocate from metaspace.
 
-Should this be a problem, there would be several ways to work around this limit, from simply increasing the root chunk size to merging two root chunks together.
+Should this be a problem, there would be several ways to work around this limit, from simply increasing the root chunk size to merging two neighboring root chunks together.
+
+## Notes
+
+
 
 ----
 
@@ -130,3 +138,9 @@ Should this be a problem, there would be several ways to work around this limit,
 
 <a name="footnote5"></a>
 [5] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/test/test-mallocwhynot/malloc-only-vs-patched.svg
+
+<a name="footnote6"></a>
+[6] http://cr.openjdk.java.net/~stuefe/JEP-Improve-Metaspace-Allocator/review-guide/
+
+<a name="footnote7"></a>
+[7] http://hg.openjdk.java.net/jdk/sandbox/shortlog/38a706be96d4
