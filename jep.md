@@ -83,8 +83,8 @@ Nevertheless, a prototype was tested which rewired Metadata allocation to C Heap
 The following issues with the malloc-only variant were observed:
 
 - Performance was reduced by about 8-12% depending on the number and size of loaded classes.
-- Memory usage (process RSS) went up by 15-18% for class load peaks _without_ class unloading involved [\[5\](#footnote5).
-- With class unloading, it was observed that process RSS did not recover at all from usage spikes. Metaspace was completely inelastic. This led to a difference in memory usage of up to 153% [\[5\](#footnote5).
+- Memory usage (process RSS) went up by 15-18% for class load peaks _without_ class unloading involved [\[5\]](#footnote5).
+- With class unloading, it was observed that process RSS did not recover at all from usage spikes. Metaspace was completely inelastic. This led to a difference in memory usage of up to 153% [\[5\]](#footnote5).
 
 Note that these numbers hide the memory penalty caused switching off the compressed class space; taking that into consideration would make the comparison even more unfavorable for the malloc-only variant.
 
