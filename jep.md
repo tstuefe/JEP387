@@ -1,14 +1,14 @@
 Summary
 -------
 
-Return unused class-metadata (i.e., _metaspace_) memory to the operating system more promptly, and reduce metaspace memory footprint.
+Return unused class-metadata (i.e., _metaspace_) memory to the operating system more promptly and reduce metaspace memory footprint.
 
 Goals
 -----
 
 - Reduced metaspace memory footprint
 - Better elasticity: metaspace should recover from usage spikes much more readily, returning memory to the operating system when possible.
-- A cleaner metaspace implementation which should be less difficult to maintain
+- A cleaner metaspace implementation which should be less difficult to maintain.
 
 Non-Goals
 ---------
@@ -20,7 +20,7 @@ Even though it would be a possible future enhancement, it does not extend the us
 Motivation
 ----------
 
-Since its inception, metaspace has been somewhat notorious for high off-heap memory usage; while most normal applications don't have problems, it is easy to tickle the metaspace allocator in just the wrong way to cause excessive memory waste. Unfortunately these types of pathological cases are not uncommon. This can be improved.
+Since its inception, metaspace has been somewhat notorious for high off-heap memory usage. While most normal applications don't have problems, it is easy to tickle the metaspace allocator in just the wrong way to cause excessive memory waste. Unfortunately these types of pathological cases are not uncommon. This can be improved.
 
 Moreover, metaspace coding has grown complex over time and became difficult to maintain. A clean rewrite would help.
 
@@ -29,9 +29,9 @@ Description
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in off-heap memory ("metaspace"). Their lifetime is mostly bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in off-heap memory ("metaspace"). Their lifetime is bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
 
-It manages memory in per-class-loader arenas, from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
+It manages memory in per-class-loader arenas from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
 ### Proposed improvements
 
@@ -39,7 +39,7 @@ There are several waste areas within metaspace which a rewrite will address:
 
 #### Elasticity
 
-Memory returned to the metaspace by a collected loader is mostly kept in freelists for later reuse; however, that reuse may not happen for a long time, or it may never happen. Therefore applications with heavy class loading and -unloading may accrue a lot of unused space in the metaspace freelists.
+Memory returned to the metaspace by a collected loader is kept in freelists for later reuse. However, that reuse may not happen for a long time, or it may never happen. Therefore applications with heavy class loading and unloading may accrue a lot of unused space in the metaspace freelists.
 
 Since memory in these freelists can only be reused for one specific purpose - further class loading - it would be better to return that memory to the Operating System for use in different areas. That would result in increased elasticity.
 
@@ -47,7 +47,7 @@ Since memory in these freelists can only be reused for one specific purpose - fu
 
 There is a per-loader overhead in memory usage mainly caused by the granularity by which metaspace arenas can grow (_metaspace chunk size_). That granularity is somewhat coarse which can cause applications with fine granular class loader schemes suffer unreasonably high metaspace usage.
 
-To improve this, it is proposed to change the allocator to a finer-granular growing scheme. Arenas can start off smaller and grow in a more fine controlled fashion, which would reduce the overhead per class loader especially for small loaders.
+To improve this, it is proposed to change the allocator to a growing scheme with finer granularity. Arenas can start off smaller and grow in a more fine controlled fashion, which would reduce the overhead per class loader especially for small loaders.
 
 This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only would it reduce per-class-loader overhead, it would also give us superior metaspace defragmentation on class unloading.
 
