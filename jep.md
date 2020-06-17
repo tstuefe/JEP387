@@ -22,14 +22,14 @@ Motivation
 
 Since its inception, metaspace has been somewhat notorious for high off-heap memory usage. While most normal applications don't have problems, it is easy to tickle the metaspace allocator in just the wrong way to cause excessive memory waste. Unfortunately these types of pathological cases are not uncommon. This can be improved.
 
-Moreover, metaspace coding has grown complex over time and became difficult to maintain. A clean rewrite would help.
+Moreover, metaspace coding has grown complex over time and became difficult to maintain. A clean rewrite will help.
 
 Description
 -----------
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in off-heap memory ("metaspace"). Their lifetime is bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in off-heap memory ("metaspace"). Their lifetime is typically bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
 
 It manages memory in per-class-loader arenas from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
@@ -39,25 +39,25 @@ There are several waste areas within metaspace which a rewrite will address:
 
 #### Elasticity
 
-Memory returned to the metaspace by a collected loader is kept in freelists for later reuse. However, that reuse may not happen for a long time, or it may never happen. Therefore applications with heavy class loading and unloading may accrue a lot of unused space in the metaspace freelists.
+Memory returned to the metaspace by a collected loader is kept in freelists for later reuse. However, that reuse may not happen for a long time, or it may never happen. Therefore, applications with heavy class loading and unloading may accrue a lot of unused space in the metaspace freelists.
 
-Since memory in these freelists can only be reused for one specific purpose - further class loading - it would be better to return that memory to the Operating System for use in different areas. That would result in increased elasticity.
+Since memory in these freelists can only be reused for one specific purpose - further class loading - it is better to return that memory to the Operating System for use in different areas. That results in increased elasticity.
 
 #### Per Classloader Overhead
 
 There is a per-loader overhead in memory usage mainly caused by the granularity by which metaspace arenas can grow (_metaspace chunk size_). That granularity is somewhat coarse which can cause applications with fine granular class loader schemes suffer unreasonably high metaspace usage.
 
-To improve this, it is proposed to change the allocator to a growing scheme with finer granularity. Arenas can start off smaller and grow in a more fine controlled fashion, which would reduce the overhead per class loader especially for small loaders.
+To improve this, the allocator is changed to a growing scheme with finer granularity. Arenas can start off smaller and grow in a more fine controlled fashion, which will reduce the overhead per class loader especially for small loaders.
 
-This can be done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only would it reduce per-class-loader overhead, it would also give us superior metaspace defragmentation on class unloading.
+This is done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only reduces it per-class-loader overhead, it gives us also superior defragmentation on class unloading.
 
-In addition to that, it is proposed to commit arenas lazily, only on demand. That would reduce footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
+In addition to that, arenas will be committed lazily, only on demand. That reduces footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
 
 #### Checkered committing
 
 In order for these proposals to work, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
-Where today metaspace is committed using a simple high-watermark system - and never really uncommitted - we would change that to one in which metaspace is segmented into homogeneously sized regions which could be committed independently of each other ("_commit granules_"). The metaspace allocator would keep track of the commit state of each granule. The size of these granules could be modified at VM start via a VM flag, which would be a simple way to control virtual memory fragmentation.
+Today metaspace is committed using a simple high-watermark system, and typically never uncommitted. With this proposal, metaspace will be segmented into homogeneously sized regions which can be committed and uncommitted independently of each other ("_commit granules_"). The metaspace allocator will keep track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which provides a simple way to control virtual memory fragmentation.
 
 ### Further information
 
@@ -108,14 +108,11 @@ In practice, since the defragmentation capabilities of the buddy allocator are q
 
 Uncommitting large ranges of memory may be slow, depending on how the platform implements page tables and how densely the range had been populated before. Since metaspace reclamation may happen during a GC pause, this could be a problem.
 
-No adverse affects of uncommitting have been observed so far; but should uncommit times be an issue, uncommitting could be offloaded to a separate thread to be done outside the GC pause.
+No adverse effects of uncommitting have been observed so far; but should uncommit times be an issue, uncommitting could be offloaded to a separate thread to be done outside the GC pause.
 
 ### Maximum size of metadata
 
-The proposed design would impose an implicit limit to the maximum size of a single meta datum, since it cannot be larger than the largest chunk size the buddy allocator manages ("_root chunk size_"). That root chunk size is currently set to be 4M and it is comfortably larger than anything we would want to allocate from metaspace.
-
-Should this be a problem, there would be several ways to work around this limit, from simply increasing the root chunk size to merging two neighboring root chunks together.
-
+The proposed design imposes an implicit limit to the maximum size of a single meta datum, since it cannot be larger than the largest chunk size the buddy allocator manages ("_root chunk size_"). That root chunk size is currently set to be 4M and it is comfortably larger than anything we would want to allocate from metaspace.
 
 ----
 
