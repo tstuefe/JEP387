@@ -6,9 +6,9 @@ Return unused class-metadata (i.e., _metaspace_) memory to the operating system 
 Goals
 -----
 
-- Reduced metaspace memory footprint
+- Reduce metaspace memory footprint.
 - Better elasticity: metaspace should recover from usage spikes much more readily, returning memory to the operating system when possible.
-- A cleaner metaspace implementation which should be less difficult to maintain.
+- A cleaner metaspace implementation which will be less difficult to maintain.
 
 Non-Goals
 ---------
@@ -20,44 +20,44 @@ Even though it would be a possible future enhancement, it does not extend the us
 Motivation
 ----------
 
-Since its inception, metaspace has been somewhat notorious for high off-heap memory usage. While most normal applications don't have problems, it is easy to tickle the metaspace allocator in just the wrong way to cause excessive memory waste. Unfortunately these types of pathological cases are not uncommon. This can be improved.
+Since its inception, metaspace has been somewhat notorious for high off-heap memory usage. While most normal applications don't have problems, it is easy to tickle the metaspace allocator in just the wrong way to cause excessive memory waste. Unfortunately these types of pathological cases are not uncommon.
 
-Moreover, metaspace coding has grown complex over time and became difficult to maintain. A clean rewrite will help.
+Moreover, metaspace coding has grown complex over time and has become more difficult to maintain.
 
 Description
 -----------
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata live in off-heap memory ("metaspace"). Their lifetime is typically bound to that of the loading class loader, so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata lives in memory ("metaspace") that is outside the Java heap. Its lifetime is bound to that of the loading class loader (unless the class is hidden or anonymous), so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
 
-It manages memory in per-class-loader arenas from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
+Metaspace manages memory in per-class-loader arenas from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
 ### Proposed improvements
 
-There are several waste areas within metaspace which a rewrite will address:
+There are several waste areas within metaspace which this rewrite will address:
 
 1) Elasticity
 
-The current implementation keeps memory returned to the metaspace by a collected loader in freelists for later reuse. However, that reuse may not happen for a long time, or it may never happen. Therefore, applications with heavy class loading and unloading may accrue a lot of unused space in the metaspace freelists.
+The current implementation keeps memory returned to the metaspace in freelists for later reuse. However, that reuse may not happen for a long time, or it may never happen. Therefore, applications with heavy class loading and unloading may accrue a lot of unused space in the metaspace freelists.
 
-Since memory in these freelists can only be reused for one specific purpose - further class loading - it is better to return that memory to the Operating System for use in different areas. That results in increased elasticity.
+Since memory in these freelists can only be reused for one specific purpose - further class loading - it is better to return that memory to the operating system for use in different areas. This results in increased elasticity.
 
-2) Per Classloader Overhead
+2) Class Loader Overhead
 
-There is a per-loader overhead in memory usage mainly caused by the granularity by which metaspace arenas can grow (_metaspace chunk size_). That granularity is coarse which can cause applications with fine granular class loader schemes suffer unreasonably high metaspace usage.
+There is a per-loader overhead in memory usage mainly caused by the granularity by which metaspace arenas can grow (_metaspace chunk size_). That granularity is coarse which can cause applications with finer grained class loader schemes to suffer unreasonably high metaspace usage.
 
-To improve this, the allocator is changed to a growing scheme with finer granularity. Arenas can start off smaller and grow in a more fine controlled fashion, which will reduce the overhead per class loader especially for small loaders.
+To improve this, the allocator is changed to a growing scheme with finer granularity. Arenas can start off smaller and grow in a more finely controlled fashion, which will reduce the overhead per class loader especially for small loaders.
 
-This is done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm used successfully e.g. in the Linux kernel. Not only reduces it per-class-loader overhead, it gives us also superior defragmentation on class unloading.
+This is done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm that has been used successfully, e.g. in the Linux kernel. Not only does it reduces per-class-loader overhead, it gives us superior defragmentation on class unloading.
 
-In addition to that, arenas now are committed lazily, only on demand. That reduces footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
+In addition to this, arenas now are committed lazily on demand. That reduces footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
 
 #### Checkered committing
 
-To fully exploit the elasicity offered by the buddy allocation, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
+To fully exploit the elasticity offered by the buddy allocation, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
-The legacy metaspace is committed using a simple high-watermark system, and typically never uncommitted. To overcome this, the elastic metaspace is segmented into homogeneously sized regions which can be committed and uncommitted independently of each other ("_commit granules_"). The new metaspace allocator keeps track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which provides a simple way to control virtual memory fragmentation.
+The legacy metaspace is committed using a simple high-watermark system. It is not possible to uncommit individual sections of metaspace. To overcome this, the elastic metaspace is segmented into homogeneously sized regions which can be committed and uncommitted independently of each other ("_commit granules_"). The new metaspace allocator keeps track of the commit state of each granule. The size of these granules can be modified at VM start via a VM flag, which provides a simple way to control virtual memory fragmentation.
 
 ### Further information
 
@@ -76,9 +76,9 @@ Moving to the C-heap allocator would have the following disadvantages:
 
 - Using the C-heap allocator would mean we could not implement the compressed class space as we do today and would have to come up with a different solution for compressed class pointers.
 
-- Relying too much on the libc allocator brings its own risk. C-heap allocators can come with their own set of problems, e.g. high fragmentation, poor elasticity and sbrk issues. Since these issues are not under our control, solving them requires cooperation with platform vendors, which can be work intensive and easily negate the advantage of reduced code complexity. This is based on the experience of long-term maintenance of software across many platforms at SAP.
+- Relying too much on the libc allocator brings its own risk. C-heap allocators can come with their own set of problems, e.g. high fragmentation, poor elasticity and sbrk issues. Since these issues are not under our control, solving them requires cooperation with platform vendors, which can be work-intensive and easily negate the advantage of reduced code complexity. This is based on the experience of long-term maintenance of software across many platforms at SAP.
 
-Nevertheless, a prototype was tested which rewired Metadata allocation to C Heap [\[4\]](#footnote4). This experiment was done on Debian with glibc 2.23. The VM as well as a comparison VM using the new metaspace prototype were ran through a micro benchmark which involved heavy class loading and unloading. The compressed class space was switched off for this test since it would not work with C-heap allocation.
+Nevertheless, a prototype was tested which rewired Metadata allocation to C Heap [\[4\]](#footnote4). This experiment was done on Debian with glibc 2.23. The VM as well as a comparison VM using the new metaspace prototype were run through a micro benchmark which involved heavy class loading and unloading. The compressed class space was switched off for this test since it would not work with C-heap allocation.
 
 The following issues with the malloc-only variant were observed:
 
