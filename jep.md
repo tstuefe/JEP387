@@ -1,7 +1,7 @@
 Summary
 -------
 
-Return unused class-metadata (i.e., _metaspace_) memory to the operating system more promptly and reduce metaspace memory footprint.
+Return unused HotSpot class-metadata (i.e., _metaspace_) memory to the operating system more promptly and reduce metaspace memory footprint.
 
 Goals
 -----
@@ -29,7 +29,7 @@ Description
 
 ### Preface
 
-Since JEP 122 [\[1\]](#footnote1), class metadata lives in memory ("metaspace") that is outside the Java heap. Its lifetime is bound to that of the loading class loader (unless the class is hidden or anonymous), so the metaspace allocator is at its heart an arena-based allocator [\[2\]](#footnote2).
+Since JEP 122 [\[1\]](#footnote1), class metadata live in memory ("metaspace") that is outside the Java heap. Their lifetime is bound to that of the loading class loader, or java.lang.Class holder in the case of hidden and anonymous classes, which means metadata are released in bulk upon class loader death. Therefore, metaspace is at its heart an arena-based allocator. [\[2\]](#footnote2).
 
 Metaspace manages memory in per-class-loader arenas from which the loader allocates via cheap pointer bump. When the class loader gets collected, these arenas are returned to the metaspace for future reuse.
 
@@ -49,11 +49,11 @@ There is a per-loader overhead in memory usage mainly caused by the granularity 
 
 To improve this, the allocator is changed to a growing scheme with finer granularity. Arenas can start off smaller and grow in a more finely controlled fashion, which will reduce the overhead per class loader especially for small loaders.
 
-This is done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm that has been used successfully, e.g. in the Linux kernel. Not only does it reduces per-class-loader overhead, it gives us superior defragmentation on class unloading.
+This is done by switching metaspace memory management to a buddy allocation scheme [\[3\]](#footnote3). This is an old and proven algorithm that has been used successfully, e.g. in the Linux kernel. Not only does it reduce per-class-loader overhead, it gives us superior defragmentation on class unloading.
 
 In addition to this, arenas now are committed lazily on demand. That reduces footprint for loaders which start out with large arenas but will not use them immediately, or maybe never use them to their full extent, e.g. the boot class loader.
 
-#### Checkered committing
+3) Checkered committing
 
 To fully exploit the elasticity offered by the buddy allocation, the ability to commit and uncommit arbitrary ranges of metaspace is needed.
 
