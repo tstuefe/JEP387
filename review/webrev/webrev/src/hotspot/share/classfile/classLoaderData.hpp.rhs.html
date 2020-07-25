@@ -1,0 +1,508 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre><hr></hr>
+<pre>
+   1 /*
+   2  * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_CLASSFILE_CLASSLOADERDATA_HPP
+  26 #define SHARE_CLASSFILE_CLASSLOADERDATA_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 #include "memory/memRegion.hpp"
+  30 #include "memory/metaspace.hpp"
+  31 #include "oops/oopHandle.hpp"
+  32 #include "oops/weakHandle.hpp"
+  33 #include "runtime/atomic.hpp"
+  34 #include "runtime/mutex.hpp"
+  35 #include "utilities/growableArray.hpp"
+  36 #include "utilities/macros.hpp"
+  37 #if INCLUDE_JFR
+  38 #include "jfr/support/jfrTraceIdExtension.hpp"
+  39 #endif
+  40 
+  41 // external name (synthetic) for the primordial "bootstrap" class loader instance
+  42 #define BOOTSTRAP_LOADER_NAME "bootstrap"
+  43 #define BOOTSTRAP_LOADER_NAME_LEN 9
+  44 
+  45 //
+  46 // A class loader represents a linkset. Conceptually, a linkset identifies
+  47 // the complete transitive closure of resolved links that a dynamic linker can
+  48 // produce.
+  49 //
+  50 // A ClassLoaderData also encapsulates the allocation space, called a metaspace,
+  51 // used by the dynamic linker to allocate the runtime representation of all
+  52 // the types it defines.
+  53 //
+  54 // ClassLoaderData are stored in the runtime representation of classes,
+  55 // and provides iterators for root tracing and other GC operations.
+  56 
+  57 class ClassLoaderDataGraph;
+  58 class JNIMethodBlock;
+  59 class ModuleEntry;
+  60 class PackageEntry;
+  61 class ModuleEntryTable;
+  62 class PackageEntryTable;
+  63 class DictionaryEntry;
+  64 class Dictionary;
+  65 
+<a name="1" id="anc1"></a><span class="new">  66 namespace metaspace {</span>
+<span class="new">  67   class ClassLoaderMetaspace;</span>
+<span class="new">  68 }</span>
+<span class="new">  69 </span>
+  70 // ClassLoaderData class
+  71 
+  72 class ClassLoaderData : public CHeapObj&lt;mtClass&gt; {
+  73   friend class VMStructs;
+  74 
+  75  private:
+  76   class ChunkedHandleList {
+  77     struct Chunk : public CHeapObj&lt;mtClass&gt; {
+  78       static const size_t CAPACITY = 32;
+  79 
+  80       oop _data[CAPACITY];
+  81       volatile juint _size;
+  82       Chunk* _next;
+  83 
+  84       Chunk(Chunk* c) : _size(0), _next(c) { }
+  85     };
+  86 
+  87     Chunk* volatile _head;
+  88 
+  89     void oops_do_chunk(OopClosure* f, Chunk* c, const juint size);
+  90 
+  91    public:
+  92     ChunkedHandleList() : _head(NULL) {}
+  93     ~ChunkedHandleList();
+  94 
+  95     // Only one thread at a time can add, guarded by ClassLoaderData::metaspace_lock().
+  96     // However, multiple threads can execute oops_do concurrently with add.
+  97     OopHandle add(oop o);
+  98     bool contains(oop p);
+  99     NOT_PRODUCT(bool owner_of(oop* p);)
+ 100     void oops_do(OopClosure* f);
+ 101 
+ 102     int count() const;
+ 103   };
+ 104 
+ 105   friend class ClassLoaderDataGraph;
+ 106   friend class ClassLoaderDataGraphIterator;
+ 107   friend class ClassLoaderDataGraphKlassIteratorAtomic;
+ 108   friend class ClassLoaderDataGraphKlassIteratorStatic;
+ 109   friend class ClassLoaderDataGraphMetaspaceIterator;
+ 110   friend class Klass;
+ 111   friend class MetaDataFactory;
+ 112   friend class Method;
+ 113 
+ 114   static ClassLoaderData * _the_null_class_loader_data;
+ 115 
+ 116   WeakHandle _holder;       // The oop that determines lifetime of this class loader
+ 117   OopHandle  _class_loader; // The instance of java/lang/ClassLoader associated with
+ 118                             // this ClassLoaderData
+ 119 
+<a name="2" id="anc2"></a><span class="changed"> 120   metaspace::ClassLoaderMetaspace* volatile _metaspace;  // Meta-space where meta-data defined by the</span>
+ 121                                     // classes in the class loader are allocated.
+ 122   Mutex* _metaspace_lock;  // Locks the metaspace for allocations and setup.
+ 123   bool _unloading;         // true if this class loader goes away
+ 124   bool _has_class_mirror_holder; // If true, CLD is dedicated to one class and that class determines
+ 125                                  // the CLDs lifecycle.  For example, a non-strong hidden class or an
+ 126                                  // unsafe anonymous class.  Arrays of these classes are also assigned
+ 127                                  // to these class loader datas.
+ 128 
+ 129   // Remembered sets support for the oops in the class loader data.
+ 130   bool _modified_oops;             // Card Table Equivalent (YC/CMS support)
+ 131   bool _accumulated_modified_oops; // Mod Union Equivalent (CMS support)
+ 132 
+ 133   int _keep_alive;         // if this CLD is kept alive.
+ 134                            // Used for non-strong hidden classes, unsafe anonymous classes and the
+ 135                            // boot class loader. _keep_alive does not need to be volatile or
+ 136                            // atomic since there is one unique CLD per non-strong hidden class
+ 137                            // or unsafe anonymous class.
+ 138 
+ 139   volatile int _claim; // non-zero if claimed, for example during GC traces.
+ 140                        // To avoid applying oop closure more than once.
+ 141   ChunkedHandleList _handles; // Handles to constant pool arrays, Modules, etc, which
+ 142                               // have the same life cycle of the corresponding ClassLoader.
+ 143 
+ 144   NOT_PRODUCT(volatile int _dependency_count;)  // number of class loader dependencies
+ 145 
+ 146   Klass* volatile _klasses;              // The classes defined by the class loader.
+ 147   PackageEntryTable* volatile _packages; // The packages defined by the class loader.
+ 148   ModuleEntryTable*  volatile _modules;  // The modules defined by the class loader.
+ 149   ModuleEntry* _unnamed_module;          // This class loader's unnamed module.
+ 150   Dictionary*  _dictionary;              // The loaded InstanceKlasses, including initiated by this class loader
+ 151 
+ 152   // These method IDs are created for the class loader and set to NULL when the
+ 153   // class loader is unloaded.  They are rarely freed, only for redefine classes
+ 154   // and if they lose a data race in InstanceKlass.
+ 155   JNIMethodBlock*                  _jmethod_ids;
+ 156 
+ 157   // Metadata to be deallocated when it's safe at class unloading, when
+ 158   // this class loader isn't unloaded itself.
+ 159   GrowableArray&lt;Metadata*&gt;*      _deallocate_list;
+ 160 
+ 161   // Support for walking class loader data objects
+ 162   ClassLoaderData* _next; /// Next loader_datas created
+ 163 
+ 164   Klass*  _class_loader_klass;
+ 165   Symbol* _name;
+ 166   Symbol* _name_and_id;
+ 167   JFR_ONLY(DEFINE_TRACE_ID_FIELD;)
+ 168 
+ 169   void set_next(ClassLoaderData* next) { _next = next; }
+ 170   ClassLoaderData* next() const        { return Atomic::load(&amp;_next); }
+ 171 
+ 172   ClassLoaderData(Handle h_class_loader, bool has_class_mirror_holder);
+ 173   ~ClassLoaderData();
+ 174 
+ 175   // The CLD are not placed in the Heap, so the Card Table or
+ 176   // the Mod Union Table can't be used to mark when CLD have modified oops.
+ 177   // The CT and MUT bits saves this information for the whole class loader data.
+ 178   void clear_modified_oops()             { _modified_oops = false; }
+ 179  public:
+ 180   void record_modified_oops()            { _modified_oops = true; }
+ 181   bool has_modified_oops()               { return _modified_oops; }
+ 182 
+ 183   void accumulate_modified_oops()        { if (has_modified_oops()) _accumulated_modified_oops = true; }
+ 184   void clear_accumulated_modified_oops() { _accumulated_modified_oops = false; }
+ 185   bool has_accumulated_modified_oops()   { return _accumulated_modified_oops; }
+ 186   oop holder_no_keepalive() const;
+ 187   oop holder_phantom() const;
+ 188 
+ 189  private:
+ 190   void unload();
+ 191   bool keep_alive() const       { return _keep_alive &gt; 0; }
+ 192 
+ 193   void classes_do(void f(Klass* const));
+ 194   void loaded_classes_do(KlassClosure* klass_closure);
+ 195   void classes_do(void f(InstanceKlass*));
+ 196   void methods_do(void f(Method*));
+ 197   void modules_do(void f(ModuleEntry*));
+ 198   void packages_do(void f(PackageEntry*));
+ 199 
+ 200   // Deallocate free list during class unloading.
+ 201   void free_deallocate_list();                      // for the classes that are not unloaded
+ 202   void free_deallocate_list_C_heap_structures();    // for the classes that are unloaded
+ 203 
+ 204   // Allocate out of this class loader data
+ 205   MetaWord* allocate(size_t size);
+ 206 
+ 207   Dictionary* create_dictionary();
+ 208 
+ 209   void initialize_name(Handle class_loader);
+ 210 
+ 211  public:
+ 212   // GC interface.
+ 213 
+ 214   // The "claim" is typically used to check if oops_do needs to be applied on
+ 215   // the CLD or not. Most GCs only perform strong marking during the marking phase.
+ 216   enum Claim {
+ 217     _claim_none         = 0,
+ 218     _claim_finalizable  = 2,
+ 219     _claim_strong       = 3,
+ 220     _claim_other        = 4
+ 221   };
+ 222   void clear_claim() { _claim = 0; }
+ 223   void clear_claim(int claim);
+ 224   bool claimed() const { return _claim != 0; }
+ 225   bool claimed(int claim) const { return (_claim &amp; claim) == claim; }
+ 226   bool try_claim(int claim);
+ 227 
+ 228   // Computes if the CLD is alive or not. This is safe to call in concurrent
+ 229   // contexts.
+ 230   bool is_alive() const;
+ 231 
+ 232   // Accessors
+<a name="3" id="anc3"></a><span class="changed"> 233   metaspace::ClassLoaderMetaspace* metaspace_or_null() const { return _metaspace; }</span>
+ 234 
+ 235   static ClassLoaderData* the_null_class_loader_data() {
+ 236     return _the_null_class_loader_data;
+ 237   }
+ 238 
+ 239   Mutex* metaspace_lock() const { return _metaspace_lock; }
+ 240 
+ 241   bool has_class_mirror_holder() const { return _has_class_mirror_holder; }
+ 242 
+ 243   static void init_null_class_loader_data();
+ 244 
+ 245   bool is_the_null_class_loader_data() const {
+ 246     return this == _the_null_class_loader_data;
+ 247   }
+ 248 
+ 249   // Returns true if this class loader data is for the system class loader.
+ 250   // (Note that the class loader data may be for a non-strong hidden class or unsafe anonymous class)
+ 251   bool is_system_class_loader_data() const;
+ 252 
+ 253   // Returns true if this class loader data is for the platform class loader.
+ 254   // (Note that the class loader data may be for a non-strong hidden class or unsafe anonymous class)
+ 255   bool is_platform_class_loader_data() const;
+ 256 
+ 257   // Returns true if this class loader data is for the boot class loader.
+ 258   // (Note that the class loader data may be for a non-strong hidden class or unsafe anonymous class)
+ 259   inline bool is_boot_class_loader_data() const;
+ 260 
+ 261   bool is_builtin_class_loader_data() const;
+ 262   bool is_permanent_class_loader_data() const;
+ 263 
+ 264   // The Metaspace is created lazily so may be NULL.  This
+ 265   // method will allocate a Metaspace if needed.
+<a name="4" id="anc4"></a><span class="changed"> 266   metaspace::ClassLoaderMetaspace* metaspace_non_null();</span>
+ 267 
+ 268   inline oop class_loader() const;
+ 269 
+ 270   // Returns true if this class loader data is for a loader going away.
+ 271   // Note that this is only safe after the GC has computed if the CLD is
+ 272   // unloading or not. In concurrent contexts where there are no such
+ 273   // guarantees, is_alive() should be used instead.
+ 274   bool is_unloading() const     {
+ 275     assert(!(is_the_null_class_loader_data() &amp;&amp; _unloading), "The null class loader can never be unloaded");
+ 276     return _unloading;
+ 277   }
+ 278 
+ 279   // Used to refcount a non-strong hidden class's or unsafe anonymous class's CLD in order to
+ 280   // indicate their aliveness.
+ 281   void inc_keep_alive();
+ 282   void dec_keep_alive();
+ 283 
+ 284   void initialize_holder(Handle holder);
+ 285 
+ 286   void oops_do(OopClosure* f, int claim_value, bool clear_modified_oops = false);
+ 287 
+ 288   void classes_do(KlassClosure* klass_closure);
+ 289   Klass* klasses() { return _klasses; }
+ 290 
+ 291   JNIMethodBlock* jmethod_ids() const              { return _jmethod_ids; }
+ 292   void set_jmethod_ids(JNIMethodBlock* new_block)  { _jmethod_ids = new_block; }
+ 293 
+ 294   void print() const;
+ 295   void print_on(outputStream* out) const PRODUCT_RETURN;
+ 296   void print_value() const;
+ 297   void print_value_on(outputStream* out) const;
+ 298   void verify();
+ 299 
+ 300   OopHandle add_handle(Handle h);
+ 301   void remove_handle(OopHandle h);
+ 302   void init_handle_locked(OopHandle&amp; pd, Handle h);  // used for concurrent access to ModuleEntry::_pd field
+ 303   void add_class(Klass* k, bool publicize = true);
+ 304   void remove_class(Klass* k);
+ 305   bool contains_klass(Klass* k);
+ 306   void record_dependency(const Klass* to);
+ 307   PackageEntryTable* packages() { return _packages; }
+ 308   ModuleEntry* unnamed_module() { return _unnamed_module; }
+ 309   ModuleEntryTable* modules();
+ 310   bool modules_defined() { return (_modules != NULL); }
+ 311 
+ 312   // Offsets
+ 313   static ByteSize holder_offset()     { return in_ByteSize(offset_of(ClassLoaderData, _holder)); }
+ 314   static ByteSize keep_alive_offset() { return in_ByteSize(offset_of(ClassLoaderData, _keep_alive)); }
+ 315 
+ 316   // Loaded class dictionary
+ 317   Dictionary* dictionary() const { return _dictionary; }
+ 318 
+ 319   void add_to_deallocate_list(Metadata* m);
+ 320 
+ 321   static ClassLoaderData* class_loader_data(oop loader);
+ 322   static ClassLoaderData* class_loader_data_or_null(oop loader);
+ 323 
+ 324   // Returns Klass* of associated class loader, or NULL if associated loader is 'bootstrap'.
+ 325   // Also works if unloading.
+ 326   Klass* class_loader_klass() const { return _class_loader_klass; }
+ 327 
+ 328   // Returns the class loader's explict name as specified during
+ 329   // construction or the class loader's qualified class name.
+ 330   // Works during unloading.
+ 331   const char* loader_name() const;
+ 332   // Returns the explicitly specified class loader name or NULL.
+ 333   Symbol* name() const { return _name; }
+ 334 
+ 335   // Obtain the class loader's _name_and_id, works during unloading.
+ 336   const char* loader_name_and_id() const;
+ 337   Symbol* name_and_id() const { return _name_and_id; }
+ 338 
+ 339   JFR_ONLY(DEFINE_TRACE_ID_METHODS;)
+ 340 };
+ 341 
+ 342 #endif // SHARE_CLASSFILE_CLASSLOADERDATA_HPP
+<a name="5" id="anc5"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="5" type="hidden" /></form></body></html>

@@ -1,0 +1,307 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 #include "precompiled.hpp"
+  26 
+  27 #include "logging/log.hpp"
+  28 #include "memory/metaspace/arenaGrowthPolicy.hpp"
+  29 #include "memory/metaspace.hpp"
+  30 #include "memory/metaspaceTracer.hpp"
+  31 #include "memory/metaspace/chunkManager.hpp"
+  32 #include "memory/metaspace/classLoaderMetaspace.hpp"
+  33 #include "memory/metaspace/internStat.hpp"
+  34 #include "memory/metaspace/metaspaceEnums.hpp"
+  35 #include "memory/metaspace/metaspaceStatistics.hpp"
+  36 #include "memory/metaspace/runningCounters.hpp"
+  37 #include "memory/metaspace/settings.hpp"
+  38 #include "memory/metaspace/spaceManager.hpp"
+  39 #include "runtime/atomic.hpp"
+  40 #include "utilities/debug.hpp"
+  41 
+  42 namespace metaspace {
+  43 
+  44 #define LOGFMT         "CLMS @" PTR_FORMAT " "
+  45 #define LOGFMT_ARGS    p2i(this)
+  46 
+  47 static bool use_class_space(bool is_class) {
+  48   if (Metaspace::using_class_space() &amp;&amp; is_class) {
+  49     return true;
+  50   }
+  51   return false;
+  52 }
+  53 
+  54 static bool use_class_space(Metaspace::MetadataType mdType) {
+  55   return use_class_space(is_class(mdType));
+  56 }
+  57 
+  58 ClassLoaderMetaspace::ClassLoaderMetaspace(Mutex* lock, MetaspaceType space_type)
+  59   : _lock(lock)
+  60   , _space_type(space_type)
+  61   , _non_class_space_manager(NULL)
+  62   , _class_space_manager(NULL)
+  63 {
+  64   ChunkManager* const non_class_cm =
+  65           ChunkManager::chunkmanager_nonclass();
+  66 
+  67   // Initialize non-class Arena
+  68   _non_class_space_manager = new SpaceManager(
+  69       non_class_cm,
+  70       ArenaGrowthPolicy::policy_for_space_type(space_type, false),
+  71       lock,
+  72       RunningCounters::used_nonclass_counter(),
+  73       "non-class sm",
+  74       is_micro());
+  75 
+  76   // If needed, initialize class arena
+  77   if (Metaspace::using_class_space()) {
+  78     ChunkManager* const class_cm =
+  79             ChunkManager::chunkmanager_class();
+  80     _class_space_manager = new SpaceManager(
+  81         class_cm,
+  82         ArenaGrowthPolicy::policy_for_space_type(space_type, true),
+  83         lock,
+  84         RunningCounters::used_class_counter(),
+  85         "class sm",
+  86         is_micro());
+  87   }
+  88 
+  89   UL2(debug, "born (SpcMgr nonclass: " PTR_FORMAT ", SpcMgr class: " PTR_FORMAT ".",
+  90       p2i(_non_class_space_manager), p2i(_class_space_manager));
+  91 
+  92 #ifdef ASSERT
+  93   InternalStats::inc_num_metaspace_births();
+  94   if (_space_type == metaspace::ClassMirrorHolderMetaspaceType) {
+  95     InternalStats::inc_num_anon_cld_births();
+  96   }
+  97 #endif
+  98 }
+  99 
+ 100 ClassLoaderMetaspace::~ClassLoaderMetaspace() {
+ 101   Metaspace::assert_not_frozen();
+ 102 
+ 103   UL(debug, "dies.");
+ 104 
+ 105   delete _non_class_space_manager;
+ 106   delete _class_space_manager;
+ 107 
+ 108 #ifdef ASSERT
+ 109   InternalStats::inc_num_metaspace_deaths();
+ 110   if (_space_type == metaspace::ClassMirrorHolderMetaspaceType) {
+ 111     InternalStats::inc_num_anon_cld_deaths();
+ 112   }
+ 113 #endif
+ 114 
+ 115 }
+ 116 
+ 117 // Allocate word_size words from Metaspace.
+ 118 MetaWord* ClassLoaderMetaspace::allocate(size_t word_size, Metaspace::MetadataType mdType) {
+ 119   Metaspace::assert_not_frozen();
+ 120   if (use_class_space(mdType)) {
+ 121     return class_space_manager()-&gt;allocate(word_size);
+ 122   } else {
+ 123     return non_class_space_manager()-&gt;allocate(word_size);
+ 124   }
+ 125 }
+ 126 
+ 127 // Attempt to expand the GC threshold to be good for at least another word_size words
+ 128 // and allocate. Returns NULL if failure. Used during Metaspace GC.
+ 129 MetaWord* ClassLoaderMetaspace::expand_and_allocate(size_t word_size, Metaspace::MetadataType mdType) {
+ 130   Metaspace::assert_not_frozen();
+ 131   size_t delta_bytes = MetaspaceGC::delta_capacity_until_GC(word_size * BytesPerWord);
+ 132   assert(delta_bytes &gt; 0, "Must be");
+ 133 
+ 134   size_t before = 0;
+ 135   size_t after = 0;
+ 136   bool can_retry = true;
+ 137   MetaWord* res;
+ 138   bool incremented;
+ 139 
+ 140   // Each thread increments the HWM at most once. Even if the thread fails to increment
+ 141   // the HWM, an allocation is still attempted. This is because another thread must then
+ 142   // have incremented the HWM and therefore the allocation might still succeed.
+ 143   do {
+ 144     incremented = MetaspaceGC::inc_capacity_until_GC(delta_bytes, &amp;after, &amp;before, &amp;can_retry);
+ 145     res = allocate(word_size, mdType);
+ 146   } while (!incremented &amp;&amp; res == NULL &amp;&amp; can_retry);
+ 147 
+ 148   if (incremented) {
+ 149     Metaspace::tracer()-&gt;report_gc_threshold(before, after,
+ 150                                   MetaspaceGCThresholdUpdater::ExpandAndAllocate);
+ 151     // Keeping both for now until I am sure the old variant (gc + metaspace) is not needed anymore
+ 152     log_trace(gc, metaspace)("Increase capacity to GC from " SIZE_FORMAT " to " SIZE_FORMAT, before, after);
+ 153     UL2(info, "GC threshold increased: " SIZE_FORMAT "-&gt;" SIZE_FORMAT ".", before, after);
+ 154   }
+ 155 
+ 156   return res;
+ 157 }
+ 158 
+ 159 // Prematurely returns a metaspace allocation to the _block_freelists
+ 160 // because it is not needed anymore.
+ 161 void ClassLoaderMetaspace::deallocate(MetaWord* ptr, size_t word_size, bool is_class) {
+ 162 
+ 163   Metaspace::assert_not_frozen();
+ 164 
+ 165   if (use_class_space(is_class)) {
+ 166     class_space_manager()-&gt;deallocate(ptr, word_size);
+ 167   } else {
+ 168     non_class_space_manager()-&gt;deallocate(ptr, word_size);
+ 169   }
+ 170 
+ 171   DEBUG_ONLY(InternalStats::inc_num_deallocs();)
+ 172 
+ 173 }
+ 174 
+ 175 // Update statistics. This walks all in-use chunks.
+ 176 void ClassLoaderMetaspace::add_to_statistics(clms_stats_t* out) const {
+ 177   if (non_class_space_manager() != NULL) {
+ 178     non_class_space_manager()-&gt;add_to_statistics(&amp;out-&gt;sm_stats_nonclass);
+ 179   }
+ 180   if (class_space_manager() != NULL) {
+ 181     class_space_manager()-&gt;add_to_statistics(&amp;out-&gt;sm_stats_class);
+ 182   }
+ 183 }
+ 184 
+ 185 #ifdef ASSERT
+ 186 void ClassLoaderMetaspace::verify() const {
+ 187   check_valid_spacetype(_space_type);
+ 188   if (non_class_space_manager() != NULL) {
+ 189     non_class_space_manager()-&gt;verify(false);
+ 190   }
+ 191   if (class_space_manager() != NULL) {
+ 192     class_space_manager()-&gt;verify(false);
+ 193   }
+ 194 }
+ 195 #endif // ASSERT
+ 196 
+ 197 
+ 198 // This only exists for JFR and jcmd VM.classloader_stats. We may want to
+ 199 //  change this. Capacity as a stat is of questionable use since it may
+ 200 //  contain committed and uncommitted areas. For now we do this to maintain
+ 201 //  backward compatibility with JFR.
+ 202 void ClassLoaderMetaspace::calculate_jfr_stats(size_t* p_used_bytes, size_t* p_capacity_bytes) const {
+ 203   // Implement this using the standard statistics objects.
+ 204   size_t used_c = 0, cap_c = 0, used_nc = 0, cap_nc = 0;
+ 205   if (non_class_space_manager() != NULL) {
+ 206     non_class_space_manager()-&gt;usage_numbers(&amp;used_nc, NULL, &amp;cap_nc);
+ 207   }
+ 208   if (class_space_manager() != NULL) {
+ 209     class_space_manager()-&gt;usage_numbers(&amp;used_c, NULL, &amp;cap_c);
+ 210   }
+ 211   if (p_used_bytes != NULL) {
+ 212     *p_used_bytes = used_c + used_nc;
+ 213   }
+ 214   if (p_capacity_bytes != NULL) {
+ 215     *p_capacity_bytes = cap_c + cap_nc;
+ 216   }
+ 217 }
+ 218 
+ 219 
+ 220 } // end namespace metaspace
+ 221 
+ 222 
+ 223 
+ 224 
+</pre></body></html>

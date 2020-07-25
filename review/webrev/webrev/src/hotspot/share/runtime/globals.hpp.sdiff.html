@@ -1,0 +1,291 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/runtime </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/universe.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/os.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/runtime/globals.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+ 880           "Do lots of (expensive) FLS dictionary verification")             \
+ 881                                                                             \
+ 882                                                                             \
+ 883   notproduct(bool, CheckMemoryInitialization, false,                        \
+ 884           "Check memory initialization")                                    \
+ 885                                                                             \
+ 886   product(uintx, ProcessDistributionStride, 4,                              \
+ 887           "Stride through processors when distributing processes")          \
+ 888           range(0, max_juint)                                               \
+ 889                                                                             \
+ 890   develop(bool, TraceFinalizerRegistration, false,                          \
+ 891           "Trace registration of final references")                         \
+ 892                                                                             \
+ 893   product(bool, IgnoreEmptyClassPaths, false,                               \
+ 894           "Ignore empty path elements in -classpath")                       \
+ 895                                                                             \
+ 896   product(size_t, InitialBootClassLoaderMetaspaceSize,                      \
+ 897           NOT_LP64(2200*K) LP64_ONLY(4*M),                                  \
+ 898           "(Deprecated) Initial size of the boot class loader data metaspace") \
+ 899           range(30*K, max_uintx/BytesPerWord)                               \
+<span class="removed"> 900           constraint(InitialBootClassLoaderMetaspaceSizeConstraintFunc, AfterErgo)\</span>
+ 901                                                                             \
+ 902   product(bool, PrintHeapAtSIGBREAK, true,                                  \
+ 903           "Print heap layout in response to SIGBREAK")                      \
+ 904                                                                             \
+ 905   manageable(bool, PrintClassHistogram, false,                              \
+ 906           "Print a histogram of class instances")                           \
+ 907                                                                             \
+ 908   experimental(double, ObjectCountCutOffPercent, 0.5,                       \
+ 909           "The percentage of the used heap that the instances of a class "  \
+ 910           "must occupy for the class to generate a trace event")            \
+ 911           range(0.0, 100.0)                                                 \
+ 912                                                                             \
+ 913   /* JVMTI heap profiling */                                                \
+ 914                                                                             \
+ 915   diagnostic(bool, TraceJVMTIObjectTagging, false,                          \
+ 916           "Trace JVMTI object tagging calls")                               \
+ 917                                                                             \
+ 918   diagnostic(bool, VerifyBeforeIteration, false,                            \
+ 919           "Verify memory system before JVMTI iteration")                    \
+ 920                                                                             \
+
+</pre><hr></hr><pre>
+1531           range(0, max_jint)                                                \
+1532                                                                             \
+1533   develop(intx, ProfilerNodeSize,  1024,                                    \
+1534           "Size in K to allocate for the Profile Nodes of each thread")     \
+1535           range(0, 1024)                                                    \
+1536                                                                             \
+1537   product_pd(size_t, MetaspaceSize,                                         \
+1538           "Initial threshold (in bytes) at which a garbage collection "     \
+1539           "is done to reduce Metaspace usage")                              \
+1540           constraint(MetaspaceSizeConstraintFunc,AfterErgo)                 \
+1541                                                                             \
+1542   product(size_t, MaxMetaspaceSize, max_uintx,                              \
+1543           "Maximum size of Metaspaces (in bytes)")                          \
+1544           constraint(MaxMetaspaceSizeConstraintFunc,AfterErgo)              \
+1545                                                                             \
+1546   product(size_t, CompressedClassSpaceSize, 1*G,                            \
+1547           "Maximum size of class area in Metaspace when compressed "        \
+1548           "class pointers are used")                                        \
+1549           range(1*M, 3*G)                                                   \
+1550                                                                             \
+
+
+
+
+
+
+
+
+
+
+
+
+1551   manageable(uintx, MinHeapFreeRatio, 40,                                   \
+1552           "The minimum percentage of heap free after GC to avoid expansion."\
+1553           " For most GCs this applies to the old generation. In G1 and"     \
+1554           " ParallelGC it applies to the whole heap.")                      \
+1555           range(0, 100)                                                     \
+1556           constraint(MinHeapFreeRatioConstraintFunc,AfterErgo)              \
+1557                                                                             \
+1558   manageable(uintx, MaxHeapFreeRatio, 70,                                   \
+1559           "The maximum percentage of heap free after GC to avoid shrinking."\
+1560           " For most GCs this applies to the old generation. In G1 and"     \
+1561           " ParallelGC it applies to the whole heap.")                      \
+1562           range(0, 100)                                                     \
+1563           constraint(MaxHeapFreeRatioConstraintFunc,AfterErgo)              \
+1564                                                                             \
+1565   product(bool, ShrinkHeapInSteps, true,                                    \
+1566           "When disabled, informs the GC to shrink the java heap directly"  \
+1567           " to the target size at the next full GC rather than requiring"   \
+1568           " smaller steps during multiple full GCs.")                       \
+1569                                                                             \
+1570   product(intx, SoftRefLRUPolicyMSPerMB, 1000,                              \
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+ 880           "Do lots of (expensive) FLS dictionary verification")             \
+ 881                                                                             \
+ 882                                                                             \
+ 883   notproduct(bool, CheckMemoryInitialization, false,                        \
+ 884           "Check memory initialization")                                    \
+ 885                                                                             \
+ 886   product(uintx, ProcessDistributionStride, 4,                              \
+ 887           "Stride through processors when distributing processes")          \
+ 888           range(0, max_juint)                                               \
+ 889                                                                             \
+ 890   develop(bool, TraceFinalizerRegistration, false,                          \
+ 891           "Trace registration of final references")                         \
+ 892                                                                             \
+ 893   product(bool, IgnoreEmptyClassPaths, false,                               \
+ 894           "Ignore empty path elements in -classpath")                       \
+ 895                                                                             \
+ 896   product(size_t, InitialBootClassLoaderMetaspaceSize,                      \
+ 897           NOT_LP64(2200*K) LP64_ONLY(4*M),                                  \
+ 898           "(Deprecated) Initial size of the boot class loader data metaspace") \
+ 899           range(30*K, max_uintx/BytesPerWord)                               \
+
+ 900                                                                             \
+ 901   product(bool, PrintHeapAtSIGBREAK, true,                                  \
+ 902           "Print heap layout in response to SIGBREAK")                      \
+ 903                                                                             \
+ 904   manageable(bool, PrintClassHistogram, false,                              \
+ 905           "Print a histogram of class instances")                           \
+ 906                                                                             \
+ 907   experimental(double, ObjectCountCutOffPercent, 0.5,                       \
+ 908           "The percentage of the used heap that the instances of a class "  \
+ 909           "must occupy for the class to generate a trace event")            \
+ 910           range(0.0, 100.0)                                                 \
+ 911                                                                             \
+ 912   /* JVMTI heap profiling */                                                \
+ 913                                                                             \
+ 914   diagnostic(bool, TraceJVMTIObjectTagging, false,                          \
+ 915           "Trace JVMTI object tagging calls")                               \
+ 916                                                                             \
+ 917   diagnostic(bool, VerifyBeforeIteration, false,                            \
+ 918           "Verify memory system before JVMTI iteration")                    \
+ 919                                                                             \
+
+</pre><hr></hr><pre>
+1530           range(0, max_jint)                                                \
+1531                                                                             \
+1532   develop(intx, ProfilerNodeSize,  1024,                                    \
+1533           "Size in K to allocate for the Profile Nodes of each thread")     \
+1534           range(0, 1024)                                                    \
+1535                                                                             \
+1536   product_pd(size_t, MetaspaceSize,                                         \
+1537           "Initial threshold (in bytes) at which a garbage collection "     \
+1538           "is done to reduce Metaspace usage")                              \
+1539           constraint(MetaspaceSizeConstraintFunc,AfterErgo)                 \
+1540                                                                             \
+1541   product(size_t, MaxMetaspaceSize, max_uintx,                              \
+1542           "Maximum size of Metaspaces (in bytes)")                          \
+1543           constraint(MaxMetaspaceSizeConstraintFunc,AfterErgo)              \
+1544                                                                             \
+1545   product(size_t, CompressedClassSpaceSize, 1*G,                            \
+1546           "Maximum size of class area in Metaspace when compressed "        \
+1547           "class pointers are used")                                        \
+1548           range(1*M, 3*G)                                                   \
+1549                                                                             \
+<span class="new">1550   experimental(uintx, ForceCompressedClassSpaceStartAddress, 0,             \</span>
+<span class="new">1551           "Force class space start address to a given value.")              \</span>
+<span class="new">1552                                                                             \</span>
+<span class="new">1553   product(ccstr, MetaspaceReclaimPolicy, "balanced",                        \</span>
+<span class="new">1554           "options: balanced, aggressive, none")                            \</span>
+<span class="new">1555                                                                             \</span>
+<span class="new">1556   develop(bool, MetaspaceGuardAllocations, false,                           \</span>
+<span class="new">1557           "Metapace allocations are guarded.")                              \</span>
+<span class="new">1558                                                                             \</span>
+<span class="new">1559   develop(bool, MetaspaceHandleDeallocations, true,                         \</span>
+<span class="new">1560                 "Switch off Metapace deallocation handling.")                     \</span>
+<span class="new">1561                                                                                                                                                                                         \</span>
+1562   manageable(uintx, MinHeapFreeRatio, 40,                                   \
+1563           "The minimum percentage of heap free after GC to avoid expansion."\
+1564           " For most GCs this applies to the old generation. In G1 and"     \
+1565           " ParallelGC it applies to the whole heap.")                      \
+1566           range(0, 100)                                                     \
+1567           constraint(MinHeapFreeRatioConstraintFunc,AfterErgo)              \
+1568                                                                             \
+1569   manageable(uintx, MaxHeapFreeRatio, 70,                                   \
+1570           "The maximum percentage of heap free after GC to avoid shrinking."\
+1571           " For most GCs this applies to the old generation. In G1 and"     \
+1572           " ParallelGC it applies to the whole heap.")                      \
+1573           range(0, 100)                                                     \
+1574           constraint(MaxHeapFreeRatioConstraintFunc,AfterErgo)              \
+1575                                                                             \
+1576   product(bool, ShrinkHeapInSteps, true,                                    \
+1577           "When disabled, informs the GC to shrink the java heap directly"  \
+1578           " to the target size at the next full GC rather than requiring"   \
+1579           " smaller steps during multiple full GCs.")                       \
+1580                                                                             \
+1581   product(intx, SoftRefLRUPolicyMSPerMB, 1000,                              \
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/memory/universe.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/os.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

@@ -1,0 +1,239 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/spaceManager.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2019 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  27 #define SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace.hpp"
+  31 #include "memory/metaspace/chunkManager.hpp"
+  32 #include "memory/metaspace/metachunk.hpp"
+  33 #include "memory/metaspace/metachunkList.hpp"
+  34 #include "memory/metaspace/metaspaceCommon.hpp"
+  35 
+  36 
+  37 class outputStream;
+  38 class Mutex;
+  39 
+  40 namespace metaspace {
+  41 
+  42 
+  43 class ArenaGrowthPolicy;
+  44 class FreeBlocks;
+  45 
+  46 struct sm_stats_t;
+  47 
+  48 // The SpaceManager:
+  49 // - keeps a list of chunks-in-use by the class loader, as well as a current chunk used
+  50 //   to allocate from
+  51 // - keeps a dictionary of free MetaBlocks. Those can be remnants of a retired chunk or
+  52 //   allocations which were not needed anymore for some reason (e.g. releasing half-allocated
+  53 //   structures when class loading fails)
+  54 
+  55 class SpaceManager : public CHeapObj&lt;mtClass&gt; {
+  56 
+  57   // Lock handed down from the associated ClassLoaderData.
+  58   //  Protects allocations from this space.
+  59   Mutex* const _lock;
+  60 
+  61   // The chunk manager to allocate chunks from.
+  62   ChunkManager* const _chunk_manager;
+  63 
+  64   // The chunk allocation strategy to use.
+  65   const ArenaGrowthPolicy* const _growth_policy;
+  66 
+  67   // List of chunks. Head of the list is the current chunk.
+  68   MetachunkList _chunks;
+  69 
+  70   // Structure to take care of leftover/deallocated space in used chunks
+  71   FreeBlocks* _fbl;
+  72 
+  73   Metachunk* current_chunk()              { return _chunks.first(); }
+  74   const Metachunk* current_chunk() const  { return _chunks.first(); }
+  75 
+  76   // Points to outside size counter which we are to increase/decrease when we allocate memory
+  77   // on behalf of a user or when we are destroyed.
+  78   SizeAtomicCounter* const _total_used_words_counter;
+  79 
+  80   const char* const _name;
+  81 
+  82   // Whether or not this is a "micro loader" which is not expected to load more than one class.
+  83   const bool _is_micro_loader;
+  84 
+  85   Mutex* lock() const                           { return _lock; }
+  86   ChunkManager* chunk_manager() const           { return _chunk_manager; }
+  87 
+  88   // free block list
+  89   FreeBlocks* fbl() const                       { return _fbl; }
+  90   void add_allocation_to_fbl(MetaWord* p, size_t word_size);
+  91 
+  92   // Given a chunk, add its remaining free committed space to the free block list.
+  93   void salvage_chunk(Metachunk* c);
+  94 
+  95   // Allocate a new chunk from the underlying chunk manager able to hold at least
+  96   // requested word size.
+  97   Metachunk* allocate_new_chunk(size_t requested_word_size);
+  98 
+  99   // Returns the level of the next chunk to be added, acc to growth policy.
+ 100   chunklevel_t next_chunk_level() const;
+ 101 
+ 102   // Attempt to enlarge the current chunk to make it large enough to hold at least
+ 103   //  requested_word_size additional words.
+ 104   //
+ 105   // On success, true is returned, false otherwise.
+ 106   bool attempt_enlarge_current_chunk(size_t requested_word_size);
+ 107 
+ 108   // Prematurely returns a metaspace allocation to the _block_freelists
+ 109   // because it is not needed anymore (requires CLD lock to be active).
+ 110   void deallocate_locked(MetaWord* p, size_t word_size);
+ 111 
+ 112   // Returns true if the area indicated by pointer and size have actually been allocated
+ 113   // from this space manager.
+ 114   DEBUG_ONLY(bool is_valid_area(MetaWord* p, size_t word_size) const;)
+ 115 
+ 116 public:
+ 117 
+ 118   SpaceManager(ChunkManager* chunk_manager,
+ 119                const ArenaGrowthPolicy* growth_policy,
+ 120                Mutex* lock,
+ 121                SizeAtomicCounter* total_used_words_counter,
+ 122                const char* name,
+ 123                bool is_micro_loader);
+ 124 
+ 125   ~SpaceManager();
+ 126 
+ 127   // Allocate memory from Metaspace.
+ 128   // 1) Attempt to allocate from the dictionary of deallocated blocks.
+ 129   // 2) Attempt to allocate from the current chunk.
+ 130   // 3) Attempt to enlarge the current chunk in place if it is too small.
+ 131   // 4) Attempt to get a new chunk and allocate from that chunk.
+ 132   // At any point, if we hit a commit limit, we return NULL.
+ 133   MetaWord* allocate(size_t word_size);
+ 134 
+ 135   // Prematurely returns a metaspace allocation to the _block_freelists because it is not
+ 136   // needed anymore.
+ 137   void deallocate(MetaWord* p, size_t word_size);
+ 138 
+ 139   // Update statistics. This walks all in-use chunks.
+ 140   void add_to_statistics(sm_stats_t* out) const;
+ 141 
+ 142   // Convenience method to get the most important usage statistics.
+ 143   // For deeper analysis use add_to_statistics().
+ 144   void usage_numbers(size_t* p_used_words, size_t* p_committed_words, size_t* p_capacity_words) const;
+ 145 
+ 146   DEBUG_ONLY(void verify(bool slow) const;)
+ 147   DEBUG_ONLY(void verify_locked(bool slow) const;)
+ 148 
+ 149   void print_on(outputStream* st) const;
+ 150   void print_on_locked(outputStream* st) const;
+ 151 
+ 152 };
+ 153 
+ 154 } // namespace metaspace
+ 155 
+ 156 #endif // SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+</pre></body></html>

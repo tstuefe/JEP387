@@ -1,0 +1,334 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre><hr></hr>
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  */
+  23 
+  24 #include "precompiled.hpp"
+  25 #include "classfile/classLoaderDataGraph.hpp"
+  26 #include "classfile/systemDictionary.hpp"
+  27 #include "code/codeBehaviours.hpp"
+  28 #include "code/codeCache.hpp"
+  29 #include "code/dependencyContext.hpp"
+  30 #include "gc/shared/gcBehaviours.hpp"
+  31 #include "gc/shared/suspendibleThreadSet.hpp"
+  32 #include "gc/z/zLock.inline.hpp"
+  33 #include "gc/z/zNMethod.hpp"
+  34 #include "gc/z/zOopClosures.hpp"
+  35 #include "gc/z/zStat.hpp"
+  36 #include "gc/z/zUnload.hpp"
+  37 #include "oops/access.inline.hpp"
+  38 
+  39 static const ZStatSubPhase ZSubPhaseConcurrentClassesUnlink("Concurrent Classes Unlink");
+  40 static const ZStatSubPhase ZSubPhaseConcurrentClassesPurge("Concurrent Classes Purge");
+  41 
+  42 class ZIsUnloadingOopClosure : public OopClosure {
+  43 private:
+  44   ZPhantomIsAliveObjectClosure _is_alive;
+  45   bool                         _is_unloading;
+  46 
+  47 public:
+  48   ZIsUnloadingOopClosure() :
+  49       _is_alive(),
+  50       _is_unloading(false) {}
+  51 
+  52   virtual void do_oop(oop* p) {
+  53     const oop o = RawAccess&lt;&gt;::oop_load(p);
+  54     if (o != NULL &amp;&amp; !_is_alive.do_object_b(o)) {
+  55       _is_unloading = true;
+  56     }
+  57   }
+  58 
+  59   virtual void do_oop(narrowOop* p) {
+  60     ShouldNotReachHere();
+  61   }
+  62 
+  63   bool is_unloading() const {
+  64     return _is_unloading;
+  65   }
+  66 };
+  67 
+  68 class ZIsUnloadingBehaviour : public IsUnloadingBehaviour {
+  69 public:
+  70   virtual bool is_unloading(CompiledMethod* method) const {
+  71     nmethod* const nm = method-&gt;as_nmethod();
+  72     ZReentrantLock* const lock = ZNMethod::lock_for_nmethod(nm);
+  73     ZLocker&lt;ZReentrantLock&gt; locker(lock);
+  74     ZIsUnloadingOopClosure cl;
+  75     ZNMethod::nmethod_oops_do(nm, &amp;cl);
+  76     return cl.is_unloading();
+  77   }
+  78 };
+  79 
+  80 class ZCompiledICProtectionBehaviour : public CompiledICProtectionBehaviour {
+  81 public:
+  82   virtual bool lock(CompiledMethod* method) {
+  83     nmethod* const nm = method-&gt;as_nmethod();
+  84     ZReentrantLock* const lock = ZNMethod::lock_for_nmethod(nm);
+  85     lock-&gt;lock();
+  86     return true;
+  87   }
+  88 
+  89   virtual void unlock(CompiledMethod* method) {
+  90     nmethod* const nm = method-&gt;as_nmethod();
+  91     ZReentrantLock* const lock = ZNMethod::lock_for_nmethod(nm);
+  92     lock-&gt;unlock();
+  93   }
+  94 
+  95   virtual bool is_safe(CompiledMethod* method) {
+  96     if (SafepointSynchronize::is_at_safepoint()) {
+  97       return true;
+  98     }
+  99 
+ 100     nmethod* const nm = method-&gt;as_nmethod();
+ 101     ZReentrantLock* const lock = ZNMethod::lock_for_nmethod(nm);
+ 102     return lock-&gt;is_owned();
+ 103   }
+ 104 };
+ 105 
+ 106 ZUnload::ZUnload(ZWorkers* workers) :
+ 107     _workers(workers) {
+ 108 
+ 109   if (!ClassUnloading) {
+ 110     return;
+ 111   }
+ 112 
+ 113   static ZIsUnloadingBehaviour is_unloading_behaviour;
+ 114   IsUnloadingBehaviour::set_current(&amp;is_unloading_behaviour);
+ 115 
+ 116   static ZCompiledICProtectionBehaviour ic_protection_behaviour;
+ 117   CompiledICProtectionBehaviour::set_current(&amp;ic_protection_behaviour);
+ 118 }
+ 119 
+ 120 void ZUnload::prepare() {
+ 121   if (!ClassUnloading) {
+ 122     return;
+ 123   }
+ 124 
+ 125   CodeCache::increment_unloading_cycle();
+ 126   DependencyContext::cleaning_start();
+ 127 }
+ 128 
+ 129 void ZUnload::unlink() {
+ 130   if (!ClassUnloading) {
+ 131     return;
+ 132   }
+ 133 
+ 134   ZStatTimer timer(ZSubPhaseConcurrentClassesUnlink);
+ 135   SuspendibleThreadSetJoiner sts;
+ 136   bool unloading_occurred;
+ 137 
+ 138   {
+ 139     MutexLocker ml(ClassLoaderDataGraph_lock);
+ 140     unloading_occurred = SystemDictionary::do_unloading(ZStatPhase::timer());
+ 141   }
+ 142 
+ 143   Klass::clean_weak_klass_links(unloading_occurred);
+ 144   ZNMethod::unlink(_workers, unloading_occurred);
+ 145   DependencyContext::cleaning_end();
+ 146 }
+ 147 
+ 148 void ZUnload::purge() {
+ 149   if (!ClassUnloading) {
+ 150     return;
+ 151   }
+ 152 
+ 153   ZStatTimer timer(ZSubPhaseConcurrentClassesPurge);
+ 154 
+ 155   {
+ 156     SuspendibleThreadSetJoiner sts;
+ 157     ZNMethod::purge(_workers);
+ 158   }
+ 159 
+ 160   ClassLoaderDataGraph::purge();
+ 161   CodeCache::purge_exception_caches();
+ 162 }
+ 163 
+ 164 void ZUnload::finish() {
+ 165   // Resize and verify metaspace
+ 166   MetaspaceGC::compute_new_size();
+<a name="1" id="anc1"></a><span class="changed"> 167   MetaspaceUtils::verify_metrics();</span>
+ 168 }
+<a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="2" type="hidden" /></form></body></html>

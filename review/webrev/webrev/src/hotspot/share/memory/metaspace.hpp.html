@@ -1,0 +1,392 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2011, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 #ifndef SHARE_MEMORY_METASPACE_HPP
+  25 #define SHARE_MEMORY_METASPACE_HPP
+  26 
+  27 #include "memory/allocation.hpp"
+  28 #include "memory/memRegion.hpp"
+  29 #include "memory/metaspaceChunkFreeListSummary.hpp"
+  30 #include "memory/virtualspace.hpp"
+  31 #include "runtime/globals.hpp"
+  32 #include "utilities/exceptions.hpp"
+  33 #include "utilities/globalDefinitions.hpp"
+  34 
+  35 // Metaspace
+  36 //
+  37 // Metaspaces are Arenas for the VM's metadata.
+  38 // They are allocated one per class loader object, and one for the null
+  39 // bootstrap class loader
+  40 //
+  41 //    block X ---+       +-------------------+
+  42 //               |       |  Virtualspace     |
+  43 //               |       |                   |
+  44 //               |       |                   |
+  45 //               |       |-------------------|
+  46 //               |       || Chunk            |
+  47 //               |       ||                  |
+  48 //               |       ||----------        |
+  49 //               +------&gt;||| block 0 |       |
+  50 //                       ||----------        |
+  51 //                       ||| block 1 |       |
+  52 //                       ||----------        |
+  53 //                       ||                  |
+  54 //                       |-------------------|
+  55 //                       |                   |
+  56 //                       |                   |
+  57 //                       +-------------------+
+  58 //
+  59 
+  60 class ClassLoaderData;
+  61 class MetaspaceShared;
+  62 class MetaspaceTracer;
+  63 class outputStream;
+  64 
+  65 
+  66 namespace metaspace {
+  67 class MetaspaceSizesSnapshot;
+  68 }
+  69 
+  70 ////////////////// Metaspace ///////////////////////
+  71 
+  72 // Metaspaces each have a  SpaceManager and allocations
+  73 // are done by the SpaceManager.  Allocations are done
+  74 // out of the current Metachunk.  When the current Metachunk
+  75 // is exhausted, the SpaceManager gets a new one from
+  76 // the current VirtualSpace.  When the VirtualSpace is exhausted
+  77 // the SpaceManager gets a new one.  The SpaceManager
+  78 // also manages freelists of available Chunks.
+  79 //
+  80 // Currently the space manager maintains the list of
+  81 // virtual spaces and the list of chunks in use.  Its
+  82 // allocate() method returns a block for use as a
+  83 // quantum of metadata.
+  84 
+  85 // Namespace for important central static functions
+  86 // (auxiliary stuff goes into MetaspaceUtils)
+  87 class Metaspace : public AllStatic {
+  88 public:
+  89   // Will eventually be moved to metaspaceEnums.hpp and into the metaspace::.. namespace;
+  90   // for now keep here to keep diff in non-metaspace coding small.
+  91   enum MetadataType {
+  92     ClassType,
+  93     NonClassType,
+  94     MetadataTypeCount
+  95   };
+  96 
+  97 private:
+  98   friend class MetaspaceShared;
+  99 
+ 100   // Base and size of the compressed class space.
+ 101   static MetaWord* _compressed_class_space_base;
+ 102   static size_t _compressed_class_space_size;
+ 103 
+ 104   static size_t _commit_alignment;
+ 105   static size_t _reserve_alignment;
+ 106   DEBUG_ONLY(static bool   _frozen;)
+ 107 
+ 108   static const MetaspaceTracer* _tracer;
+ 109 
+ 110   static bool _initialized;
+ 111 
+ 112   static MetaWord* compressed_class_space_base()              { return _compressed_class_space_base; }
+ 113   static size_t compressed_class_space_size()                 { return _compressed_class_space_size; }
+ 114 
+ 115 public:
+ 116 
+ 117   static const MetaspaceTracer* tracer() { return _tracer; }
+ 118   static void freeze() {
+ 119     assert(DumpSharedSpaces, "sanity");
+ 120     DEBUG_ONLY(_frozen = true;)
+ 121   }
+ 122   static void assert_not_frozen() {
+ 123     assert(!_frozen, "sanity");
+ 124   }
+ 125 
+ 126  private:
+ 127 
+ 128 #ifdef _LP64
+ 129 
+ 130   // Reserve a range of memory at an address suitable for en/decoding narrow
+ 131   // Klass pointers (see: CompressedClassPointers::is_valid_base()).
+ 132   // The returned address shall both be suitable as a compressed class pointers
+ 133   //  base, and aligned to Metaspace::reserve_alignment (which is equal to or a
+ 134   //  multiple of allocation granularity).
+ 135   // On error, returns an unreserved space.
+ 136   static ReservedSpace reserve_address_space_for_compressed_classes(size_t size);
+ 137 
+ 138   // Given a prereserved space, use that to set up the compressed class space list.
+ 139   static void initialize_class_space(ReservedSpace rs);
+ 140 
+ 141   // Returns true if class space has been setup (initialize_class_space).
+ 142   static bool class_space_is_initialized();
+ 143 
+ 144 #endif
+ 145 
+ 146  public:
+ 147 
+ 148   static void ergo_initialize();
+ 149   static void global_initialize();
+ 150   static void post_initialize();
+ 151 
+ 152   // The alignment at which Metaspace mappings are reserved.
+ 153   static size_t reserve_alignment()       { return _reserve_alignment; }
+ 154   static size_t reserve_alignment_words() { return _reserve_alignment / BytesPerWord; }
+ 155 
+ 156   // The granularity at which Metaspace is committed and uncommitted.
+ 157   // (Todo: Why does this have to be exposed?)
+ 158   static size_t commit_alignment()        { return _commit_alignment; }
+ 159   static size_t commit_words()            { return _commit_alignment / BytesPerWord; }
+ 160 
+ 161   // The largest possible single allocation
+ 162   static size_t max_allocation_word_size();
+ 163 
+ 164   static MetaWord* allocate(ClassLoaderData* loader_data, size_t word_size,
+ 165                             MetaspaceObj::Type type, TRAPS);
+ 166 
+ 167   static bool contains(const void* ptr);
+ 168   static bool contains_non_shared(const void* ptr);
+ 169 
+ 170   // Free empty virtualspaces
+ 171   static void purge();
+ 172 
+ 173   static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
+ 174                                    MetaspaceObj::Type type, Metaspace::MetadataType mdtype, TRAPS);
+ 175 
+ 176   static void print_compressed_class_space(outputStream* st) NOT_LP64({});
+ 177 
+ 178   // Return TRUE only if UseCompressedClassPointers is True.
+ 179   static bool using_class_space() {
+ 180     return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
+ 181   }
+ 182 
+ 183   static bool initialized() { return _initialized; }
+ 184 
+ 185 };
+ 186 
+ 187 ////////////////// MetaspaceGC ///////////////////////
+ 188 
+ 189 // Metaspace are deallocated when their class loader are GC'ed.
+ 190 // This class implements a policy for inducing GC's to recover
+ 191 // Metaspaces.
+ 192 
+ 193 class MetaspaceGCThresholdUpdater : public AllStatic {
+ 194  public:
+ 195   enum Type {
+ 196     ComputeNewSize,
+ 197     ExpandAndAllocate,
+ 198     Last
+ 199   };
+ 200 
+ 201   static const char* to_string(MetaspaceGCThresholdUpdater::Type updater) {
+ 202     switch (updater) {
+ 203       case ComputeNewSize:
+ 204         return "compute_new_size";
+ 205       case ExpandAndAllocate:
+ 206         return "expand_and_allocate";
+ 207       default:
+ 208         assert(false, "Got bad updater: %d", (int) updater);
+ 209         return NULL;
+ 210     };
+ 211   }
+ 212 };
+ 213 
+ 214 class MetaspaceGC : public AllStatic {
+ 215 
+ 216   // The current high-water-mark for inducing a GC.
+ 217   // When committed memory of all metaspaces reaches this value,
+ 218   // a GC is induced and the value is increased. Size is in bytes.
+ 219   static volatile size_t _capacity_until_GC;
+ 220   static uint _shrink_factor;
+ 221 
+ 222   static size_t shrink_factor() { return _shrink_factor; }
+ 223   void set_shrink_factor(uint v) { _shrink_factor = v; }
+ 224 
+ 225  public:
+ 226 
+ 227   static void initialize();
+ 228   static void post_initialize();
+ 229 
+ 230   static size_t capacity_until_GC();
+ 231   static bool inc_capacity_until_GC(size_t v,
+ 232                                     size_t* new_cap_until_GC = NULL,
+ 233                                     size_t* old_cap_until_GC = NULL,
+ 234                                     bool* can_retry = NULL);
+ 235   static size_t dec_capacity_until_GC(size_t v);
+ 236 
+ 237   // The amount to increase the high-water-mark (_capacity_until_GC)
+ 238   static size_t delta_capacity_until_GC(size_t bytes);
+ 239 
+ 240   // Tells if we have can expand metaspace without hitting set limits.
+ 241   static bool can_expand(size_t words, bool is_class);
+ 242 
+ 243   // Returns amount that we can expand without hitting a GC,
+ 244   // measured in words.
+ 245   static size_t allowed_expansion();
+ 246 
+ 247   // Calculate the new high-water mark at which to induce
+ 248   // a GC.
+ 249   static void compute_new_size();
+ 250 };
+ 251 
+ 252 
+ 253 
+ 254 
+ 255 class MetaspaceUtils : AllStatic {
+ 256 public:
+ 257 
+ 258   // Committed space actually in use by Metadata
+ 259   static size_t used_words();
+ 260   static size_t used_words(Metaspace::MetadataType mdtype);
+ 261 
+ 262   // Space committed for Metaspace
+ 263   static size_t committed_words();
+ 264   static size_t committed_words(Metaspace::MetadataType mdtype);
+ 265 
+ 266   // Space reserved for Metaspace
+ 267   static size_t reserved_words();
+ 268   static size_t reserved_words(Metaspace::MetadataType mdtype);
+ 269 
+ 270   // _bytes() variants for convenience...
+ 271   static size_t used_bytes()                                    { return used_words() * BytesPerWord; }
+ 272   static size_t used_bytes(Metaspace::MetadataType mdtype)      { return used_words(mdtype) * BytesPerWord; }
+ 273   static size_t committed_bytes()                               { return committed_words() * BytesPerWord; }
+ 274   static size_t committed_bytes(Metaspace::MetadataType mdtype) { return committed_words(mdtype) * BytesPerWord; }
+ 275   static size_t reserved_bytes()                                { return reserved_words() * BytesPerWord; }
+ 276   static size_t reserved_bytes(Metaspace::MetadataType mdtype)  { return reserved_words(mdtype) * BytesPerWord; }
+ 277 
+ 278   // TODO. Do we need this really? This number is kind of uninformative.
+ 279   static size_t capacity_bytes()                                { return 0; }
+ 280   static size_t capacity_bytes(Metaspace::MetadataType mdtype)  { return 0; }
+ 281 
+ 282   // Todo. Consolidate.
+ 283   // Committed space in freelists
+ 284   static size_t free_chunks_total_words(Metaspace::MetadataType mdtype);
+ 285 
+ 286   // Todo. Implement or Consolidate.
+ 287   static MetaspaceChunkFreeListSummary chunk_free_list_summary(Metaspace::MetadataType mdtype) {
+ 288     return MetaspaceChunkFreeListSummary(0,0,0,0,0,0,0,0);
+ 289   }
+ 290 
+ 291   // Log change in used metadata.
+ 292   static void print_metaspace_change(const metaspace::MetaspaceSizesSnapshot&amp; pre_meta_values);
+ 293 
+ 294   // This will print out a basic metaspace usage report but
+ 295   // unlike print_report() is guaranteed not to lock or to walk the CLDG.
+ 296   static void print_basic_report(outputStream* st, size_t scale = 0);
+ 297 
+ 298   // Prints a report about the current metaspace state.
+ 299   // Function will walk the CLDG and will lock the expand lock; if that is not
+ 300   // convenient, use print_basic_report() instead.
+ 301   static void print_full_report(outputStream* out, size_t scale = 0);
+ 302 
+ 303   static void print_on(outputStream * out);
+ 304 
+ 305   DEBUG_ONLY(static void verify(bool slow);)
+ 306 
+ 307 };
+ 308 
+ 309 #endif // SHARE_MEMORY_METASPACE_HPP
+</pre></body></html>

@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/gc/g1 </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/classfile/classLoaderStats.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/parallel/psParallelCompact.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/gc/g1/g1CollectedHeap.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+1012   abandon_collection_set(collection_set());
+1013 
+1014   tear_down_region_sets(false /* free_list_only */);
+1015 
+1016   hrm()-&gt;prepare_for_full_collection_start();
+1017 }
+1018 
+1019 void G1CollectedHeap::verify_before_full_collection(bool explicit_gc) {
+1020   assert(!GCCause::is_user_requested_gc(gc_cause()) || explicit_gc, "invariant");
+1021   assert_used_and_recalculate_used_equal(this);
+1022   _verifier-&gt;verify_region_sets_optional();
+1023   _verifier-&gt;verify_before_gc(G1HeapVerifier::G1VerifyFull);
+1024   _verifier-&gt;check_bitmaps("Full GC Start");
+1025 }
+1026 
+1027 void G1CollectedHeap::prepare_heap_for_mutators() {
+1028   hrm()-&gt;prepare_for_full_collection_end();
+1029 
+1030   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+1031   ClassLoaderDataGraph::purge();
+<span class="changed">1032   MetaspaceUtils::verify_metrics();</span>
+1033 
+1034   // Prepare heap for normal collections.
+1035   assert(num_free_regions() == 0, "we should not have added any free regions");
+1036   rebuild_region_sets(false /* free_list_only */);
+1037   abort_refinement();
+1038   resize_heap_if_necessary();
+1039 
+1040   // Rebuild the strong code root lists for each region
+1041   rebuild_strong_code_roots();
+1042 
+1043   // Purge code root memory
+1044   purge_code_root_memory();
+1045 
+1046   // Start a new incremental collection set for the next pause
+1047   start_new_collection_set();
+1048 
+1049   _allocator-&gt;init_mutator_alloc_regions();
+1050 
+1051   // Post collection state updates.
+1052   MetaspaceGC::compute_new_size();
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+1012   abandon_collection_set(collection_set());
+1013 
+1014   tear_down_region_sets(false /* free_list_only */);
+1015 
+1016   hrm()-&gt;prepare_for_full_collection_start();
+1017 }
+1018 
+1019 void G1CollectedHeap::verify_before_full_collection(bool explicit_gc) {
+1020   assert(!GCCause::is_user_requested_gc(gc_cause()) || explicit_gc, "invariant");
+1021   assert_used_and_recalculate_used_equal(this);
+1022   _verifier-&gt;verify_region_sets_optional();
+1023   _verifier-&gt;verify_before_gc(G1HeapVerifier::G1VerifyFull);
+1024   _verifier-&gt;check_bitmaps("Full GC Start");
+1025 }
+1026 
+1027 void G1CollectedHeap::prepare_heap_for_mutators() {
+1028   hrm()-&gt;prepare_for_full_collection_end();
+1029 
+1030   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+1031   ClassLoaderDataGraph::purge();
+<span class="changed">1032   DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
+1033 
+1034   // Prepare heap for normal collections.
+1035   assert(num_free_regions() == 0, "we should not have added any free regions");
+1036   rebuild_region_sets(false /* free_list_only */);
+1037   abort_refinement();
+1038   resize_heap_if_necessary();
+1039 
+1040   // Rebuild the strong code root lists for each region
+1041   rebuild_strong_code_roots();
+1042 
+1043   // Purge code root memory
+1044   purge_code_root_memory();
+1045 
+1046   // Start a new incremental collection set for the next pause
+1047   start_new_collection_set();
+1048 
+1049   _allocator-&gt;init_mutator_alloc_regions();
+1050 
+1051   // Post collection state updates.
+1052   MetaspaceGC::compute_new_size();
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/classfile/classLoaderStats.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/parallel/psParallelCompact.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

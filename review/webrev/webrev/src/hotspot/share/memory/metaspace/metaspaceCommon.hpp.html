@@ -1,0 +1,232 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/metaspaceCommon.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+  27 #define SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+  28 
+  29 #include "runtime/globals.hpp"
+  30 #include "utilities/align.hpp"
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 class outputStream;
+  35 
+  36 namespace metaspace {
+  37 
+  38 
+  39 // Metaspace allocation alignment:
+  40 
+  41 // 1) Metaspace allocations have to be aligned such that 64bit values are aligned
+  42 //  correctly.
+  43 //
+  44 // 2) Klass* structures allocated from Metaspace have to be aligned to KlassAlignmentInBytes.
+  45 //
+  46 // At the moment LogKlassAlignmentInBytes is 3, so KlassAlignmentInBytes == 8,
+  47 //  so (1) and (2) can both be fulfilled with an alignment of 8. Should we increase
+  48 //  KlassAlignmentInBytes at any time this will increase the necessary alignment as well. In
+  49 //  that case we may think about introducing a separate alignment just for the class space
+  50 //  since that alignment would only be needed for Klass structures.
+  51 
+  52 static const size_t allocation_alignment_bytes = 8;
+  53 STATIC_ASSERT(allocation_alignment_bytes == (size_t)KlassAlignmentInBytes);
+  54 
+  55 static const size_t allocation_alignment_words = allocation_alignment_bytes / BytesPerWord;
+  56 
+  57 
+  58 
+  59 // Utility functions
+  60 
+  61 // Print a size, in words, scaled.
+  62 void print_scaled_words(outputStream* st, size_t word_size, size_t scale = 0, int width = -1);
+  63 
+  64 // Convenience helper: prints a size value and a percentage.
+  65 void print_scaled_words_and_percentage(outputStream* st, size_t word_size, size_t compare_word_size, size_t scale = 0, int width = -1);
+  66 
+  67 // Print a human readable size.
+  68 // byte_size: size, in bytes, to be printed.
+  69 // scale: one of 1 (byte-wise printing), sizeof(word) (word-size printing), K, M, G (scaled by KB, MB, GB respectively,
+  70 //         or 0, which means the best scale is choosen dynamically.
+  71 // width: printing width.
+  72 void print_human_readable_size(outputStream* st, size_t byte_size, size_t scale = 0, int width = -1);
+  73 
+  74 // Prints a percentage value. Values smaller than 1% but not 0 are displayed as "&lt;1%", values
+  75 // larger than 99% but not 100% are displayed as "&gt;100%".
+  76 void print_percentage(outputStream* st, size_t total, size_t part);
+  77 
+  78 
+  79 #ifdef ASSERT
+  80 #define assert_is_aligned(value, alignment)                  \
+  81   assert(is_aligned((value), (alignment)),                   \
+  82          SIZE_FORMAT_HEX " is not aligned to "               \
+  83          SIZE_FORMAT, (size_t)(uintptr_t)value, (alignment))
+  84 #else
+  85 #define assert_is_aligned(value, alignment)
+  86 #endif
+  87 
+  88 
+  89 // Pretty printing helpers
+  90 const char* classes_plural(uintx num);
+  91 const char* loaders_plural(uintx num);
+  92 void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared);
+  93 
+  94 
+  95 // Since Metaspace verifications are expensive, we want to do them at a reduced rate,
+  96 // but not completely avoiding them.
+  97 // For that we introduce the macros SOMETIMES() and ASSERT_SOMETIMES() which will
+  98 // execute code or assert at intervals controlled via VerifyMetaspaceInterval.
+  99 #ifdef ASSERT
+ 100 
+ 101 #define EVERY_NTH(n)          \
+ 102 { static int counter_ = 0;    \
+ 103   if (n &gt; 0) {                \
+ 104     counter_ ++;              \
+ 105     if (counter_ &gt; n) {       \
+ 106       counter_ = 0;           \
+ 107 
+ 108 #define END_EVERY_NTH         } } }
+ 109 
+ 110 #define SOMETIMES(code) \
+ 111     EVERY_NTH(VerifyMetaspaceInterval) \
+ 112     { code } \
+ 113     END_EVERY_NTH
+ 114 
+ 115 #define ASSERT_SOMETIMES(condition, ...) \
+ 116     EVERY_NTH(VerifyMetaspaceInterval) \
+ 117     assert( (condition), __VA_ARGS__); \
+ 118     END_EVERY_NTH
+ 119 
+ 120 #else
+ 121 
+ 122 #define SOMETIMES(code)
+ 123 #define ASSERT_SOMETIMES(condition, ...)
+ 124 
+ 125 #endif // ASSERT
+ 126 
+ 127 ///////// Logging //////////////
+ 128 
+ 129 // What we log at which levels:
+ 130 
+ 131 // "info" : metaspace failed allocation, commit failure, reserve failure, metaspace oom, metaspace gc threshold changed, SpaceManager created, destroyed, metaspace purged
+ 132 
+ 133 // "debug" : "info" + vslist extended, memory committed/uncommitted, chunk created/split/merged/enlarged, chunk returned
+ 134 
+ 135 // "trace" : "debug" + every single allocation and deallocation, internals
+ 136 
+ 137 #define HAVE_UL
+ 138 
+ 139 #ifdef HAVE_UL
+ 140 #define UL(level, message)        log_##level(metaspace)(LOGFMT ": " message, LOGFMT_ARGS);
+ 141 #define UL2(level, message, ...)  log_##level(metaspace)(LOGFMT ": " message, LOGFMT_ARGS, __VA_ARGS__);
+ 142 #else
+ 143 #define UL(level, ...)
+ 144 #define UL2(level, ...)
+ 145 #endif
+ 146 
+ 147 } // namespace metaspace
+ 148 
+ 149 #endif // SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+</pre></body></html>

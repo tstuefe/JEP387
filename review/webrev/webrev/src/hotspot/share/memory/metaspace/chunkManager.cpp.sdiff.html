@@ -1,0 +1,1739 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory/metaspace </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/chunkManager.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/chunkManager.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+   1 /*
+<span class="changed">   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.</span>
+
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+
+  24 #include "precompiled.hpp"
+  25 
+
+  26 #include "logging/log.hpp"
+  27 #include "logging/logStream.hpp"
+<span class="changed">  28 #include "memory/binaryTreeDictionary.inline.hpp"</span>
+<span class="changed">  29 #include "memory/freeList.inline.hpp"</span>
+  30 #include "memory/metaspace/chunkManager.hpp"
+
+  31 #include "memory/metaspace/metachunk.hpp"
+<span class="removed">  32 #include "memory/metaspace/metaDebug.hpp"</span>
+  33 #include "memory/metaspace/metaspaceCommon.hpp"
+  34 #include "memory/metaspace/metaspaceStatistics.hpp"
+<span class="changed">  35 #include "memory/metaspace/occupancyMap.hpp"</span>
+  36 #include "memory/metaspace/virtualSpaceNode.hpp"
+
+  37 #include "runtime/mutexLocker.hpp"
+  38 #include "utilities/debug.hpp"
+  39 #include "utilities/globalDefinitions.hpp"
+<span class="removed">  40 #include "utilities/ostream.hpp"</span>
+  41 
+  42 namespace metaspace {
+  43 
+<span class="changed">  44 ChunkManager::ChunkManager(bool is_class)</span>
+<span class="changed">  45       : _is_class(is_class), _free_chunks_total(0), _free_chunks_count(0) {</span>
+<span class="changed">  46   _free_chunks[SpecializedIndex].set_size(get_size_for_nonhumongous_chunktype(SpecializedIndex, is_class));</span>
+<span class="changed">  47   _free_chunks[SmallIndex].set_size(get_size_for_nonhumongous_chunktype(SmallIndex, is_class));</span>
+<span class="changed">  48   _free_chunks[MediumIndex].set_size(get_size_for_nonhumongous_chunktype(MediumIndex, is_class));</span>
+<span class="changed">  49 }</span>
+  50 
+<span class="changed">  51 void ChunkManager::remove_chunk(Metachunk* chunk) {</span>
+<span class="changed">  52   size_t word_size = chunk-&gt;word_size();</span>
+<span class="changed">  53   ChunkIndex index = list_index(word_size);</span>
+<span class="changed">  54   if (index != HumongousIndex) {</span>
+<span class="changed">  55     free_chunks(index)-&gt;remove_chunk(chunk);</span>
+<span class="changed">  56   } else {</span>
+<span class="changed">  57     humongous_dictionary()-&gt;remove_chunk(chunk);</span>
+<span class="changed">  58   }</span>
+<span class="changed">  59 </span>
+<span class="changed">  60   // Chunk has been removed from the chunks free list, update counters.</span>
+<span class="changed">  61   account_for_removed_chunk(chunk);</span>
+<span class="changed">  62 }</span>
+  63 
+<span class="removed">  64 bool ChunkManager::attempt_to_coalesce_around_chunk(Metachunk* chunk, ChunkIndex target_chunk_type) {</span>
+  65   assert_lock_strong(MetaspaceExpand_lock);
+<span class="removed">  66   assert(chunk != NULL, "invalid chunk pointer");</span>
+<span class="removed">  67   // Check for valid merge combinations.</span>
+<span class="removed">  68   assert((chunk-&gt;get_chunk_type() == SpecializedIndex &amp;&amp;</span>
+<span class="removed">  69           (target_chunk_type == SmallIndex || target_chunk_type == MediumIndex)) ||</span>
+<span class="removed">  70          (chunk-&gt;get_chunk_type() == SmallIndex &amp;&amp; target_chunk_type == MediumIndex),</span>
+<span class="removed">  71         "Invalid chunk merge combination.");</span>
+<span class="removed">  72 </span>
+<span class="removed">  73   const size_t target_chunk_word_size =</span>
+<span class="removed">  74     get_size_for_nonhumongous_chunktype(target_chunk_type, this-&gt;is_class());</span>
+<span class="removed">  75 </span>
+<span class="removed">  76   // [ prospective merge region )</span>
+<span class="removed">  77   MetaWord* const p_merge_region_start =</span>
+<span class="removed">  78     (MetaWord*) align_down(chunk, target_chunk_word_size * sizeof(MetaWord));</span>
+<span class="removed">  79   MetaWord* const p_merge_region_end =</span>
+<span class="removed">  80     p_merge_region_start + target_chunk_word_size;</span>
+<span class="removed">  81 </span>
+<span class="removed">  82   // We need the VirtualSpaceNode containing this chunk and its occupancy map.</span>
+<span class="removed">  83   VirtualSpaceNode* const vsn = chunk-&gt;container();</span>
+<span class="removed">  84   OccupancyMap* const ocmap = vsn-&gt;occupancy_map();</span>
+<span class="removed">  85 </span>
+<span class="removed">  86   // The prospective chunk merge range must be completely contained by the</span>
+<span class="removed">  87   // committed range of the virtual space node.</span>
+<span class="removed">  88   if (p_merge_region_start &lt; vsn-&gt;bottom() || p_merge_region_end &gt; vsn-&gt;top()) {</span>
+<span class="removed">  89     return false;</span>
+<span class="removed">  90   }</span>
+<span class="removed">  91 </span>
+<span class="removed">  92   // Only attempt to merge this range if at its start a chunk starts and at its end</span>
+<span class="removed">  93   // a chunk ends. If a chunk (can only be humongous) straddles either start or end</span>
+<span class="removed">  94   // of that range, we cannot merge.</span>
+<span class="removed">  95   if (!ocmap-&gt;chunk_starts_at_address(p_merge_region_start)) {</span>
+<span class="removed">  96     return false;</span>
+<span class="removed">  97   }</span>
+<span class="removed">  98   if (p_merge_region_end &lt; vsn-&gt;top() &amp;&amp;</span>
+<span class="removed">  99       !ocmap-&gt;chunk_starts_at_address(p_merge_region_end)) {</span>
+<span class="removed"> 100     return false;</span>
+<span class="removed"> 101   }</span>
+<span class="removed"> 102 </span>
+<span class="removed"> 103   // Now check if the prospective merge area contains live chunks. If it does we cannot merge.</span>
+<span class="removed"> 104   if (ocmap-&gt;is_region_in_use(p_merge_region_start, target_chunk_word_size)) {</span>
+<span class="removed"> 105     return false;</span>
+<span class="removed"> 106   }</span>
+<span class="removed"> 107 </span>
+<span class="removed"> 108   // Success! Remove all chunks in this region...</span>
+<span class="removed"> 109   log_trace(gc, metaspace, freelist)("%s: coalescing chunks in area [%p-%p)...",</span>
+<span class="removed"> 110     (is_class() ? "class space" : "metaspace"),</span>
+<span class="removed"> 111     p_merge_region_start, p_merge_region_end);</span>
+<span class="removed"> 112 </span>
+<span class="removed"> 113   const int num_chunks_removed =</span>
+<span class="removed"> 114     remove_chunks_in_area(p_merge_region_start, target_chunk_word_size);</span>
+<span class="removed"> 115 </span>
+<span class="removed"> 116   // ... and create a single new bigger chunk.</span>
+<span class="removed"> 117   Metachunk* const p_new_chunk =</span>
+<span class="removed"> 118       ::new (p_merge_region_start) Metachunk(target_chunk_type, is_class(), target_chunk_word_size, vsn);</span>
+<span class="removed"> 119   assert(p_new_chunk == (Metachunk*)p_merge_region_start, "Sanity");</span>
+<span class="removed"> 120   p_new_chunk-&gt;set_origin(origin_merge);</span>
+<span class="removed"> 121 </span>
+<span class="removed"> 122   log_trace(gc, metaspace, freelist)("%s: created coalesced chunk at %p, size " SIZE_FORMAT_HEX ".",</span>
+<span class="removed"> 123     (is_class() ? "class space" : "metaspace"),</span>
+<span class="removed"> 124     p_new_chunk, p_new_chunk-&gt;word_size() * sizeof(MetaWord));</span>
+<span class="removed"> 125 </span>
+<span class="removed"> 126   // Fix occupancy map: remove old start bits of the small chunks and set new start bit.</span>
+<span class="removed"> 127   ocmap-&gt;wipe_chunk_start_bits_in_region(p_merge_region_start, target_chunk_word_size);</span>
+<span class="removed"> 128   ocmap-&gt;set_chunk_starts_at_address(p_merge_region_start, true);</span>
+<span class="removed"> 129 </span>
+<span class="removed"> 130   // Mark chunk as free. Note: it is not necessary to update the occupancy</span>
+<span class="removed"> 131   // map in-use map, because the old chunks were also free, so nothing</span>
+<span class="removed"> 132   // should have changed.</span>
+<span class="removed"> 133   p_new_chunk-&gt;set_is_tagged_free(true);</span>
+<span class="removed"> 134 </span>
+<span class="removed"> 135   // Add new chunk to its freelist.</span>
+<span class="removed"> 136   ChunkList* const list = free_chunks(target_chunk_type);</span>
+<span class="removed"> 137   list-&gt;return_chunk_at_head(p_new_chunk);</span>
+<span class="removed"> 138 </span>
+<span class="removed"> 139   // And adjust ChunkManager:: _free_chunks_count (_free_chunks_total</span>
+<span class="removed"> 140   // should not have changed, because the size of the space should be the same)</span>
+<span class="removed"> 141   _free_chunks_count -= num_chunks_removed;</span>
+<span class="removed"> 142   _free_chunks_count ++;</span>
+<span class="removed"> 143 </span>
+<span class="removed"> 144   // VirtualSpaceNode::chunk_count does not have to be modified:</span>
+<span class="removed"> 145   // it means "number of active (non-free) chunks", so merging free chunks</span>
+<span class="removed"> 146   // should not affect that count.</span>
+ 147 
+<span class="changed"> 148   // At the end of a chunk merge, run verification tests.</span>
+<span class="changed"> 149 #ifdef ASSERT</span>
+<span class="changed"> 150 </span>
+<span class="changed"> 151   EVERY_NTH(VerifyMetaspaceInterval)</span>
+<span class="changed"> 152     locked_verify(true);</span>
+<span class="changed"> 153     vsn-&gt;verify(true);</span>
+<span class="changed"> 154   END_EVERY_NTH</span>
+ 155 
+<span class="changed"> 156   g_internal_statistics.num_chunk_merges ++;</span>
+
+
+ 157 
+<span class="changed"> 158 #endif</span>
+
+
+ 159 
+<span class="removed"> 160   return true;</span>
+ 161 }
+ 162 
+<span class="changed"> 163 // Remove all chunks in the given area - the chunks are supposed to be free -</span>
+<span class="changed"> 164 // from their corresponding freelists. Mark them as invalid.</span>
+<span class="changed"> 165 // - This does not correct the occupancy map.</span>
+<span class="changed"> 166 // - This does not adjust the counters in ChunkManager.</span>
+<span class="changed"> 167 // - Does not adjust container count counter in containing VirtualSpaceNode</span>
+<span class="changed"> 168 // Returns number of chunks removed.</span>
+<span class="changed"> 169 int ChunkManager::remove_chunks_in_area(MetaWord* p, size_t word_size) {</span>
+<span class="changed"> 170   assert(p != NULL &amp;&amp; word_size &gt; 0, "Invalid range.");</span>
+<span class="changed"> 171   const size_t smallest_chunk_size = get_size_for_nonhumongous_chunktype(SpecializedIndex, is_class());</span>
+<span class="changed"> 172   assert_is_aligned(word_size, smallest_chunk_size);</span>
+<span class="changed"> 173 </span>
+<span class="changed"> 174   Metachunk* const start = (Metachunk*) p;</span>
+<span class="changed"> 175   const Metachunk* const end = (Metachunk*)(p + word_size);</span>
+<span class="changed"> 176   Metachunk* cur = start;</span>
+<span class="changed"> 177   int num_removed = 0;</span>
+<span class="changed"> 178   while (cur &lt; end) {</span>
+<span class="changed"> 179     Metachunk* next = (Metachunk*)(((MetaWord*)cur) + cur-&gt;word_size());</span>
+<span class="changed"> 180     DEBUG_ONLY(do_verify_chunk(cur));</span>
+<span class="changed"> 181     assert(cur-&gt;get_chunk_type() != HumongousIndex, "Unexpected humongous chunk found at %p.", cur);</span>
+<span class="changed"> 182     assert(cur-&gt;is_tagged_free(), "Chunk expected to be free (%p)", cur);</span>
+<span class="changed"> 183     log_trace(gc, metaspace, freelist)("%s: removing chunk %p, size " SIZE_FORMAT_HEX ".",</span>
+<span class="changed"> 184       (is_class() ? "class space" : "metaspace"),</span>
+<span class="changed"> 185       cur, cur-&gt;word_size() * sizeof(MetaWord));</span>
+<span class="changed"> 186     cur-&gt;remove_sentinel();</span>
+<span class="changed"> 187     // Note: cannot call ChunkManager::remove_chunk, because that</span>
+<span class="changed"> 188     // modifies the counters in ChunkManager, which we do not want. So</span>
+<span class="changed"> 189     // we call remove_chunk on the freelist directly (see also the</span>
+<span class="changed"> 190     // splitting function which does the same).</span>
+<span class="changed"> 191     ChunkList* const list = free_chunks(list_index(cur-&gt;word_size()));</span>
+<span class="changed"> 192     list-&gt;remove_chunk(cur);</span>
+<span class="changed"> 193     num_removed ++;</span>
+<span class="changed"> 194     cur = next;</span>
+<span class="changed"> 195   }</span>
+<span class="changed"> 196   return num_removed;</span>
+ 197 }
+ 198 
+<span class="changed"> 199 // Update internal accounting after a chunk was added</span>
+<span class="changed"> 200 void ChunkManager::account_for_added_chunk(const Metachunk* c) {</span>
+
+ 201   assert_lock_strong(MetaspaceExpand_lock);
+<span class="changed"> 202   _free_chunks_count ++;</span>
+<span class="changed"> 203   _free_chunks_total += c-&gt;word_size();</span>
+ 204 }
+ 205 
+<span class="changed"> 206 // Update internal accounting after a chunk was removed</span>
+<span class="changed"> 207 void ChunkManager::account_for_removed_chunk(const Metachunk* c) {</span>
+
+
+
+
+
+
+
+
+ 208   assert_lock_strong(MetaspaceExpand_lock);
+<span class="removed"> 209   assert(_free_chunks_count &gt;= 1,</span>
+<span class="removed"> 210     "ChunkManager::_free_chunks_count: about to go negative (" SIZE_FORMAT ").", _free_chunks_count);</span>
+<span class="removed"> 211   assert(_free_chunks_total &gt;= c-&gt;word_size(),</span>
+<span class="removed"> 212     "ChunkManager::_free_chunks_total: about to go negative"</span>
+<span class="removed"> 213      "(now: " SIZE_FORMAT ", decrement value: " SIZE_FORMAT ").", _free_chunks_total, c-&gt;word_size());</span>
+<span class="removed"> 214   _free_chunks_count --;</span>
+<span class="removed"> 215   _free_chunks_total -= c-&gt;word_size();</span>
+<span class="removed"> 216 }</span>
+<span class="removed"> 217 </span>
+<span class="removed"> 218 ChunkIndex ChunkManager::list_index(size_t size) {</span>
+<span class="removed"> 219   return get_chunk_type_by_size(size, is_class());</span>
+<span class="removed"> 220 }</span>
+<span class="removed"> 221 </span>
+<span class="removed"> 222 size_t ChunkManager::size_by_index(ChunkIndex index) const {</span>
+<span class="removed"> 223   index_bounds_check(index);</span>
+<span class="removed"> 224   assert(index != HumongousIndex, "Do not call for humongous chunks.");</span>
+<span class="removed"> 225   return get_size_for_nonhumongous_chunktype(index, is_class());</span>
+<span class="removed"> 226 }</span>
+ 227 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 228 #ifdef ASSERT
+<span class="changed"> 229 void ChunkManager::verify(bool slow) const {</span>
+<span class="changed"> 230   MutexLocker cl(MetaspaceExpand_lock,</span>
+<span class="changed"> 231                      Mutex::_no_safepoint_check_flag);</span>
+<span class="changed"> 232   locked_verify(slow);</span>
+
+
+
+
+
+
+
+
+
+ 233 }
+ 234 
+<span class="changed"> 235 void ChunkManager::locked_verify(bool slow) const {</span>
+<span class="changed"> 236   log_trace(gc, metaspace, freelist)("verifying %s chunkmanager (%s).",</span>
+<span class="changed"> 237     (is_class() ? "class space" : "metaspace"), (slow ? "slow" : "quick"));</span>
+
+
+
+
+
+
+
+ 238 
+<span class="changed"> 239   assert_lock_strong(MetaspaceExpand_lock);</span>
+
+ 240 
+<span class="changed"> 241   size_t chunks_counted = 0;</span>
+<span class="changed"> 242   size_t wordsize_chunks_counted = 0;</span>
+<span class="changed"> 243   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfFreeLists; i = next_chunk_index(i)) {</span>
+<span class="changed"> 244     const ChunkList* list = _free_chunks + i;</span>
+<span class="changed"> 245     if (list != NULL) {</span>
+<span class="changed"> 246       Metachunk* chunk = list-&gt;head();</span>
+<span class="changed"> 247       while (chunk) {</span>
+<span class="changed"> 248         if (slow) {</span>
+<span class="changed"> 249           do_verify_chunk(chunk);</span>
+<span class="changed"> 250         }</span>
+<span class="changed"> 251         assert(chunk-&gt;is_tagged_free(), "Chunk should be tagged as free.");</span>
+<span class="changed"> 252         chunks_counted ++;</span>
+<span class="changed"> 253         wordsize_chunks_counted += chunk-&gt;size();</span>
+<span class="changed"> 254         chunk = chunk-&gt;next();</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 255       }
+
+
+
+
+
+
+ 256     }
+
+
+
+
+
+
+ 257   }
+ 258 
+<span class="changed"> 259   chunks_counted += humongous_dictionary()-&gt;total_free_blocks();</span>
+<span class="changed"> 260   wordsize_chunks_counted += humongous_dictionary()-&gt;total_size();</span>
+<span class="changed"> 261 </span>
+<span class="changed"> 262   assert(chunks_counted == _free_chunks_count &amp;&amp; wordsize_chunks_counted == _free_chunks_total,</span>
+<span class="changed"> 263          "freelist accounting mismatch: "</span>
+<span class="changed"> 264          "we think: " SIZE_FORMAT " chunks, total " SIZE_FORMAT " words, "</span>
+<span class="changed"> 265          "reality: " SIZE_FORMAT " chunks, total " SIZE_FORMAT " words.",</span>
+<span class="changed"> 266          _free_chunks_count, _free_chunks_total,</span>
+<span class="changed"> 267          chunks_counted, wordsize_chunks_counted);</span>
+<span class="changed"> 268 }</span>
+<span class="changed"> 269 #endif // ASSERT</span>
+ 270 
+<span class="changed"> 271 void ChunkManager::locked_print_free_chunks(outputStream* st) {</span>
+<span class="changed"> 272   assert_lock_strong(MetaspaceExpand_lock);</span>
+<span class="changed"> 273   st-&gt;print_cr("Free chunk total " SIZE_FORMAT "  count " SIZE_FORMAT,</span>
+<span class="changed"> 274                 _free_chunks_total, _free_chunks_count);</span>
+<span class="changed"> 275 }</span>
+ 276 
+<span class="changed"> 277 ChunkList* ChunkManager::free_chunks(ChunkIndex index) {</span>
+<span class="changed"> 278   assert(index == SpecializedIndex || index == SmallIndex || index == MediumIndex,</span>
+<span class="changed"> 279          "Bad index: %d", (int)index);</span>
+<span class="changed"> 280   return &amp;_free_chunks[index];</span>
+<span class="changed"> 281 }</span>
+<span class="changed"> 282 </span>
+<span class="changed"> 283 ChunkList* ChunkManager::find_free_chunks_list(size_t word_size) {</span>
+<span class="changed"> 284   ChunkIndex index = list_index(word_size);</span>
+<span class="changed"> 285   assert(index &lt; HumongousIndex, "No humongous list");</span>
+<span class="changed"> 286   return free_chunks(index);</span>
+<span class="changed"> 287 }</span>
+<span class="changed"> 288 </span>
+<span class="changed"> 289 // Helper for chunk splitting: given a target chunk size and a larger free chunk,</span>
+<span class="changed"> 290 // split up the larger chunk into n smaller chunks, at least one of which should be</span>
+<span class="changed"> 291 // the target chunk of target chunk size. The smaller chunks, including the target</span>
+<span class="changed"> 292 // chunk, are returned to the freelist. The pointer to the target chunk is returned.</span>
+<span class="changed"> 293 // Note that this chunk is supposed to be removed from the freelist right away.</span>
+<span class="changed"> 294 Metachunk* ChunkManager::split_chunk(size_t target_chunk_word_size, Metachunk* larger_chunk) {</span>
+<span class="changed"> 295   assert(larger_chunk-&gt;word_size() &gt; target_chunk_word_size, "Sanity");</span>
+<span class="changed"> 296 </span>
+<span class="changed"> 297   const ChunkIndex larger_chunk_index = larger_chunk-&gt;get_chunk_type();</span>
+<span class="changed"> 298   const ChunkIndex target_chunk_index = get_chunk_type_by_size(target_chunk_word_size, is_class());</span>
+<span class="changed"> 299 </span>
+<span class="changed"> 300   MetaWord* const region_start = (MetaWord*)larger_chunk;</span>
+<span class="changed"> 301   const size_t region_word_len = larger_chunk-&gt;word_size();</span>
+<span class="changed"> 302   MetaWord* const region_end = region_start + region_word_len;</span>
+<span class="changed"> 303   VirtualSpaceNode* const vsn = larger_chunk-&gt;container();</span>
+<span class="changed"> 304   OccupancyMap* const ocmap = vsn-&gt;occupancy_map();</span>
+<span class="changed"> 305 </span>
+<span class="changed"> 306   // Any larger non-humongous chunk size is a multiple of any smaller chunk size.</span>
+<span class="changed"> 307   // Since non-humongous chunks are aligned to their chunk size, the larger chunk should start</span>
+<span class="changed"> 308   // at an address suitable to place the smaller target chunk.</span>
+<span class="changed"> 309   assert_is_aligned(region_start, target_chunk_word_size);</span>
+<span class="changed"> 310 </span>
+<span class="changed"> 311   // Remove old chunk.</span>
+<span class="changed"> 312   free_chunks(larger_chunk_index)-&gt;remove_chunk(larger_chunk);</span>
+<span class="changed"> 313   larger_chunk-&gt;remove_sentinel();</span>
+<span class="changed"> 314 </span>
+<span class="changed"> 315   // Prevent access to the old chunk from here on.</span>
+<span class="changed"> 316   larger_chunk = NULL;</span>
+<span class="changed"> 317   // ... and wipe it.</span>
+<span class="changed"> 318   DEBUG_ONLY(memset(region_start, 0xfe, region_word_len * BytesPerWord));</span>
+<span class="changed"> 319 </span>
+<span class="changed"> 320   // In its place create first the target chunk...</span>
+<span class="changed"> 321   MetaWord* p = region_start;</span>
+<span class="changed"> 322   Metachunk* target_chunk = ::new (p) Metachunk(target_chunk_index, is_class(), target_chunk_word_size, vsn);</span>
+<span class="changed"> 323   assert(target_chunk == (Metachunk*)p, "Sanity");</span>
+<span class="changed"> 324   target_chunk-&gt;set_origin(origin_split);</span>
+<span class="changed"> 325 </span>
+<span class="changed"> 326   // Note: we do not need to mark its start in the occupancy map</span>
+<span class="changed"> 327   // because it coincides with the old chunk start.</span>
+<span class="changed"> 328 </span>
+<span class="changed"> 329   // Mark chunk as free and return to the freelist.</span>
+<span class="changed"> 330   do_update_in_use_info_for_chunk(target_chunk, false);</span>
+<span class="changed"> 331   free_chunks(target_chunk_index)-&gt;return_chunk_at_head(target_chunk);</span>
+<span class="changed"> 332 </span>
+<span class="changed"> 333   // This chunk should now be valid and can be verified.</span>
+<span class="changed"> 334   DEBUG_ONLY(do_verify_chunk(target_chunk));</span>
+<span class="changed"> 335 </span>
+<span class="changed"> 336   // In the remaining space create the remainder chunks.</span>
+<span class="changed"> 337   p += target_chunk-&gt;word_size();</span>
+<span class="changed"> 338   assert(p &lt; region_end, "Sanity");</span>
+<span class="changed"> 339 </span>
+<span class="changed"> 340   while (p &lt; region_end) {</span>
+<span class="changed"> 341 </span>
+<span class="changed"> 342     // Find the largest chunk size which fits the alignment requirements at address p.</span>
+<span class="changed"> 343     ChunkIndex this_chunk_index = prev_chunk_index(larger_chunk_index);</span>
+<span class="changed"> 344     size_t this_chunk_word_size = 0;</span>
+<span class="changed"> 345     for(;;) {</span>
+<span class="changed"> 346       this_chunk_word_size = get_size_for_nonhumongous_chunktype(this_chunk_index, is_class());</span>
+<span class="changed"> 347       if (is_aligned(p, this_chunk_word_size * BytesPerWord)) {</span>
+<span class="changed"> 348         break;</span>
+ 349       } else {
+<span class="changed"> 350         this_chunk_index = prev_chunk_index(this_chunk_index);</span>
+<span class="changed"> 351         assert(this_chunk_index &gt;= target_chunk_index, "Sanity");</span>
+ 352       }
+ 353     }
+ 354 
+<span class="changed"> 355     assert(this_chunk_word_size &gt;= target_chunk_word_size, "Sanity");</span>
+<span class="changed"> 356     assert(is_aligned(p, this_chunk_word_size * BytesPerWord), "Sanity");</span>
+<span class="changed"> 357     assert(p + this_chunk_word_size &lt;= region_end, "Sanity");</span>
+<span class="changed"> 358 </span>
+<span class="changed"> 359     // Create splitting chunk.</span>
+<span class="changed"> 360     Metachunk* this_chunk = ::new (p) Metachunk(this_chunk_index, is_class(), this_chunk_word_size, vsn);</span>
+<span class="changed"> 361     assert(this_chunk == (Metachunk*)p, "Sanity");</span>
+<span class="changed"> 362     this_chunk-&gt;set_origin(origin_split);</span>
+<span class="changed"> 363     ocmap-&gt;set_chunk_starts_at_address(p, true);</span>
+<span class="changed"> 364     do_update_in_use_info_for_chunk(this_chunk, false);</span>
+ 365 
+<span class="changed"> 366     // This chunk should be valid and can be verified.</span>
+<span class="changed"> 367     DEBUG_ONLY(do_verify_chunk(this_chunk));</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 368 
+<span class="changed"> 369     // Return this chunk to freelist and correct counter.</span>
+<span class="changed"> 370     free_chunks(this_chunk_index)-&gt;return_chunk_at_head(this_chunk);</span>
+<span class="changed"> 371     _free_chunks_count ++;</span>
+
+
+ 372 
+<span class="changed"> 373     log_trace(gc, metaspace, freelist)("Created chunk at " PTR_FORMAT ", word size "</span>
+<span class="changed"> 374       SIZE_FORMAT_HEX " (%s), in split region [" PTR_FORMAT "..." PTR_FORMAT ").",</span>
+<span class="changed"> 375       p2i(this_chunk), this_chunk-&gt;word_size(), chunk_size_name(this_chunk_index),</span>
+<span class="changed"> 376       p2i(region_start), p2i(region_end));</span>
+ 377 
+<span class="changed"> 378     p += this_chunk_word_size;</span>
+
+ 379 
+<span class="changed"> 380   }</span>
+ 381 
+<span class="changed"> 382   // Note: at this point, the VirtualSpaceNode is invalid since we split a chunk and</span>
+<span class="changed"> 383   // did not yet hand out part of that split; so, vsn-&gt;verify_free_chunks_are_ideally_merged()</span>
+<span class="changed"> 384   // would assert. Instead, do all verifications in the caller.</span>
+ 385 
+<span class="changed"> 386   DEBUG_ONLY(g_internal_statistics.num_chunk_splits ++);</span>
+ 387 
+<span class="removed"> 388   return target_chunk;</span>
+ 389 }
+ 390 
+<span class="changed"> 391 Metachunk* ChunkManager::free_chunks_get(size_t word_size) {</span>
+<span class="changed"> 392   assert_lock_strong(MetaspaceExpand_lock);</span>
+
+
+
+
+
+ 393 
+<span class="changed"> 394   Metachunk* chunk = NULL;</span>
+<span class="changed"> 395   bool we_did_split_a_chunk = false;</span>
+ 396 
+<span class="changed"> 397   if (list_index(word_size) != HumongousIndex) {</span>
+ 398 
+<span class="changed"> 399     ChunkList* free_list = find_free_chunks_list(word_size);</span>
+<span class="changed"> 400     assert(free_list != NULL, "Sanity check");</span>
+ 401 
+<span class="changed"> 402     chunk = free_list-&gt;head();</span>
+ 403 
+<span class="changed"> 404     if (chunk == NULL) {</span>
+<span class="changed"> 405       // Split large chunks into smaller chunks if there are no smaller chunks, just large chunks.</span>
+<span class="changed"> 406       // This is the counterpart of the coalescing-upon-chunk-return.</span>
+
+ 407 
+<span class="changed"> 408       ChunkIndex target_chunk_index = get_chunk_type_by_size(word_size, is_class());</span>
+ 409 
+<span class="changed"> 410       // Is there a larger chunk we could split?</span>
+<span class="changed"> 411       Metachunk* larger_chunk = NULL;</span>
+<span class="changed"> 412       ChunkIndex larger_chunk_index = next_chunk_index(target_chunk_index);</span>
+<span class="changed"> 413       while (larger_chunk == NULL &amp;&amp; larger_chunk_index &lt; NumberOfFreeLists) {</span>
+<span class="changed"> 414         larger_chunk = free_chunks(larger_chunk_index)-&gt;head();</span>
+<span class="changed"> 415         if (larger_chunk == NULL) {</span>
+<span class="changed"> 416           larger_chunk_index = next_chunk_index(larger_chunk_index);</span>
+<span class="changed"> 417         }</span>
+ 418       }
+ 419 
+<span class="changed"> 420       if (larger_chunk != NULL) {</span>
+<span class="changed"> 421         assert(larger_chunk-&gt;word_size() &gt; word_size, "Sanity");</span>
+<span class="changed"> 422         assert(larger_chunk-&gt;get_chunk_type() == larger_chunk_index, "Sanity");</span>
+ 423 
+<span class="changed"> 424         // We found a larger chunk. Lets split it up:</span>
+<span class="changed"> 425         // - remove old chunk</span>
+<span class="changed"> 426         // - in its place, create new smaller chunks, with at least one chunk</span>
+<span class="changed"> 427         //   being of target size, the others sized as large as possible. This</span>
+<span class="changed"> 428         //   is to make sure the resulting chunks are "as coalesced as possible"</span>
+<span class="changed"> 429         //   (similar to VirtualSpaceNode::retire()).</span>
+<span class="changed"> 430         // Note: during this operation both ChunkManager and VirtualSpaceNode</span>
+<span class="changed"> 431         //  are temporarily invalid, so be careful with asserts.</span>
+ 432 
+<span class="changed"> 433         log_trace(gc, metaspace, freelist)("%s: splitting chunk " PTR_FORMAT</span>
+<span class="changed"> 434            ", word size " SIZE_FORMAT_HEX " (%s), to get a chunk of word size " SIZE_FORMAT_HEX " (%s)...",</span>
+<span class="changed"> 435           (is_class() ? "class space" : "metaspace"), p2i(larger_chunk), larger_chunk-&gt;word_size(),</span>
+<span class="changed"> 436           chunk_size_name(larger_chunk_index), word_size, chunk_size_name(target_chunk_index));</span>
+ 437 
+<span class="changed"> 438         chunk = split_chunk(word_size, larger_chunk);</span>
+
+ 439 
+<span class="changed"> 440         // This should have worked.</span>
+<span class="changed"> 441         assert(chunk != NULL, "Sanity");</span>
+<span class="changed"> 442         assert(chunk-&gt;word_size() == word_size, "Sanity");</span>
+<span class="changed"> 443         assert(chunk-&gt;is_tagged_free(), "Sanity");</span>
+ 444 
+<span class="changed"> 445         we_did_split_a_chunk = true;</span>
+ 446 
+ 447       }
+<span class="removed"> 448     }</span>
+ 449 
+<span class="changed"> 450     if (chunk == NULL) {</span>
+<span class="changed"> 451       return NULL;</span>
+
+
+
+
+ 452     }
+ 453 
+<span class="changed"> 454     // Remove the chunk as the head of the list.</span>
+<span class="changed"> 455     free_list-&gt;remove_chunk(chunk);</span>
+ 456 
+<span class="changed"> 457     log_trace(gc, metaspace, freelist)("ChunkManager::free_chunks_get: free_list: " PTR_FORMAT " chunks left: " SSIZE_FORMAT ".",</span>
+<span class="changed"> 458                                        p2i(free_list), free_list-&gt;count());</span>
+ 459 
+<span class="changed"> 460   } else {</span>
+<span class="changed"> 461     chunk = humongous_dictionary()-&gt;get_chunk(word_size);</span>
+ 462 
+<span class="changed"> 463     if (chunk == NULL) {</span>
+<span class="changed"> 464       return NULL;</span>
+<span class="changed"> 465     }</span>
+ 466 
+<span class="changed"> 467     log_trace(gc, metaspace, alloc)("Free list allocate humongous chunk size " SIZE_FORMAT " for requested size " SIZE_FORMAT " waste " SIZE_FORMAT,</span>
+<span class="changed"> 468                                     chunk-&gt;word_size(), word_size, chunk-&gt;word_size() - word_size);</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 469   }
+
+ 470 
+<span class="changed"> 471   // Chunk has been removed from the chunk manager; update counters.</span>
+<span class="changed"> 472   account_for_removed_chunk(chunk);</span>
+<span class="changed"> 473   do_update_in_use_info_for_chunk(chunk, true);</span>
+<span class="changed"> 474   chunk-&gt;container()-&gt;inc_container_count();</span>
+<span class="changed"> 475   chunk-&gt;inc_use_count();</span>
+
+ 476 
+<span class="changed"> 477   // Remove it from the links to this freelist</span>
+<span class="changed"> 478   chunk-&gt;set_next(NULL);</span>
+<span class="changed"> 479   chunk-&gt;set_prev(NULL);</span>
+ 480 
+<span class="changed"> 481   // Run some verifications (some more if we did a chunk split)</span>
+<span class="changed"> 482 #ifdef ASSERT</span>
+ 483 
+<span class="changed"> 484   EVERY_NTH(VerifyMetaspaceInterval)</span>
+<span class="changed"> 485     // Be extra verify-y when chunk split happened.</span>
+<span class="changed"> 486     locked_verify(true);</span>
+<span class="changed"> 487     VirtualSpaceNode* const vsn = chunk-&gt;container();</span>
+<span class="changed"> 488     vsn-&gt;verify(true);</span>
+<span class="changed"> 489     if (we_did_split_a_chunk) {</span>
+<span class="changed"> 490       vsn-&gt;verify_free_chunks_are_ideally_merged();</span>
+ 491     }
+<span class="removed"> 492   END_EVERY_NTH</span>
+ 493 
+<span class="changed"> 494   g_internal_statistics.num_chunks_removed_from_freelist ++;</span>
+
+
+
+
+
+
+
+
+
+
+
+
+ 495 
+<span class="changed"> 496 #endif</span>
+
+ 497 
+<span class="changed"> 498   return chunk;</span>
+<span class="changed"> 499 }</span>
+
+
+
+
+
+
+ 500 
+<span class="changed"> 501 Metachunk* ChunkManager::chunk_freelist_allocate(size_t word_size) {</span>
+<span class="changed"> 502   assert_lock_strong(MetaspaceExpand_lock);</span>
+
+ 503 
+<span class="changed"> 504   // Take from the beginning of the list</span>
+<span class="changed"> 505   Metachunk* chunk = free_chunks_get(word_size);</span>
+<span class="changed"> 506   if (chunk == NULL) {</span>
+<span class="changed"> 507     return NULL;</span>
+<span class="changed"> 508   }</span>
+ 509 
+<span class="changed"> 510   assert((word_size &lt;= chunk-&gt;word_size()) ||</span>
+<span class="changed"> 511          (list_index(chunk-&gt;word_size()) == HumongousIndex),</span>
+<span class="changed"> 512          "Non-humongous variable sized chunk");</span>
+<span class="changed"> 513   LogTarget(Trace, gc, metaspace, freelist) lt;</span>
+<span class="changed"> 514   if (lt.is_enabled()) {</span>
+<span class="changed"> 515     size_t list_count;</span>
+<span class="changed"> 516     if (list_index(word_size) &lt; HumongousIndex) {</span>
+<span class="changed"> 517       ChunkList* list = find_free_chunks_list(word_size);</span>
+<span class="changed"> 518       list_count = list-&gt;count();</span>
+<span class="changed"> 519     } else {</span>
+<span class="changed"> 520       list_count = humongous_dictionary()-&gt;total_count();</span>
+ 521     }
+<span class="removed"> 522     LogStream ls(lt);</span>
+<span class="removed"> 523     ls.print("ChunkManager::chunk_freelist_allocate: " PTR_FORMAT " chunk " PTR_FORMAT "  size " SIZE_FORMAT " count " SIZE_FORMAT " ",</span>
+<span class="removed"> 524              p2i(this), p2i(chunk), chunk-&gt;word_size(), list_count);</span>
+<span class="removed"> 525     ResourceMark rm;</span>
+<span class="removed"> 526     locked_print_free_chunks(&amp;ls);</span>
+ 527   }
+ 528 
+<span class="changed"> 529   return chunk;</span>
+
+
+ 530 }
+ 531 
+<span class="removed"> 532 void ChunkManager::return_single_chunk(Metachunk* chunk) {</span>
+ 533 
+<span class="changed"> 534 #ifdef ASSERT</span>
+<span class="changed"> 535   EVERY_NTH(VerifyMetaspaceInterval)</span>
+<span class="changed"> 536     this-&gt;locked_verify(false);</span>
+<span class="changed"> 537     do_verify_chunk(chunk);</span>
+<span class="changed"> 538   END_EVERY_NTH</span>
+<span class="changed"> 539 #endif</span>
+ 540 
+<span class="changed"> 541   const ChunkIndex index = chunk-&gt;get_chunk_type();</span>
+<span class="changed"> 542   assert_lock_strong(MetaspaceExpand_lock);</span>
+<span class="changed"> 543   DEBUG_ONLY(g_internal_statistics.num_chunks_added_to_freelist ++;)</span>
+<span class="changed"> 544   assert(chunk != NULL, "Expected chunk.");</span>
+<span class="changed"> 545   assert(chunk-&gt;container() != NULL, "Container should have been set.");</span>
+<span class="changed"> 546   assert(chunk-&gt;is_tagged_free() == false, "Chunk should be in use.");</span>
+<span class="changed"> 547   index_bounds_check(index);</span>
+<span class="changed"> 548 </span>
+<span class="changed"> 549   // Note: mangle *before* returning the chunk to the freelist or dictionary. It does not</span>
+<span class="changed"> 550   // matter for the freelist (non-humongous chunks), but the humongous chunk dictionary</span>
+<span class="changed"> 551   // keeps tree node pointers in the chunk payload area which mangle will overwrite.</span>
+<span class="changed"> 552   DEBUG_ONLY(chunk-&gt;mangle(badMetaWordVal);)</span>
+<span class="changed"> 553 </span>
+<span class="changed"> 554   // may need node for verification later after chunk may have been merged away.</span>
+<span class="changed"> 555   DEBUG_ONLY(VirtualSpaceNode* vsn = chunk-&gt;container(); )</span>
+<span class="changed"> 556 </span>
+<span class="changed"> 557   if (index != HumongousIndex) {</span>
+<span class="changed"> 558     // Return non-humongous chunk to freelist.</span>
+<span class="changed"> 559     ChunkList* list = free_chunks(index);</span>
+<span class="changed"> 560     assert(list-&gt;size() == chunk-&gt;word_size(), "Wrong chunk type.");</span>
+<span class="changed"> 561     list-&gt;return_chunk_at_head(chunk);</span>
+<span class="changed"> 562     log_trace(gc, metaspace, freelist)("returned one %s chunk at " PTR_FORMAT " to freelist.",</span>
+<span class="changed"> 563         chunk_size_name(index), p2i(chunk));</span>
+<span class="changed"> 564   } else {</span>
+<span class="changed"> 565     // Return humongous chunk to dictionary.</span>
+<span class="changed"> 566     assert(chunk-&gt;word_size() &gt; free_chunks(MediumIndex)-&gt;size(), "Wrong chunk type.");</span>
+<span class="changed"> 567     assert(chunk-&gt;word_size() % free_chunks(SpecializedIndex)-&gt;size() == 0,</span>
+<span class="changed"> 568            "Humongous chunk has wrong alignment.");</span>
+<span class="changed"> 569     _humongous_dictionary.return_chunk(chunk);</span>
+<span class="changed"> 570     log_trace(gc, metaspace, freelist)("returned one %s chunk at " PTR_FORMAT " (word size " SIZE_FORMAT ") to freelist.",</span>
+<span class="changed"> 571         chunk_size_name(index), p2i(chunk), chunk-&gt;word_size());</span>
+<span class="changed"> 572   }</span>
+<span class="changed"> 573   chunk-&gt;container()-&gt;dec_container_count();</span>
+<span class="changed"> 574   do_update_in_use_info_for_chunk(chunk, false);</span>
+ 575 
+<span class="changed"> 576   // Chunk has been added; update counters.</span>
+<span class="changed"> 577   account_for_added_chunk(chunk);</span>
+
+
+ 578 
+<span class="changed"> 579   // Attempt coalesce returned chunks with its neighboring chunks:</span>
+<span class="changed"> 580   // if this chunk is small or special, attempt to coalesce to a medium chunk.</span>
+<span class="changed"> 581   if (index == SmallIndex || index == SpecializedIndex) {</span>
+<span class="changed"> 582     if (!attempt_to_coalesce_around_chunk(chunk, MediumIndex)) {</span>
+<span class="changed"> 583       // This did not work. But if this chunk is special, we still may form a small chunk?</span>
+<span class="changed"> 584       if (index == SpecializedIndex) {</span>
+<span class="changed"> 585         if (!attempt_to_coalesce_around_chunk(chunk, SmallIndex)) {</span>
+<span class="changed"> 586           // give up.</span>
+<span class="changed"> 587         }</span>
+<span class="changed"> 588       }</span>
+<span class="changed"> 589     }</span>
+ 590   }
+ 591 
+<span class="changed"> 592   // From here on do not access chunk anymore, it may have been merged with another chunk.</span>
+
+
+ 593 
+ 594 #ifdef ASSERT
+<span class="removed"> 595   EVERY_NTH(VerifyMetaspaceInterval)</span>
+<span class="removed"> 596     this-&gt;locked_verify(true);</span>
+<span class="removed"> 597     vsn-&gt;verify(true);</span>
+<span class="removed"> 598     vsn-&gt;verify_free_chunks_are_ideally_merged();</span>
+<span class="removed"> 599   END_EVERY_NTH</span>
+<span class="removed"> 600 #endif</span>
+ 601 
+
+
+
+ 602 }
+ 603 
+<span class="changed"> 604 void ChunkManager::return_chunk_list(Metachunk* chunks) {</span>
+<span class="changed"> 605   if (chunks == NULL) {</span>
+<span class="changed"> 606     return;</span>
+<span class="changed"> 607   }</span>
+<span class="changed"> 608   LogTarget(Trace, gc, metaspace, freelist) log;</span>
+<span class="changed"> 609   if (log.is_enabled()) { // tracing</span>
+<span class="changed"> 610     log.print("returning list of chunks...");</span>
+<span class="changed"> 611   }</span>
+<span class="changed"> 612   unsigned num_chunks_returned = 0;</span>
+<span class="changed"> 613   size_t size_chunks_returned = 0;</span>
+<span class="changed"> 614   Metachunk* cur = chunks;</span>
+<span class="changed"> 615   while (cur != NULL) {</span>
+<span class="changed"> 616     // Capture the next link before it is changed</span>
+<span class="changed"> 617     // by the call to return_chunk_at_head();</span>
+<span class="changed"> 618     Metachunk* next = cur-&gt;next();</span>
+<span class="changed"> 619     if (log.is_enabled()) { // tracing</span>
+<span class="changed"> 620       num_chunks_returned ++;</span>
+<span class="changed"> 621       size_chunks_returned += cur-&gt;word_size();</span>
+<span class="changed"> 622     }</span>
+<span class="changed"> 623     return_single_chunk(cur);</span>
+<span class="changed"> 624     cur = next;</span>
+<span class="changed"> 625   }</span>
+<span class="changed"> 626   if (log.is_enabled()) { // tracing</span>
+<span class="changed"> 627     log.print("returned %u chunks to freelist, total word size " SIZE_FORMAT ".",</span>
+<span class="changed"> 628         num_chunks_returned, size_chunks_returned);</span>
+<span class="changed"> 629   }</span>
+ 630 }
+ 631 
+<span class="changed"> 632 void ChunkManager::collect_statistics(ChunkManagerStatistics* out) const {</span>
+<span class="changed"> 633   MutexLocker cl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+<span class="changed"> 634   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {</span>
+<span class="changed"> 635     out-&gt;chunk_stats(i).add(num_free_chunks(i), size_free_chunks_in_bytes(i) / sizeof(MetaWord));</span>
+<span class="changed"> 636   }</span>
+
+
+
+
+
+
+
+
+
+
+
+ 637 }
+ 638 
+ 639 } // namespace metaspace
+ 640 
+ 641 
+ 642 
+</pre></td><td><pre>
+   1 /*
+<span class="changed">   2  * Copyright (c) 2019, SAP SE. All rights reserved.</span>
+<span class="changed">   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.</span>
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+<span class="new">  25 </span>
+  26 #include "precompiled.hpp"
+  27 
+<span class="new">  28 </span>
+  29 #include "logging/log.hpp"
+  30 #include "logging/logStream.hpp"
+<span class="changed">  31 #include "memory/metaspace/arenaGrowthPolicy.hpp"</span>
+<span class="changed">  32 #include "memory/metaspace/chunkLevel.hpp"</span>
+  33 #include "memory/metaspace/chunkManager.hpp"
+<span class="new">  34 #include "memory/metaspace/internStat.hpp"</span>
+  35 #include "memory/metaspace/metachunk.hpp"
+
+  36 #include "memory/metaspace/metaspaceCommon.hpp"
+  37 #include "memory/metaspace/metaspaceStatistics.hpp"
+<span class="changed">  38 #include "memory/metaspace/settings.hpp"</span>
+  39 #include "memory/metaspace/virtualSpaceNode.hpp"
+<span class="new">  40 #include "memory/metaspace/virtualSpaceList.hpp"</span>
+  41 #include "runtime/mutexLocker.hpp"
+  42 #include "utilities/debug.hpp"
+  43 #include "utilities/globalDefinitions.hpp"
+
+  44 
+  45 namespace metaspace {
+  46 
+<span class="changed">  47 #define LOGFMT         "ChkMgr @" PTR_FORMAT " (%s)"</span>
+<span class="changed">  48 #define LOGFMT_ARGS    p2i(this), this-&gt;_name</span>
+
+
+
+
+  49 
+<span class="changed">  50 // Return a single chunk to the freelist and adjust accounting. No merge is attempted.</span>
+<span class="changed">  51 void ChunkManager::return_chunk_simple(Metachunk* c) {</span>
+
+
+
+
+
+
+
+
+
+
+  52 
+
+  53   assert_lock_strong(MetaspaceExpand_lock);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  54 
+<span class="changed">  55   DEBUG_ONLY(c-&gt;verify(false));</span>
+
+
+
+
+
+
+  56 
+<span class="changed">  57   const chunklevel_t lvl = c-&gt;level();</span>
+<span class="changed">  58   _chunks.add(c);</span>
+<span class="changed">  59   c-&gt;reset_used_words();</span>
+  60 
+<span class="changed">  61   // Tracing</span>
+<span class="changed">  62   log_debug(metaspace)("ChunkManager %s: returned chunk " METACHUNK_FORMAT ".",</span>
+<span class="changed">  63                        _name, METACHUNK_FORMAT_ARGS(c));</span>
+  64 
+
+  65 }
+  66 
+<span class="changed">  67 // Creates a chunk manager with a given name (which is for debug purposes only)</span>
+<span class="changed">  68 // and an associated space list which will be used to request new chunks from</span>
+<span class="changed">  69 // (see get_chunk())</span>
+<span class="changed">  70 ChunkManager::ChunkManager(const char* name, VirtualSpaceList* space_list)</span>
+<span class="changed">  71   : _vslist(space_list),</span>
+<span class="changed">  72     _name(name),</span>
+<span class="changed">  73     _chunks()</span>
+<span class="changed">  74 {</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  75 }
+  76 
+<span class="changed">  77 // Given a chunk we are about to handout to the caller, make sure it is committed</span>
+<span class="changed">  78 // according to constants::committed_words_on_fresh_chunks</span>
+<span class="changed">  79 bool ChunkManager::commit_chunk_before_handout(Metachunk* c) {</span>
+  80   assert_lock_strong(MetaspaceExpand_lock);
+<span class="changed">  81   const size_t must_be_committed = MIN2(c-&gt;word_size(), Settings::committed_words_on_fresh_chunks());</span>
+<span class="changed">  82   return c-&gt;ensure_committed_locked(must_be_committed);</span>
+  83 }
+  84 
+<span class="changed">  85 // Given a chunk, split it into a target chunk of a smaller size (higher target level)</span>
+<span class="changed">  86 //  and at least one, possible several splinter chunks.</span>
+<span class="changed">  87 // The original chunk must be outside of the freelist and its state must be free.</span>
+<span class="changed">  88 // The splinter chunks are added to the freelist.</span>
+<span class="changed">  89 // The resulting target chunk will be located at the same address as the original</span>
+<span class="changed">  90 //  chunk, but it will of course be smaller (of a higher level).</span>
+<span class="changed">  91 // The committed areas within the original chunk carry over to the resulting</span>
+<span class="changed">  92 //  chunks.</span>
+<span class="changed">  93 void ChunkManager::split_chunk_and_add_splinters(Metachunk* c, chunklevel_t target_level) {</span>
+<span class="changed">  94 </span>
+  95   assert_lock_strong(MetaspaceExpand_lock);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  96 
+<span class="new">  97   assert(c-&gt;is_free(), "chunk to be split must be free.");</span>
+<span class="new">  98   assert(c-&gt;level() &lt; target_level, "Target level must be higher than current level.");</span>
+<span class="new">  99   assert(c-&gt;prev() == NULL &amp;&amp; c-&gt;next() == NULL, "Chunk must be outside of any list.");</span>
+<span class="new"> 100 </span>
+<span class="new"> 101   DEBUG_ONLY(chunklevel::check_valid_level(target_level);)</span>
+<span class="new"> 102   DEBUG_ONLY(c-&gt;verify(true);)</span>
+<span class="new"> 103 </span>
+<span class="new"> 104   UL2(debug, "splitting chunk " METACHUNK_FORMAT " to " CHKLVL_FORMAT ".",</span>
+<span class="new"> 105       METACHUNK_FORMAT_ARGS(c), target_level);</span>
+<span class="new"> 106 </span>
+<span class="new"> 107   DEBUG_ONLY(size_t committed_words_before = c-&gt;committed_words();)</span>
+<span class="new"> 108 </span>
+<span class="new"> 109   const chunklevel_t orig_level = c-&gt;level();</span>
+<span class="new"> 110   c-&gt;vsnode()-&gt;split(target_level, c, &amp;_chunks);</span>
+<span class="new"> 111 </span>
+<span class="new"> 112   // Splitting should never fail.</span>
+<span class="new"> 113   assert(c-&gt;level() == target_level, "Sanity");</span>
+<span class="new"> 114 </span>
+<span class="new"> 115   // The size of the committed portion should not change (subject to the reduced chunk size of course)</span>
+ 116 #ifdef ASSERT
+<span class="changed"> 117   if (committed_words_before &gt; c-&gt;word_size()) {</span>
+<span class="changed"> 118     assert(c-&gt;is_fully_committed(), "Sanity");</span>
+<span class="changed"> 119   } else {</span>
+<span class="changed"> 120     assert(c-&gt;committed_words() == committed_words_before, "Sanity");</span>
+<span class="changed"> 121   }</span>
+<span class="changed"> 122 #endif</span>
+<span class="changed"> 123 </span>
+<span class="changed"> 124   DEBUG_ONLY(c-&gt;verify(false));</span>
+<span class="changed"> 125 </span>
+<span class="changed"> 126   DEBUG_ONLY(verify_locked(true);)</span>
+<span class="changed"> 127 </span>
+<span class="changed"> 128   SOMETIMES(c-&gt;vsnode()-&gt;verify(true);)</span>
+<span class="changed"> 129 </span>
+ 130 }
+ 131 
+<span class="changed"> 132 // On success, returns a chunk of level of &lt;preferred_level&gt;, but at most &lt;max_level&gt;.</span>
+<span class="changed"> 133 //  The first first &lt;min_committed_words&gt; of the chunk are guaranteed to be committed.</span>
+<span class="changed"> 134 // On error, will return NULL.</span>
+<span class="changed"> 135 //</span>
+<span class="changed"> 136 // This function may fail for two reasons:</span>
+<span class="changed"> 137 // - Either we are unable to reserve space for a new chunk (if the underlying VirtualSpaceList</span>
+<span class="changed"> 138 //   is non-expandable but needs expanding - aka out of compressed class space).</span>
+<span class="changed"> 139 // - Or, if the necessary space cannot be committed because we hit a commit limit.</span>
+<span class="changed"> 140 //   This may be either the GC threshold or MaxMetaspaceSize.</span>
+<span class="changed"> 141 Metachunk* ChunkManager::get_chunk(chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_words) {</span>
+ 142 
+<span class="changed"> 143   assert(preferred_level &lt;= max_level, "Sanity");</span>
+<span class="changed"> 144   assert(chunklevel::level_fitting_word_size(min_committed_words) &gt;= max_level, "Sanity");</span>
+ 145 
+<span class="changed"> 146   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+<span class="changed"> 147 </span>
+<span class="changed"> 148   DEBUG_ONLY(verify_locked(false);)</span>
+<span class="changed"> 149 </span>
+<span class="changed"> 150   DEBUG_ONLY(chunklevel::check_valid_level(max_level);)</span>
+<span class="changed"> 151   DEBUG_ONLY(chunklevel::check_valid_level(preferred_level);)</span>
+<span class="changed"> 152   assert(max_level &gt;= preferred_level, "invalid level.");</span>
+<span class="changed"> 153 </span>
+<span class="changed"> 154   UL2(debug, "requested chunk: pref_level: " CHKLVL_FORMAT</span>
+<span class="changed"> 155      ", max_level: " CHKLVL_FORMAT ", min committed size: " SIZE_FORMAT ".",</span>
+<span class="changed"> 156      preferred_level, max_level, min_committed_words);</span>
+<span class="changed"> 157 </span>
+<span class="changed"> 158   // First, optimistically look for a chunk which is already committed far enough to hold min_word_size.</span>
+<span class="changed"> 159 </span>
+<span class="changed"> 160   // 1) Search best or smaller committed chunks (first attempt):</span>
+<span class="changed"> 161   //    Start at the preferred chunk size and work your way down (level up).</span>
+<span class="changed"> 162   //    But for now, only consider chunks larger than a certain threshold -</span>
+<span class="changed"> 163   //    this is to prevent large loaders (eg boot) from unnecessarily gobbling up</span>
+<span class="changed"> 164   //    all the tiny splinter chunks lambdas leave around.</span>
+<span class="changed"> 165   Metachunk* c = NULL;</span>
+<span class="changed"> 166   c = _chunks.search_chunk_ascending(preferred_level, MIN2((chunklevel_t)(preferred_level + 2), max_level), min_committed_words);</span>
+<span class="changed"> 167 </span>
+<span class="changed"> 168   // 2) Search larger committed chunks:</span>
+<span class="changed"> 169   //    If that did not yield anything, look at larger chunks, which may be committed. We would have to split</span>
+<span class="changed"> 170   //    them first, of course.</span>
+<span class="changed"> 171   if (c == NULL) {</span>
+<span class="changed"> 172     c = _chunks.search_chunk_descending(preferred_level, min_committed_words);</span>
+ 173   }
+<span class="new"> 174 </span>
+<span class="new"> 175   // 3) Search best or smaller committed chunks (second attempt):</span>
+<span class="new"> 176   //    Repeat (1) but now consider even the tiniest chunks as long as they are large enough to hold the</span>
+<span class="new"> 177   //    committed min size.</span>
+<span class="new"> 178   if (c == NULL) {</span>
+<span class="new"> 179     c = _chunks.search_chunk_ascending(preferred_level, max_level, min_committed_words);</span>
+ 180   }
+<span class="new"> 181 </span>
+<span class="new"> 182   // if we did not get anything yet, there are no free chunks commmitted enough. Repeat search but look for uncommitted chunks too:</span>
+<span class="new"> 183 </span>
+<span class="new"> 184   // 4) Search best or smaller chunks, can be uncommitted:</span>
+<span class="new"> 185   if (c == NULL) {</span>
+<span class="new"> 186     c = _chunks.search_chunk_ascending(preferred_level, max_level, 0);</span>
+ 187   }
+ 188 
+<span class="changed"> 189   // 5) Search a larger uncommitted chunk:</span>
+<span class="changed"> 190   if (c == NULL) {</span>
+<span class="changed"> 191     c = _chunks.search_chunk_descending(preferred_level, 0);</span>
+<span class="changed"> 192   }</span>
+
+
+
+
+
+
+
+ 193 
+<span class="changed"> 194   if (c != NULL) {</span>
+<span class="changed"> 195     UL(trace, "taken from freelist.");</span>
+<span class="changed"> 196   }</span>
+
+
+ 197 
+<span class="changed"> 198   // Failing all that, allocate a new root chunk from the connected virtual space.</span>
+<span class="changed"> 199   // This may fail if the underlying vslist cannot be expanded (e.g. compressed class space)</span>
+<span class="changed"> 200   if (c == NULL) {</span>
+<span class="changed"> 201     c = _vslist-&gt;allocate_root_chunk();</span>
+<span class="changed"> 202     if (c == NULL) {</span>
+<span class="changed"> 203       UL(info, "failed to get new root chunk.");</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 204     } else {
+<span class="changed"> 205       assert(c-&gt;level() == chunklevel::ROOT_CHUNK_LEVEL, "root chunk expected");</span>
+<span class="changed"> 206       UL(debug, "allocated new root chunk.");</span>
+ 207     }
+ 208   }
+ 209 
+<span class="changed"> 210   if (c == NULL) {</span>
+<span class="changed"> 211     UL2(info, "failed to get chunk (preferred level: " CHKLVL_FORMAT</span>
+<span class="changed"> 212        ", max level " CHKLVL_FORMAT ".", preferred_level, max_level);</span>
+<span class="changed"> 213     return NULL;</span>
+<span class="changed"> 214   }</span>
+
+
+
+
+
+ 215 
+<span class="changed"> 216   // Now we have a chunk. It may be too large for the callers needs. It also may not be committed enough.</span>
+<span class="changed"> 217   // So we may have to split it, and commit its starting granules.</span>
+<span class="changed"> 218   //</span>
+<span class="changed"> 219   // Note that we, as step 1, commit the chunk. Committing may fail and by doing the committing before</span>
+<span class="changed"> 220   // the split we can easily add the still unsplit chunk back to the freelist without having to re-merge.</span>
+<span class="changed"> 221   //</span>
+<span class="changed"> 222   // As step 2 we split the chunk. Splitting preserves the committed regions underlying the chunk, and</span>
+<span class="changed"> 223   // since the target chunk is the first in the original chunk area, the target chunk will be committed</span>
+<span class="changed"> 224   // enough.</span>
+<span class="changed"> 225 </span>
+<span class="changed"> 226   const size_t need_to_commit = MAX2(Settings::committed_words_on_fresh_chunks(), min_committed_words);</span>
+<span class="changed"> 227   if (c-&gt;committed_words() &lt; need_to_commit) {</span>
+<span class="changed"> 228     if (c-&gt;ensure_committed_locked(need_to_commit) == false) {</span>
+<span class="changed"> 229       UL2(info, "failed to commit " SIZE_FORMAT " words on chunk " METACHUNK_FORMAT ".",</span>
+<span class="changed"> 230           need_to_commit,  METACHUNK_FORMAT_ARGS(c));</span>
+<span class="changed"> 231       _chunks.add(c);</span>
+<span class="changed"> 232       return NULL;</span>
+<span class="changed"> 233     }</span>
+<span class="changed"> 234   }</span>
+ 235 
+<span class="changed"> 236   // If too large, split chunk and add the splinter chunks back to the freelist.</span>
+<span class="changed"> 237   if (c-&gt;level() &lt; preferred_level) {</span>
+<span class="changed"> 238     split_chunk_and_add_splinters(c, preferred_level);</span>
+<span class="changed"> 239     assert(c-&gt;level() == preferred_level, "split failed?");</span>
+<span class="changed"> 240   }</span>
+ 241 
+<span class="changed"> 242   // Any chunk returned from ChunkManager shall be marked as in use.</span>
+<span class="changed"> 243   c-&gt;set_in_use();</span>
+
+
+ 244 
+<span class="changed"> 245   DEBUG_ONLY(verify_locked(false);)</span>
+<span class="changed"> 246   SOMETIMES(c-&gt;vsnode()-&gt;verify(true);)</span>
+ 247 
+<span class="changed"> 248   UL2(debug, "handing out chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));</span>
+ 249 
+<span class="changed"> 250   DEBUG_ONLY(InternalStats::inc_num_chunks_taken_from_freelist();)</span>
+
+
+ 251 
+<span class="changed"> 252   return c;</span>
+ 253 
+
+ 254 }
+ 255 
+<span class="changed"> 256 // Return a single chunk to the ChunkManager and adjust accounting. May merge chunk</span>
+<span class="changed"> 257 //  with neighbors.</span>
+<span class="changed"> 258 // As a side effect this removes the chunk from whatever list it has been in previously.</span>
+<span class="changed"> 259 // Happens after a Classloader was unloaded and releases its metaspace chunks.</span>
+<span class="changed"> 260 // !! Note: this may invalidate the chunk. Do not access the chunk after</span>
+<span class="changed"> 261 //    this function returns !!</span>
+<span class="changed"> 262 void ChunkManager::return_chunk(Metachunk* c) {</span>
+ 263 
+<span class="changed"> 264   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+
+ 265 
+<span class="changed"> 266   UL2(debug, ": returning chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));</span>
+ 267 
+<span class="changed"> 268   DEBUG_ONLY(c-&gt;verify(true);)</span>
+
+ 269 
+<span class="changed"> 270   assert(contains_chunk(c) == false, "A chunk to be added to the freelist must not be in the freelist already.");</span>
+ 271 
+<span class="changed"> 272   assert(c-&gt;is_in_use(), "Unexpected chunk state");</span>
+<span class="changed"> 273   assert(!c-&gt;in_list(), "Remove from list first");</span>
+<span class="changed"> 274   c-&gt;set_free();</span>
+<span class="changed"> 275   c-&gt;reset_used_words();</span>
+ 276 
+<span class="changed"> 277   const chunklevel_t orig_lvl = c-&gt;level();</span>
+ 278 
+<span class="changed"> 279   Metachunk* merged = NULL;</span>
+<span class="changed"> 280   if (!c-&gt;is_root_chunk()) {</span>
+<span class="changed"> 281     // Only attempt merging if we are not of the lowest level already.</span>
+<span class="changed"> 282     merged = c-&gt;vsnode()-&gt;merge(c, &amp;_chunks);</span>
+
+
+
+
+ 283   }
+ 284 
+<span class="changed"> 285   if (merged != NULL) {</span>
+
+
+ 286 
+<span class="changed"> 287     DEBUG_ONLY(merged-&gt;verify(false));</span>
+
+
+
+
+
+
+
+ 288 
+<span class="changed"> 289     // We did merge our chunk into a different chunk.</span>
+
+
+
+ 290 
+<span class="changed"> 291     // We did merge chunks and now have a bigger chunk.</span>
+<span class="changed"> 292     assert(merged-&gt;level() &lt; orig_lvl, "Sanity");</span>
+ 293 
+<span class="changed"> 294     UL2(debug, "merged into chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(merged));</span>
+
+
+
+ 295 
+<span class="changed"> 296     c = merged;</span>
+ 297 
+ 298   }
+
+ 299 
+<span class="changed"> 300   if (Settings::uncommit_on_return() &amp;&amp;</span>
+<span class="changed"> 301       Settings::uncommit_on_return_min_word_size() &lt;= c-&gt;word_size())</span>
+<span class="changed"> 302   {</span>
+<span class="changed"> 303 </span>
+<span class="changed"> 304     UL2(debug, "uncommitting free chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));</span>
+<span class="changed"> 305     c-&gt;uncommit_locked();</span>
+ 306   }
+ 307 
+<span class="changed"> 308   return_chunk_simple(c);</span>
+
+ 309 
+<span class="changed"> 310   DEBUG_ONLY(verify_locked(false);)</span>
+<span class="changed"> 311   SOMETIMES(c-&gt;vsnode()-&gt;verify(true);)</span>
+ 312 
+<span class="changed"> 313   DEBUG_ONLY(InternalStats::inc_num_chunks_returned_to_freelist();)</span>
+
+ 314 
+<span class="changed"> 315 }</span>
+
+
+ 316 
+<span class="changed"> 317 // Given a chunk c, whose state must be "in-use" and must not be a root chunk, attempt to</span>
+<span class="changed"> 318 // enlarge it in place by claiming its trailing buddy.</span>
+<span class="changed"> 319 //</span>
+<span class="changed"> 320 // This will only work if c is the leader of the buddy pair and the trailing buddy is free.</span>
+<span class="changed"> 321 //</span>
+<span class="changed"> 322 // If successful, the follower chunk will be removed from the freelists, the leader chunk c will</span>
+<span class="changed"> 323 // double in size (level decreased by one).</span>
+<span class="changed"> 324 //</span>
+<span class="changed"> 325 // On success, true is returned, false otherwise.</span>
+<span class="changed"> 326 bool ChunkManager::attempt_enlarge_chunk(Metachunk* c) {</span>
+<span class="changed"> 327   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+<span class="changed"> 328   return c-&gt;vsnode()-&gt;attempt_enlarge_chunk(c, &amp;_chunks);</span>
+<span class="changed"> 329 }</span>
+<span class="changed"> 330 </span>
+<span class="changed"> 331 static void print_word_size_delta(outputStream* st, size_t word_size_1, size_t word_size_2) {</span>
+<span class="changed"> 332   if (word_size_1 == word_size_2) {</span>
+<span class="changed"> 333     print_scaled_words(st, word_size_1);</span>
+<span class="changed"> 334     st-&gt;print (" (no change)");</span>
+<span class="changed"> 335   } else {</span>
+<span class="changed"> 336     print_scaled_words(st, word_size_1);</span>
+<span class="changed"> 337     st-&gt;print("-&gt;");</span>
+<span class="changed"> 338     print_scaled_words(st, word_size_2);</span>
+<span class="changed"> 339     st-&gt;print(" (");</span>
+<span class="changed"> 340     if (word_size_2 &lt;= word_size_1) {</span>
+<span class="changed"> 341       st-&gt;print("-");</span>
+<span class="changed"> 342       print_scaled_words(st, word_size_1 - word_size_2);</span>
+<span class="changed"> 343     } else {</span>
+<span class="changed"> 344       st-&gt;print("+");</span>
+<span class="changed"> 345       print_scaled_words(st, word_size_2 - word_size_1);</span>
+<span class="changed"> 346     }</span>
+<span class="changed"> 347     st-&gt;print(")");</span>
+ 348   }
+<span class="new"> 349 }</span>
+ 350 
+<span class="changed"> 351 // Attempt to reclaim free areas in metaspace wholesale:</span>
+<span class="changed"> 352 // - first, attempt to purge nodes of the backing virtual space. This can only be successful</span>
+<span class="changed"> 353 //   if whole nodes are only containing free chunks, so it highly depends on fragmentation.</span>
+<span class="changed"> 354 // - then, it will uncommit areas of free chunks according to the rules laid down in</span>
+<span class="changed"> 355 //   settings (see settings.hpp).</span>
+<span class="changed"> 356 void ChunkManager::wholesale_reclaim() {</span>
+ 357 
+<span class="changed"> 358   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+
+
+ 359 
+<span class="changed"> 360   UL(info, ": reclaiming memory...");</span>
+
+ 361 
+<span class="changed"> 362   const size_t reserved_before = _vslist-&gt;reserved_words();</span>
+<span class="changed"> 363   const size_t committed_before = _vslist-&gt;committed_words();</span>
+<span class="changed"> 364   int num_nodes_purged = 0;</span>
+<span class="changed"> 365 </span>
+<span class="changed"> 366   if (Settings::delete_nodes_on_purge()) {</span>
+<span class="changed"> 367     num_nodes_purged = _vslist-&gt;purge(&amp;_chunks);</span>
+<span class="changed"> 368     DEBUG_ONLY(InternalStats::inc_num_purges();)</span>
+ 369   }
+
+ 370 
+<span class="changed"> 371   if (Settings::uncommit_on_purge()) {</span>
+<span class="changed"> 372     const chunklevel_t max_level =</span>
+<span class="changed"> 373         chunklevel::level_fitting_word_size(Settings::uncommit_on_purge_min_word_size());</span>
+<span class="changed"> 374     for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL;</span>
+<span class="changed"> 375          l &lt;= max_level;</span>
+<span class="changed"> 376          l ++)</span>
+<span class="changed"> 377     {</span>
+<span class="changed"> 378       for (Metachunk* c = _chunks.first_at_level(l); c != NULL; c = c-&gt;next()) {</span>
+<span class="changed"> 379         c-&gt;uncommit_locked();</span>
+<span class="changed"> 380       }</span>
+<span class="changed"> 381     }</span>
+<span class="changed"> 382     DEBUG_ONLY(InternalStats::inc_num_wholesale_uncommits();)</span>
+<span class="changed"> 383   }</span>
+ 384 
+<span class="changed"> 385   const size_t reserved_after = _vslist-&gt;reserved_words();</span>
+<span class="changed"> 386   const size_t committed_after = _vslist-&gt;committed_words();</span>
+ 387 
+<span class="changed"> 388   // Print a nice report.</span>
+<span class="changed"> 389   if (reserved_after == reserved_before &amp;&amp; committed_after == committed_before) {</span>
+<span class="changed"> 390     UL(info, "nothing reclaimed.");</span>
+<span class="changed"> 391   } else {</span>
+<span class="changed"> 392     LogTarget(Info, metaspace) lt;</span>
+<span class="changed"> 393     if (lt.is_enabled()) {</span>
+<span class="changed"> 394       LogStream ls(lt);</span>
+<span class="changed"> 395       ls.print_cr(LOGFMT ": finished reclaiming memory: ", LOGFMT_ARGS);</span>
+ 396 
+<span class="changed"> 397       ls.print("reserved: ");</span>
+<span class="changed"> 398       print_word_size_delta(&amp;ls, reserved_before, reserved_after);</span>
+<span class="changed"> 399       ls.cr();</span>
+ 400 
+<span class="changed"> 401       ls.print("committed: ");</span>
+<span class="changed"> 402       print_word_size_delta(&amp;ls, committed_before, committed_after);</span>
+<span class="changed"> 403       ls.cr();</span>
+
+
+ 404 
+<span class="changed"> 405       ls.print_cr("full nodes purged: %d", num_nodes_purged);</span>
+
+
+
+
+
+
+
+
+
+
+ 406     }
+
+
+
+
+
+ 407   }
+ 408 
+<span class="changed"> 409   DEBUG_ONLY(_vslist-&gt;verify_locked(true));</span>
+<span class="changed"> 410   DEBUG_ONLY(verify_locked(true));</span>
+<span class="changed"> 411 </span>
+ 412 }
+ 413 
+
+ 414 
+<span class="changed"> 415 ChunkManager* ChunkManager::_chunkmanager_class = NULL;</span>
+<span class="changed"> 416 ChunkManager* ChunkManager::_chunkmanager_nonclass = NULL;</span>
+
+
+
+
+ 417 
+<span class="changed"> 418 void ChunkManager::set_chunkmanager_class(ChunkManager* cm) {</span>
+<span class="changed"> 419   assert(_chunkmanager_class == NULL, "Sanity");</span>
+<span class="changed"> 420   _chunkmanager_class = cm;</span>
+<span class="changed"> 421 }</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 422 
+<span class="changed"> 423 void ChunkManager::set_chunkmanager_nonclass(ChunkManager* cm) {</span>
+<span class="changed"> 424   assert(_chunkmanager_nonclass == NULL, "Sanity");</span>
+<span class="changed"> 425   _chunkmanager_nonclass = cm;</span>
+<span class="changed"> 426 }</span>
+ 427 
+<span class="changed"> 428 </span>
+<span class="changed"> 429 </span>
+<span class="changed"> 430 // Update statistics.</span>
+<span class="changed"> 431 void ChunkManager::add_to_statistics(cm_stats_t* out) const {</span>
+<span class="changed"> 432 </span>
+<span class="changed"> 433   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+<span class="changed"> 434 </span>
+<span class="changed"> 435   for (chunklevel_t l = chunklevel::ROOT_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed"> 436     out-&gt;num_chunks[l] += _chunks.num_chunks_at_level(l);</span>
+<span class="changed"> 437     out-&gt;committed_word_size[l] += _chunks.committed_word_size_at_level(l);</span>
+
+ 438   }
+ 439 
+<span class="changed"> 440   DEBUG_ONLY(out-&gt;verify();)</span>
+<span class="changed"> 441 </span>
+<span class="changed"> 442 }</span>
+ 443 
+ 444 #ifdef ASSERT
+
+
+
+
+
+
+ 445 
+<span class="new"> 446 void ChunkManager::verify(bool slow) const {</span>
+<span class="new"> 447   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+<span class="new"> 448   verify_locked(slow);</span>
+ 449 }
+ 450 
+<span class="changed"> 451 void ChunkManager::verify_locked(bool slow) const {</span>
+<span class="changed"> 452   assert_lock_strong(MetaspaceExpand_lock);</span>
+<span class="changed"> 453   assert(_vslist != NULL, "No vslist");</span>
+<span class="changed"> 454   _chunks.verify();</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 455 }
+ 456 
+<span class="changed"> 457 bool ChunkManager::contains_chunk(Metachunk* c) const {</span>
+<span class="changed"> 458   return _chunks.contains(c);</span>
+<span class="changed"> 459 }</span>
+<span class="changed"> 460 </span>
+<span class="changed"> 461 #endif // ASSERT</span>
+<span class="changed"> 462 </span>
+<span class="changed"> 463 void ChunkManager::print_on(outputStream* st) const {</span>
+<span class="changed"> 464   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);</span>
+<span class="changed"> 465   print_on_locked(st);</span>
+<span class="changed"> 466 }</span>
+<span class="changed"> 467 </span>
+<span class="changed"> 468 void ChunkManager::print_on_locked(outputStream* st) const {</span>
+<span class="changed"> 469   assert_lock_strong(MetaspaceExpand_lock);</span>
+<span class="changed"> 470   st-&gt;print_cr("cm %s: %d chunks, total word size: " SIZE_FORMAT ", committed word size: " SIZE_FORMAT, _name,</span>
+<span class="changed"> 471                total_num_chunks(), total_word_size(), _chunks.committed_word_size());</span>
+<span class="changed"> 472   _chunks.print_on(st);</span>
+ 473 }
+ 474 
+ 475 } // namespace metaspace
+ 476 
+ 477 
+ 478 
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/chunkManager.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

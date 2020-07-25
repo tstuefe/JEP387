@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/allocation.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metadataFactory.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/filemap.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "jvm.h"
+  27 #include "classfile/classFileStream.hpp"
+  28 #include "classfile/classLoader.inline.hpp"
+  29 #include "classfile/classLoaderData.inline.hpp"
+  30 #include "classfile/classLoaderExt.hpp"
+  31 #include "classfile/symbolTable.hpp"
+  32 #include "classfile/systemDictionaryShared.hpp"
+  33 #include "classfile/altHashing.hpp"
+  34 #include "logging/log.hpp"
+  35 #include "logging/logStream.hpp"
+  36 #include "logging/logMessage.hpp"
+  37 #include "memory/archiveUtils.inline.hpp"
+  38 #include "memory/dynamicArchive.hpp"
+  39 #include "memory/filemap.hpp"
+  40 #include "memory/heapShared.inline.hpp"
+  41 #include "memory/iterator.inline.hpp"
+  42 #include "memory/metadataFactory.hpp"
+
+  43 #include "memory/metaspaceClosure.hpp"
+  44 #include "memory/metaspaceShared.hpp"
+  45 #include "memory/oopFactory.hpp"
+  46 #include "memory/universe.hpp"
+  47 #include "oops/compressedOops.hpp"
+  48 #include "oops/compressedOops.inline.hpp"
+  49 #include "oops/objArrayOop.hpp"
+  50 #include "oops/oop.inline.hpp"
+  51 #include "prims/jvmtiExport.hpp"
+  52 #include "runtime/arguments.hpp"
+  53 #include "runtime/java.hpp"
+  54 #include "runtime/mutexLocker.hpp"
+  55 #include "runtime/os.inline.hpp"
+  56 #include "runtime/vm_version.hpp"
+  57 #include "services/memTracker.hpp"
+  58 #include "utilities/align.hpp"
+  59 #include "utilities/bitMap.inline.hpp"
+  60 #include "utilities/classpathStream.hpp"
+  61 #include "utilities/defaultStream.hpp"
+  62 #if INCLUDE_G1GC
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "jvm.h"
+  27 #include "classfile/classFileStream.hpp"
+  28 #include "classfile/classLoader.inline.hpp"
+  29 #include "classfile/classLoaderData.inline.hpp"
+  30 #include "classfile/classLoaderExt.hpp"
+  31 #include "classfile/symbolTable.hpp"
+  32 #include "classfile/systemDictionaryShared.hpp"
+  33 #include "classfile/altHashing.hpp"
+  34 #include "logging/log.hpp"
+  35 #include "logging/logStream.hpp"
+  36 #include "logging/logMessage.hpp"
+  37 #include "memory/archiveUtils.inline.hpp"
+  38 #include "memory/dynamicArchive.hpp"
+  39 #include "memory/filemap.hpp"
+  40 #include "memory/heapShared.inline.hpp"
+  41 #include "memory/iterator.inline.hpp"
+  42 #include "memory/metadataFactory.hpp"
+<span class="new">  43 #include "memory/metaspace.hpp"</span>
+  44 #include "memory/metaspaceClosure.hpp"
+  45 #include "memory/metaspaceShared.hpp"
+  46 #include "memory/oopFactory.hpp"
+  47 #include "memory/universe.hpp"
+  48 #include "oops/compressedOops.hpp"
+  49 #include "oops/compressedOops.inline.hpp"
+  50 #include "oops/objArrayOop.hpp"
+  51 #include "oops/oop.inline.hpp"
+  52 #include "prims/jvmtiExport.hpp"
+  53 #include "runtime/arguments.hpp"
+  54 #include "runtime/java.hpp"
+  55 #include "runtime/mutexLocker.hpp"
+  56 #include "runtime/os.inline.hpp"
+  57 #include "runtime/vm_version.hpp"
+  58 #include "services/memTracker.hpp"
+  59 #include "utilities/align.hpp"
+  60 #include "utilities/bitMap.inline.hpp"
+  61 #include "utilities/classpathStream.hpp"
+  62 #include "utilities/defaultStream.hpp"
+  63 #if INCLUDE_G1GC
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/memory/allocation.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metadataFactory.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

@@ -1,0 +1,136 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Udiff src/hotspot/share/runtime/globals.hpp</title>
+
+<style type="text/css" media="screen">
+span.new {
+    color: blue;
+    font-weight: normal;
+}
+</style>
+
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/universe.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/os.hpp.udiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/runtime/globals.hpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60318">60318</a> : imported patch big.patch</pre>
+        <pre>
+</pre><hr /><pre>
+<span class="newmarker">@@ -895,11 +895,10 @@</span>
+                                                                             \
+   product(size_t, InitialBootClassLoaderMetaspaceSize,                      \
+           NOT_LP64(2200*K) LP64_ONLY(4*M),                                  \
+           "(Deprecated) Initial size of the boot class loader data metaspace") \
+           range(30*K, max_uintx/BytesPerWord)                               \
+<span class="removed">-          constraint(InitialBootClassLoaderMetaspaceSizeConstraintFunc, AfterErgo)\</span>
+                                                                             \
+   product(bool, PrintHeapAtSIGBREAK, true,                                  \
+           "Print heap layout in response to SIGBREAK")                      \
+                                                                             \
+   manageable(bool, PrintClassHistogram, false,                              \
+</pre><hr /><pre>
+<span class="newmarker">@@ -1546,10 +1545,22 @@</span>
+   product(size_t, CompressedClassSpaceSize, 1*G,                            \
+           "Maximum size of class area in Metaspace when compressed "        \
+           "class pointers are used")                                        \
+           range(1*M, 3*G)                                                   \
+                                                                             \
+<span class="new">+  experimental(uintx, ForceCompressedClassSpaceStartAddress, 0,             \</span>
+<span class="new">+          "Force class space start address to a given value.")              \</span>
+<span class="new">+                                                                            \</span>
+<span class="new">+  product(ccstr, MetaspaceReclaimPolicy, "balanced",                        \</span>
+<span class="new">+          "options: balanced, aggressive, none")                            \</span>
+<span class="new">+                                                                            \</span>
+<span class="new">+  develop(bool, MetaspaceGuardAllocations, false,                           \</span>
+<span class="new">+          "Metapace allocations are guarded.")                              \</span>
+<span class="new">+                                                                            \</span>
+<span class="new">+  develop(bool, MetaspaceHandleDeallocations, true,                         \</span>
+<span class="new">+                "Switch off Metapace deallocation handling.")                     \</span>
+<span class="new">+                                                                                                                                                                                        \</span>
+   manageable(uintx, MinHeapFreeRatio, 40,                                   \
+           "The minimum percentage of heap free after GC to avoid expansion."\
+           " For most GCs this applies to the old generation. In G1 and"     \
+           " ParallelGC it applies to the whole heap.")                      \
+           range(0, 100)                                                     \
+</pre>
+<center><a href='../../../../src/hotspot/share/memory/universe.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/os.hpp.udiff.html' target='_top'>next &gt</a></center>
+</body></html>
+
