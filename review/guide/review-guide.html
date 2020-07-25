@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>review-guide.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<!-- TOC -->
+<ul>
+<li><a href="#1-preface">1. Preface</a>
+<ul>
+<li><a href="#11-suggested-reading">1.1. Suggested reading</a></li>
+<li><a href="#12-metaspace-in-three-paragraphs-or-less">1.2. Metaspace in three paragraphs or less</a></li>
+<li><a href="#13-core-concepts">1.3. Core Concepts</a>
+<ul>
+<li><a href="#131-commit-granules">1.3.1. Commit Granules</a></li>
+<li><a href="#132-the-buddy-style-allocator">1.3.2. The Buddy Style Allocator</a>
+<ul>
+<li><a href="#1321-merging-chunks">1.3.2.1. Merging chunks</a></li>
+<li><a href="#1322-splitting-chunks">1.3.2.2. Splitting chunks</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#14-outside-interface">1.4. Outside interface</a></li>
+</ul>
+</li>
+<li><a href="#2-subsystems">2. Subsystems</a>
+<ul>
+<li><a href="#21-the-virtual-memory-subsystem">2.1. The Virtual Memory Subsystem</a>
+<ul>
+<li><a href="#211-essential-operations">2.1.1. Essential operations</a></li>
+<li><a href="#212-other-operations">2.1.2. Other operations</a></li>
+<li><a href="#213-classes">2.1.3. Classes</a>
+<ul>
+<li><a href="#2131-class-virtualspacelist">2.1.3.1. class VirtualSpaceList</a></li>
+<li><a href="#2132-class-virtualspacenode">2.1.3.2. class VirtualSpaceNode</a></li>
+<li><a href="#2133-class-commitmask">2.1.3.3. class CommitMask</a></li>
+<li><a href="#2134-class-rootchunkarea-and-class-rootchunkarealut">2.1.3.4. class RootChunkArea and class RootChunkAreaLUT</a></li>
+<li><a href="#2135-class-commitlimiter">2.1.3.5. class CommitLimiter</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#22-the-central-chunk-manager-subsystem">2.2. The Central Chunk Manager Subsystem</a>
+<ul>
+<li><a href="#221-basic-operations">2.2.1. Basic operations</a></li>
+</ul>
+</li>
+<li><a href="#23-classloader-local-subsystem">2.3. Classloader-local Subsystem</a>
+<ul>
+<li><a href="#231-basic-operations">2.3.1. Basic operations</a></li>
+<li><a href="#232-classes">2.3.2. Classes</a>
+<ul>
+<li><a href="#2321-class-metachunk">2.3.2.1. class Metachunk</a>
+<ul>
+<li><a href="#23211-metachunk-memory">2.3.2.1.1. Metachunk Memory</a></li>
+<li><a href="#23212-metachunkallocate">2.3.2.1.2. Metachunk::allocate()</a></li>
+</ul>
+</li>
+<li><a href="#2322-class-spacemanager">2.3.2.2. class SpaceManager</a>
+<ul>
+<li><a href="#23221-spacemanagerallocate">2.3.2.2.1. SpaceManager::allocate()</a></li>
+<li><a href="#23222-retiring-chunks">2.3.2.2.2. Retiring chunks</a></li>
+</ul>
+</li>
+<li><a href="#2323-class-classloadermetaspace">2.3.2.3. class ClassLoaderMetaspace</a>
+<ul>
+<li><a href="#23231-class-arenagrowthpolicy">2.3.2.3.1. class ArenaGrowthPolicy</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#24-deallocation-subsystem">2.4. Deallocation subsystem</a>
+<ul>
+<li><a href="#241-classes">2.4.1. Classes</a></li>
+</ul>
+</li>
+<li><a href="#25-auxiliary-code">2.5. Auxiliary code</a>
+<ul>
+<li><a href="#251-class-chunkheaderpool">2.5.1. class ChunkHeaderPool</a></li>
+<li><a href="#252-counters">2.5.2. Counters</a></li>
+<li><a href="#253-metachunklist-and-metachunklistvector">2.5.3. MetachunkList and MetachunkListVector</a></li>
+<li><a href="#254-allocation-guards">2.5.4. Allocation guards</a></li>
+</ul>
+</li>
+<li><a href="#26-locking-and-concurrency">2.6. Locking and concurrency</a></li>
+</ul>
+</li>
+</ul>
+<!-- /TOC -->
+<h1 id="1-preface">1. Preface</h1>
+<p>Elastic Metaspace is a proposal for a rewrite of the Metaspace Subsystem.</p>
+<p>This is a review guide and an architectural description of Elastic Metaspace. Its main intent is to make life easier for reviewers and to give an overview of the core mechanics.</p>
+<h2 id="11-suggested-reading">1.1. Suggested reading</h2>
+<p>The <a href="https://openjdk.java.net/jeps/8221173">JEP draft</a> explains core concepts in greater detail.</p>
+<p>A very brief talk I gave at Fosdem 2020 about Metaspace both old and new: <a href="https://www.slideshare.net/ThomasStuefe/taming-metaspace-a-look-at-the-machinery-and-a-proposal-for-a-better-one-fosdem-2020">Slides</a>, <a href="https://www.youtube.com/watch?v=XqaQ-z70sQs">Recording</a> .</p>
+<p>A somewhat longer presentation I gave to Oracle employees in March 2020: <a href="https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/pres/metaspace2.pdf">Slides</a> .</p>
+<p>A series of articles with a bit more depth describing the current Metaspace implementation: https://stuefe.de/posts/metaspace/what-is-metaspace .</p>
+<h2 id="12-metaspace-in-three-paragraphs-or-less">1.2. Metaspace in three paragraphs or less</h2>
+<p>Metaspace is used to manage memory for Metadata.</p>
+<p>It is in its core an <a href="https://en.wikipedia.org/wiki/Region-based_memory_management">arena-based allocator</a>: Metadata lifetime is typically scoped to that of the loading classloaders of their classes. Unloading a class loader will make all classes collectible, which will in turn release all their Metadata in one go. Hence we have a burst free scenario which lends itself nicely to an arena based allocation scheme.</p>
+<h2 id="13-core-concepts">1.3. Core Concepts</h2>
+<h3 id="131-commit-granules">1.3.1. Commit Granules</h3>
+<p>Memory underlying the Metaspace is divided into commit granules. This is the basic unit of committing, uncommitting.</p>
+<p>A commit granule is typically 64K in size. Its size is a compromise between virtual memory area fragmentation and the desire to uncommit free memory to return it to the system.</p>
+<p>The smaller a commit granule is, the more likely it is to be unoccupied and eligible for uncommitting. But at the same, uncommitting very small areas will increase the number of memory mappings of the VM process.</p>
+<p>The default size is 64K with <code>-XX:MetaspaceReclaimStrategy=balanced</code>. Switching to <code>-XX:MetaspaceReclaimStrategy=aggressive</code> switches granule size to 16K (4 pages on most platforms). The latter gives better results in scenarios with heavy usage of anonymous classes, e.g. Lambdas.</p>
+<h3 id="132-the-buddy-style-allocator">1.3.2. The Buddy Style Allocator</h3>
+<p>Memory in Metaspace is managed in chunks. In this granularity memory is handed to class loaders.</p>
+<p>Chunks vary in size. Largest size is 4M (&quot;Root Chunk&quot;). Smallest size atm is 1K. Chunk sizes are power2 sizes.</p>
+<p>Chunks are managed by a <a href="https://en.wikipedia.org/wiki/Buddy_memory_allocation">buddy allocator</a>. A buddy allocator is a very simple very old algorithm which is useful to keep fragmentation at bay, at the cost of limiting the size of managed areas to power of two units. This restriction does not matter for Metaspace since the chunks are not the ultimate unit of allocation, just an intermediate.</p>
+<p>In code, chunk size is given as &quot;chunk level&quot; (<code>typedef .. chklvl_t</code>). A root chunk - the largest chunk there is - has chunk level 0. The smallest chunk has chunk level 13. Helper functions and constants to work with chunk level can be found at chunk_level.hpp.</p>
+<h4 id="1321-merging-chunks">1.3.2.1. Merging chunks</h4>
+<p>In buddy style allocation, a chunk is always part of a pair of chunks, unless the chunk is a root chunk. We call a chunk a &quot;leader&quot; if it is the first chunk (lower address) of the pair.</p>
+<pre class="hljs"><code><div>+-------------------+-------------------+
+| Leader            | Follower          |
++-------------------+-------------------+
+</div></code></pre>
+<p>A free chunk can be merged with its buddy if that buddy is free and unsplit (which is synonymous if buddy style rules are followed):</p>
+<pre class="hljs"><code><div>+-------------------+-------------------+
+|         A         |         B         |
++-------------------+-------------------+
+                    |
+                    v
++-------------------+-------------------+
+|                   C                   |
++-------------------+-------------------+
+</div></code></pre>
+<p>If the buddy is not free, or split (in which case on of the splinters will not be free), we cannot merge. In this example, B cannot merge with its buddy since it is splintered:</p>
+<pre class="hljs"><code><div>+-------------------+-------------------+
+| D1 | D2 |    C    |         B         |
++-------------------+-------------------+
+</div></code></pre>
+<h4 id="1322-splitting-chunks">1.3.2.2. Splitting chunks</h4>
+<p>To get a small chunk from a larger one a larger one can be split. Splitting always happens at pow2 borders:</p>
+<pre class="hljs"><code><div>+-------------------+-------------------+
+|                   A                   |
++-------------------+-------------------+
+                    |
+                    v
++-------------------+-------------------+
+| D1 | D2 |    C    |         B         |
++-------------------+-------------------+
+</div></code></pre>
+<h2 id="14-outside-interface">1.4. Outside interface</h2>
+<p>The outside interface to the Metaspace (ignoring reporting/monitoring for now) are:</p>
+<ul>
+<li>the <code>ClassLoaderMetaspace</code>  class</li>
+<li>the Metaspace static &quot;namespace&quot;</li>
+</ul>
+<p>class <code>ClassLoaderMetaspace</code> is the holder for above mentioned arenas; it belongs to a class loader (more accurately, to a CLD). When released (in the wake of a GC collecting the owning loader and its CLD) it will release all Metaspace back to the system.</p>
+<h1 id="2-subsystems">2. Subsystems</h1>
+<p><img src="./all-subsystems.svg" alt="All Subsystems" title="All Subsystems"></p>
+<p>The new Metaspace is separated into various subsystems which are rather isolated and can get reviewed independently from each other.</p>
+<h2 id="21-the-virtual-memory-subsystem">2.1. The Virtual Memory Subsystem</h2>
+<p><img src="./vm-subsystem.svg" alt="Virtual Memory Subsystem" title="Virtual Memory Subsystem"></p>
+<p>Classes:</p>
+<ul>
+<li>VirtualSpaceList</li>
+<li>VirtualSpaceNode</li>
+<li>RootChunkArea</li>
+<li>RootChunkAreaLUT</li>
+<li>CommitMask</li>
+<li>CommitLimiter</li>
+</ul>
+<p>The Virtual Memory Layer is the lowest subsystem of all. It is responsible for reserving and committing memory. It has knowledge about commit granules (the granularity at which we commit in Metaspace). Its outside interface to upper layers is the <code>class VirtualSpaceList</code>; some operations are also directly accessed via a node in this list (VirtualSpaceNode).</p>
+<p>A <code>VirtualSpaceList</code> is a list of reserved regions (VirtualSpaceNode). It is a global structure: only one instance of this structures exists per process. It grows on demand (new reserved regions are added when more space is needed). Regions in this list are typically several MB sized (atm 8M = 2 Root chunks areas, see below).</p>
+<p>If we use CompressedKlassPointers, a second global instance of <code>VirtualSpaceList</code> exists, which holds the compressed class space. In that case the <code>VirtualSpaceList</code> is degenerated: it only ever has one node, sized as big as the CompressedClassSpaceSize (1G).</p>
+<h3 id="211-essential-operations">2.1.1. Essential operations</h3>
+<ul>
+<li>
+<p>&quot;Give me a new root chunk&quot;</p>
+<p><code>VirtualSpaceList::Metachunk* allocate_root_chunk();</code></p>
+<p>This carves out a new root chunk (a chunk of maximum size of 4M) from the reserved space and hands it up to the caller. This operation is independent on any committed/uncommitted notion. Memory below this chunk does not have to be, and often is not, committed.</p>
+</li>
+<li>
+<p>&quot;commit this range&quot;</p>
+<p><code>VirtualSpaceNode::ensure_range_is_committed()</code></p>
+<p>Memory is divided into &quot;commit granules&quot;. This is the basic unit of committing/uncommitting. Only this subsystem knows about these.</p>
+<p>The subsystem knows which granules are committed - it keeps the commit state of granules in a bitmask.</p>
+<p>In contrast to old Metaspace, the committed areas do not have to be contiguous. Any granule can be committed or uncommitted independent from their neighbors.</p>
+<p>Upper layers can request that a given address range should be committed. Subsystem figures out which commit granules are affected and makes sure those are committed. This may be fully or partly a NOOP if the range is already committed.</p>
+<p>When committing, subsystem honors limits (either GC threshold or MaxMetaspaceSize).</p>
+</li>
+<li>
+<p>&quot;uncommit this range&quot;</p>
+<p><code>VirtualSpaceNode::uncommit_range()</code></p>
+<p>Similar to committing. Subsystem figures out which commit granules are affected, and uncommits those.</p>
+</li>
+<li>
+<p>&quot;purge&quot;</p>
+<p><code>VirtualSpaceList::purge()</code></p>
+<p>This unmaps all completely empty memory regions.</p>
+</li>
+</ul>
+<h3 id="212-other-operations">2.1.2. Other operations</h3>
+<p>The Virtual Memory Subsystem takes care of a number of operations which do not necessarily have to do with virtual memory management. This is a bit historic (earlier versions of the Elastic Metaspace prototype worked differently).</p>
+<p>These operations have to do with the Buddy Style Allocator behind the chunk management:</p>
+<ul>
+<li>&quot;split this chunk, maybe repeatedly&quot;
+<code>VirtualSpaceNode::split()</code></li>
+<li>&quot;merge up chunk with neighbors as much as possible&quot;
+<code>VirtualSpaceNode::merge()</code></li>
+<li>&quot;enlarge chunk in place&quot;
+<code>VirtualSpaceNode::attempt_enlarge_chunk()</code></li>
+</ul>
+<p>These operations the subsystem does on behalf of the ChunkManager.</p>
+<h3 id="213-classes">2.1.3. Classes</h3>
+<h4 id="2131-class-virtualspacelist">2.1.3.1. class VirtualSpaceList</h4>
+<p><code>VirtualSpaceList</code> is a list of reserved regions (VirtualSpaceNode).</p>
+<p>It is a global structure: only one or two <code>VirtualSpaceList</code> instances exist per process.</p>
+<p>VirtualSpaceList grows on demand - new reserved regions are added when more space is needed. Regions are several MB sized (atm 8M = 2 Root chunks areas, see below).</p>
+<p>If <code>-XX:+UseCompressedClassPointers</code>, a second global instance of <code>VirtualSpaceList</code> exists, which holds the &quot;compressed class space&quot; (see Concepts). That instance is a degenerated version of a list; it only ever has one node which is sized as big as the CompressedClassSpaceSize (1G). New nodes cannot be added.</p>
+<h4 id="2132-class-virtualspacenode">2.1.3.2. class VirtualSpaceNode</h4>
+<p><code>VirtualSpaceNode</code> manages one contiguous reserved region of the Metaspace. In case of the compressed class space, this is the whole compressed class space.</p>
+<p>It knows which granules in this region are committed by maintaining a bitmask (<code>class CommitMask</code>).</p>
+<p>VirtualSpaceNode also knows about root chunks: the memory is divided into a series of root-chunk-sized areas (<code>class RootChunkArea</code>). This means the memory has to be aligned (both starting address and size) to root chunk area size of 4M.</p>
+<pre class="hljs"><code><div>
+| root chunk area               | root chunk area               |
+
++---------------------------------------------------------------+
+|    `VirtualSpaceNode`memory                                   |
+|                                                               |
++---------------------------------------------------------------+
+
+|x| |x|x|x| | | | |x|x|x| | | |x|x| | | |x|x|x|x| | | | | | | | | commit granules
+
+(x = committed)
+
+</div></code></pre>
+<p>One root chunk area can contain a root chunk or a number of smaller chunks. E.g. splitting off a 64K chunk from a 4M root chunk will split the chunk into: 2x64K, 1x128K, 1x256K, 1x512K, 1x1M, 1x2M. But note that the VirtulSpaceNode has no knowledge of this, nor does it care.</p>
+<p>Note that the concepts of commit granules and of root chunks and the buddy allocator are almost completely orthogonal; at this layer, they exist independently from each other.</p>
+<h4 id="2133-class-commitmask">2.1.3.3. class CommitMask</h4>
+<p>Very unexciting. Just a bit mask holding commit information, with a notion about which memory each bit covers.</p>
+<h4 id="2134-class-rootchunkarea-and-class-rootchunkarealut">2.1.3.4. class RootChunkArea and class RootChunkAreaLUT</h4>
+<p><code>RootChunkArea</code> encapsulates the Buddy Style Allocator implementation. It is wrapped over the area of one root chunk and manages buddy operations in this area.</p>
+<p>It knows how to split and merge chunks buddy-style-allocator-style.</p>
+<p><code>RootChunkAreaLUT</code> (for &quot;lookup table&quot;) just holds a sequence of<code>RootChunkArea</code>classes which cover a contiguous memory range containing multiple root chunks. It offers lookup functionality &quot;give me the <code>RootChunkArea</code>for this address&quot;.</p>
+<p>Within the context of a <code>VirtualSpaceNode</code>, it just is the collection of all <code>RootChunkArea</code>s contained in the memory of this node.</p>
+<h4 id="2135-class-commitlimiter">2.1.3.5. class CommitLimiter</h4>
+<p>The commit limiter exists to separate the logic of &quot;am I allowed to commit X words more for Metaspace purposes, or would I hit GC threshold or MaxMetaspaceSize?&quot;.</p>
+<p>It exists to remove knowledge about the GC and about limits like MaxMetaspaceSize from the Virtual Memory Subsystem. It just offers an interface to ask &quot;is it okay to commit&quot;.</p>
+<p>Under normal circumstances, only one instance of the <code>CommitLimiter</code> ever exists, see <code>CommitLimiter::globalLimiter()</code>, which encapsulates the GC threshold and MaxMetaspace queries.</p>
+<p>But by separating this functionality from Metaspace, we get better testability: we can plug in a dummy <code>CommitLimiter</code> and thus effectively disabling or modifying the limiting; that way we can write gtests to test this subsystem without having to care about global state like how much Metaspace the underlying VM used up already.</p>
+<h2 id="22-the-central-chunk-manager-subsystem">2.2. The Central Chunk Manager Subsystem</h2>
+<p><img src="./cm-subsystem.svg" alt="Central Chunk Manager" title="Central Chunk Manager"></p>
+<p>Classes</p>
+<ul>
+<li>ChunkManager</li>
+</ul>
+<p>This subsystem plays a very central role. It only consists of one class, <code>class ChunkManager</code>.</p>
+<p>There only exists one central instance of the ChunkManager (two if <code>-XX:+UseCompressedClassPointers</code>).</p>
+<p><code>ChunkManager</code> is the central point to hand out chunks of any given level (size).</p>
+<p>It keeps lists of free unused chunks. Memory of these chunks may or may not be committed.</p>
+<p>It sits atop of the Virtual Memory Subsystem. If needed, it will request new root chunks from it to satisfy chunk requests and refill the free lists.</p>
+<h3 id="221-basic-operations">2.2.1. Basic operations</h3>
+<ul>
+<li>
+<p>&quot;Give me a chunk of level X&quot;</p>
+<p><code>ChunkManager::get_chunk(..)</code></p>
+<p>This will provide a chunk to the upper layer of the requested size. If a fitting chunk is found in the freelists, it will reuse that one, splitting larger chunks if needed. Otherwise it will allocate a new root chunk from the Virtual Memory Subsystem and use that to satisfy the request.</p>
+</li>
+<li>
+<p>&quot;I do not need this chunk anymore, keep it&quot;</p>
+<p><code>ChunkManager::return_chunk()</code></p>
+<p>Callers call this (typically a <code>SpaceManager</code> before its death) to hand down newly free chunks to the ChunkManager for safekeeping. ChunkManager will put them into the freelist. Before doing this, it will attempt to merge the chunks Buddy-Allocator style with its neighbors to arrive at larger chunks.</p>
+<p>If, after merging with neighbors, the resulting free chunk surpasses a certain threshold, its memory is uncommitted.</p>
+</li>
+</ul>
+<h2 id="23-classloader-local-subsystem">2.3. Classloader-local Subsystem</h2>
+<p><img src="./per-cl-subsystem.svg" alt="Classloader-local Subsystem" title="Classloader-local Subsystem"></p>
+<p>Classes</p>
+<ul>
+<li>ClassLoaderMetaspace</li>
+<li>SpaceManager</li>
+<li>Metachunk</li>
+<li>ArenaGrowthPolicy</li>
+</ul>
+<p>The previous sub systems were all global structures. In contrast to that, this subsystem encompasses all Classes whose instances are tied to a class loader.</p>
+<p>It builds atop the Central Chunk Manager and indirectly atop the Virtual Memory Subsystem.</p>
+<p>It offers fine granular allocation to the caller. A caller needing 240 bytes for a constant pool will get this memory from this layer. Therefore it can be seen as the topmost layer of Metaspace.</p>
+<h3 id="231-basic-operations">2.3.1. Basic operations</h3>
+<ul>
+<li>
+<p>&quot;Give me n words of memory from class space / non class space&quot;.</p>
+<p><code>ClassLoaderMetaspace::allocate()</code></p>
+<p>This will allocate n words of Metaspace. Internally the memory will be taken from a chunk via pointer bump allocation, similar to a thread stack. If no chunk exists or the current chunk belonging to the class loader is too small, a new chunk is obtained by asking the ChunkManager.</p>
+</li>
+<li>
+<p>&quot;Release all Metaspace I ever allocated&quot;</p>
+<p><code>ClassLoaderMetaspace::~ClassLoaderMetaspace()</code></p>
+<p>Called upon class loader death. This releases all memory ever allocated for this class loader, by returning all chunks it owns back to the underlying ClassLoaderMetaspace.</p>
+</li>
+<li>
+<p>&quot;I do not need this piece of memory, please take it&quot;</p>
+<p><code>ClassLoaderMetaspace::deallocate()</code></p>
+<p>See Deallocation Subsystem for details.</p>
+</li>
+</ul>
+<h3 id="232-classes">2.3.2. Classes</h3>
+<h4 id="2321-class-metachunk">2.3.2.1. class Metachunk</h4>
+<p>Metachunk wraps one chunk - be it a root chunk of 4M or a small chunk of 1K.</p>
+<p>MetaChunk and its payload area are disjunct. In the old Metaspace, <code>Metachunk</code> was a header, followed by the chunk payload. Elastic Metaspace separates those two, removing the headers from the payload and from Metaspace altogether. For details, see <code>class ChunkPoolHeader</code> below.</p>
+<p>Metachunk knows its chunk memory area (base address and size aka level). It also knows the underlying<code>VirtualSpaceNode</code>whose address range the payload resides in. This is needed since it takes care of committing portions of itself on demand.</p>
+<p>Metachunk has a state:</p>
+<ul>
+<li><em>&quot;in-use&quot;</em>: A chunk in use is owned by a class loader and carries live metadata.</li>
+<li><em>&quot;free&quot;</em>: A free chunk is not owned by anyone, but awaits re-use in the chunk manager freelist. Its memory</li>
+<li><em>&quot;dead&quot;</em>: A &quot;dead&quot; chunk is just an unused header, without payload.</li>
+</ul>
+<p>Metachunk always lives in a linked list - live chunks live in the in-use list of their SpaceManager, free chunks in the freelists of the ChunkManager, dead chunk headers live in the ChunkHeaderPool. Therefore <code>Metachunk</code> has a prev/next member.</p>
+<p>In order to easily do buddy style operations to a chunk (split and merge) it is needed to easily access the neighboring chunks in memory. Therefore <code>Metachunk</code> has also references to its lower and upper neighbors.</p>
+<h5 id="23211-metachunk-memory">2.3.2.1.1. Metachunk Memory</h5>
+<p>A <code>Metachunk</code> which is &quot;in-use&quot; gets allocated from via pointer bump allocation, starting at base. So it has a used an unused part:</p>
+<pre class="hljs"><code><div>+------------------------------+--------------------------------------+
+|     used                     |     unused                           |
++------------------------------+--------------------------------------+
+
+^                              ^                                      ^
+base                          used_words                              end.
+</div></code></pre>
+<p>The memory underlying a <code>Metachunk</code> may consist of any number of commit granules, which can be committed or uncommitted independently from each other. So the memory below a chunk could be &quot;checkered&quot;.</p>
+<p>Of course, the used portion of a <code>Metachunk</code> has to be committed, otherwise we could not store data in them. Therefore, when allocating new memory from the Chunk, before moving the top-pointer, <code>Metachunk</code> ensures the newly used memory is committed by asking the underlying<code>VirtualSpaceNode</code>.</p>
+<p>But since this is costly - we do not want to bother<code>VirtualSpaceNode</code>for every single allocation - <code>Metachunk</code> also keeps record of the highest committed address in its range. Note that does not mean there could not be committed granules in higher areas; it just means it does not know better:</p>
+<pre class="hljs"><code><div>+------------------------------+-------------------+------------------+
+|     used                     | unused committed  | unused unknown   |
++------------------------------+-------------------+------------------+
+
+^                              ^                   ^                  ^
+base                           used_words          committed_words    end.
+</div></code></pre>
+<p>So, space below committed_words is guaranteed to be committed; beyond that <code>Metachunk</code> has to make sure by bothering <code>VirtualSpaceNode</code>.</p>
+<hr>
+<p>A chunk can of course be smaller than a commit granule. In that case it shares that granule with its neighboring chunks. Since a commit granule can only be committed or uncommitted this means that if one of these chunks is &quot;in-use&quot; and needs to be committed, all chunks in this granule are committed.</p>
+<hr>
+<p>Note that a chunk knows nothing about granules beyond their size, as an alignment hint for talking to <code>VirtualSpaceNode</code>. It just asks <code>VirtualSpaceNode</code> to commit a range which may or may not cover multiple granules.</p>
+<h5 id="23212-metachunkallocate">2.3.2.1.2. Metachunk::allocate()</h5>
+<p><code>Metachunk::allocate()</code> is the central access to pointer bump allocation from a chunk. It takes care of on demand committing the underlying memory and moves the top pointer up.</p>
+<h4 id="2322-class-spacemanager">2.3.2.2. class SpaceManager</h4>
+<p><code>SpaceManager</code> manages the in-use chunk list for a class loader.</p>
+<p>It has a current chunk, which is used to satisfy ongoing Metadata allocations. It also has a list of &quot;retired&quot; chunks, which are chunks which are completely or almost completely filled with Metadata. It safekeeps the chunks until the class loader dies and the <code>SpaceManager</code> is destroyed, to return them to the ChunkManager for reuse.</p>
+<p>It also has a <code>FreeBlocks</code> object, which takes care about deallocated blocks - see <em>Deallocation Subsystem</em> below for details.</p>
+<h5 id="23221-spacemanagerallocate">2.3.2.2.1. SpaceManager::allocate()</h5>
+<p><code>SpaceManager::allocate()</code> is the central access point to allocate a piece of Metadata for a class loader.</p>
+<p>It will first attempt to take memory from the <code>FreeBlocks</code> structure (see below).</p>
+<p>Failing that, it will first attempt to take memory from the current chunk via pointer bump allocation - see <code>Metachunk::allocate()</code>.</p>
+<p>Failing that, it will employ various strategies to get more memory: it may try to enlarge the current chunk, or it may try to get a new chunk from the chunk manager.</p>
+<h5 id="23222-retiring-chunks">2.3.2.2.2. Retiring chunks</h5>
+<p>When the <code>SpaceManager</code> gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will acquire a new chunk. However, we do not want to loose the remainder space in the current chunk.</p>
+<p>The remainder space is added to the <code>FreeBlocks</code> structure and managed the same way as space deallocated from the outside would - getting reused for later allocations as soon as possible.</p>
+<h4 id="2323-class-classloadermetaspace">2.3.2.3. class ClassLoaderMetaspace</h4>
+<p><code>ClassLoaderMetaspace</code> is just the connection between a CLD and one or two instances of SpaceManger - normally just one, but if <code>-XX:+UseCompressedClassPointers</code>, we need two SpaceManagers, one for class space allocations (to put Klass* structures), one for the rest.</p>
+<p>It also takes care of increasing the GC threshold when necessary.</p>
+<p>Beyond that, it does not have a lot of own logic.</p>
+<h5 id="23231-class-arenagrowthpolicy">2.3.2.3.1. class ArenaGrowthPolicy</h5>
+<p><code>ArenaGrowthPolicy</code> encapsulates the logic of &quot;how big a chunk do I give this class loader?&quot;.</p>
+<p>When a class loader allocates memory, we give it (via SpaceManager) a chunk to gnaw on, which should be fine for this requested allocation as well as a number of future allocations. The open question is how large that chunk should be. This is basically a guess toward the future loading behavior of this class loader.</p>
+<p>If we know the class loader will only load one or very few classes (e.g. Lambdas, Reflection glue code etc), it makes sense to give the <code>SpaceManager</code> a small chunk. If we know the loader may load a lot of classes (e.g. the Boot Class loader), we may want to give it a larger chunk.</p>
+<p>There is also the notion involved that a class loader &quot;has to prove itself&quot;: a standard class loader which we know nothing else about will first be given a few small chunks until we give it larger chunks. How much sense this makes is questionable but as a strategy this seems to work reasonably well.</p>
+<p>This logic existed in old Metaspace too, in a somewhat convoluted fashion, see  <code>SpaceManager::get_initial_chunk_size()</code> and <code>SpaceManager::calc_chunk_size()</code>.</p>
+<p>In Elastic Metaspace, this logic lives in <code>ArenaGrowthPolicy</code>. This is basically just a fancy hard-coded array of chunk sizes marking the handout progression depending on how many chunks the loader already got. One of these arrays exist per use case.</p>
+<p>Note that with Elastic Metaspace, one important difference is that we now commit larger chunks on demand. This means when handing larger chunks to a loader we do not have to pay the memory cost upfront, which reduces the penalty for given larger chunks to loaders. So, we can give e.g. a full 4MB root chunk over to the boot class loader even though it may use less (maybe a lot less with CDS involved) and it only will commit the parts it needs.</p>
+<h2 id="24-deallocation-subsystem">2.4. Deallocation subsystem</h2>
+<p><img src="./deallocation-subsystem.svg" alt="Deallocation subsystem" title="Deallocation subsystem"></p>
+<p>Classes:</p>
+<ul>
+<li>FreeBlocks</li>
+<li>BinList</li>
+<li>BlockTree</li>
+</ul>
+<p>This is a bit of a sideshow but still important.</p>
+<p>The general assumption behind Metaspace is that we deal with arena-style allocation: we have a burst-free scenario and all Metadata go poof when their loader gets collected. However, there are cases when, after allocating Metadata, upper layers decide that memory may not needed after all.</p>
+<p>One example is when class load errors happen and the Metadata already loaded are orphaned.</p>
+<p>Another example is when classes are redefined and the memory holding the old bytecode is not needed anymore.</p>
+<p>In all these cases we have to deal with premature deallocation. These are uncommon, usually rare cases (if they were not we would not use arenas). The caller returns the memory to the Metaspace via <code>Metaspace::deallocate()</code>.</p>
+<p>Metaspace will attempt to reuse these returned blocks. However, since the blocks are embedded into Metachunks which are in use by a live class loader, these blocks can only be reused by that class loader. Therefore, each class loader (as part of its SpaceManager) keeps a structure (<code>FreeBlocks</code>) to managed returned blocks. Normally this structure does not see much action, therefore it is only allocated on demand.</p>
+<p>Note that this mechanism is also used to manage remainder space from almost-used-up blocks.</p>
+<p>The interface is very simple:</p>
+<ul>
+<li>
+<p>&quot;keep block for future reuse&quot;</p>
+<p><code>FreeBlocks::add_block()</code></p>
+<p>Adds this block to the manager.</p>
+</li>
+<li>
+<p>&quot;give me a block of size x&quot;</p>
+<p><code>FreeBlock::get_block()</code></p>
+<p>This will attempt to return a block of at least size x. The block may be larger. Internally, the best fit is searched for, and if the best fit is found but considered too large to waste for size x, it is split and the remainder is put back into the manager.</p>
+</li>
+</ul>
+<h3 id="241-classes">2.4.1. Classes</h3>
+<p>The outside interface is the <code>FreeBlocks</code> structure. It itself contains two structures, <code>BinList</code> and <code>BlockTree</code>.</p>
+<p><code>BinList</code> is a simple mechanism to manage small to very small memory blocks and store/retrieve them efficiently. It is somewhat costly in terms of memory (one pointer size per block word size), therefore it only covers the first 16 small block sizes. But since these block sizes are the vast majority of deallocated blocks, it makes sense to pay this cost.</p>
+<p><code>BlockTree</code> is a binary search tree used to manage larger blocks. It is unbalanced (though it may be a good idea in the future to make it a red black tree).</p>
+<h2 id="25-auxiliary-code">2.5. Auxiliary code</h2>
+<p>A collection of miscellaneous helper classes.</p>
+<h3 id="251-class-chunkheaderpool">2.5.1. class ChunkHeaderPool</h3>
+<p><code>ChunkHeaderPool</code> manages <code>Metachunk</code> structures.</p>
+<p>Since <code>Metachunk</code> structures are separated from the chunk payload areas, they need to live somewhere. We could just allocate them from C-Heap but that would be suboptimal since with buddy style chunk merging and splitting a lot of temporary headers are used.</p>
+<p>Therefore <code>ChunkHeaderPool</code> exists, which is just a growable array of <code>Metachunk</code> structures. It keeps a list of free structures. The underlying memory is allocated from C Heap.</p>
+<p>This not only makes for more efficient allocation and deallocation of Metachunk, it also provides better locality - the chance that headers of linked chunks are allocated close to each other in this pool is high - which makes walking these chunks cheaper.</p>
+<h3 id="252-counters">2.5.2. Counters</h3>
+<p>In Metaspace, a lot of things are counted. This is a lot of boilerplate coding. Helper classes exist which provide counting and various check functions (e.g.overflow- and underflow checking).</p>
+<p>These classes live in counter.hpp:</p>
+<ul>
+<li>class SizeCounter</li>
+<li>class IntCounter</li>
+<li>class MemoryCounter</li>
+</ul>
+<h3 id="253-metachunklist-and-metachunklistvector">2.5.3. MetachunkList and MetachunkListVector</h3>
+<p><code>MetachunkList</code> is a linked list of Metachunks.</p>
+<p><code>MetachunkListVector</code> is a list of <code>Metachunk</code> lists. One list per chunk level. The lists only contain chunks of their level.</p>
+<h3 id="254-allocation-guards">2.5.4. Allocation guards</h3>
+<p>This is an optional feature controlled by <code>-XX:+MetaspaceGuardAllocations</code>. Normally off, if switched on it will add a fence after every Metaspace allocation, and test these fences in regular intervals (e.g. when a GC purges the Metaspace). This can be used to capture memory overwriters.</p>
+<h2 id="26-locking-and-concurrency">2.6. Locking and concurrency</h2>
+<p>Locking in Elastic Metaspace is simple, a two-step mechanism which is unchanged from the old Metaspace.</p>
+<p>There is locking at class loader level (<code>ClassLoaderData::_metaspace_lock</code>) which guards access to the <code>ClassLoaderMetaspace</code>. Ideally the brunt of Metaspace allocations should only need this lock. It guards the access to the current chunk and the pointer bump allocation done with it.</p>
+<p>The moment central data structures are accessed (e.g. when memory needs to be committed, a new chunk allocated or returned to the freelist), a global lock is taken, the <code>MetaspaceExpand_lock</code>.</p>
+
+</body>
+</html>

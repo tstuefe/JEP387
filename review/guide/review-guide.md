@@ -31,7 +31,7 @@
                 - [2.3.2.2.1. SpaceManager::allocate()](#23221-spacemanagerallocate)
                 - [2.3.2.2.2. Retiring chunks](#23222-retiring-chunks)
             - [2.3.2.3. class ClassLoaderMetaspace](#2323-class-classloadermetaspace)
-                - [2.3.2.3.1. class ChunkAllocSequence](#23231-class-chunkallocsequence)
+                - [2.3.2.3.1. class ArenaGrowthPolicy](#23231-class-arenagrowthpolicy)
     - [2.4. Deallocation subsystem](#24-deallocation-subsystem)
         - [2.4.1. Classes](#241-classes)
     - [2.5. Auxiliary code](#25-auxiliary-code)
@@ -330,7 +330,7 @@ Classes
 - ClassLoaderMetaspace
 - SpaceManager
 - Metachunk
-- ChunkAllocSequence
+- ArenaGrowthPolicy
 
 The previous sub systems were all global structures. In contrast to that, this subsystem encompasses all Classes whose instances are tied to a class loader.
 
@@ -452,9 +452,9 @@ It also takes care of increasing the GC threshold when necessary.
 
 Beyond that, it does not have a lot of own logic.
 
-##### 2.3.2.3.1. class ChunkAllocSequence
+##### 2.3.2.3.1. class ArenaGrowthPolicy
 
-`ChunkAllocSequence` encapsulates the logic of "how big a chunk do I give this class loader?".
+`ArenaGrowthPolicy` encapsulates the logic of "how big a chunk do I give this class loader?".
 
 When a class loader allocates memory, we give it (via SpaceManager) a chunk to gnaw on, which should be fine for this requested allocation as well as a number of future allocations. The open question is how large that chunk should be. This is basically a guess toward the future loading behavior of this class loader.
 
@@ -464,7 +464,7 @@ There is also the notion involved that a class loader "has to prove itself": a s
 
 This logic existed in old Metaspace too, in a somewhat convoluted fashion, see  `SpaceManager::get_initial_chunk_size()` and `SpaceManager::calc_chunk_size()`.
 
-In Elastic Metaspace, this logic lives in `ChunkAllocSequence`. This is basically just a fancy hard-coded array of chunk sizes marking the handout progression depending on how many chunks the loader already got. One of these arrays exist per use case.
+In Elastic Metaspace, this logic lives in `ArenaGrowthPolicy`. This is basically just a fancy hard-coded array of chunk sizes marking the handout progression depending on how many chunks the loader already got. One of these arrays exist per use case.
 
 Note that with Elastic Metaspace, one important difference is that we now commit larger chunks on demand. This means when handing larger chunks to a loader we do not have to pay the memory cost upfront, which reduces the penalty for given larger chunks to loaders. So, we can give e.g. a full 4MB root chunk over to the boot class loader even though it may use less (maybe a lot less with CDS involved) and it only will commit the parts it needs.
 
