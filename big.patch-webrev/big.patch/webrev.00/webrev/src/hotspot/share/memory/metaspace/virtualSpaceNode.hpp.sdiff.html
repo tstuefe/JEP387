@@ -1,0 +1,801 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory/metaspace </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/virtualSpaceNode.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
+  26 #define SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
+  27 
+<span class="changed">  28 #include "memory/virtualspace.hpp"</span>
+
+
+
+
+
+  29 #include "memory/memRegion.hpp"
+
+  30 #include "utilities/debug.hpp"
+
+  31 #include "utilities/globalDefinitions.hpp"
+  32 
+
+  33 class outputStream;
+  34 
+  35 namespace metaspace {
+  36 
+<span class="changed">  37 class Metachunk;</span>
+<span class="changed">  38 class ChunkManager;</span>
+<span class="changed">  39 class OccupancyMap;</span>
+  40 
+<span class="changed">  41 // A VirtualSpaceList node.</span>
+
+
+
+
+
+
+
+
+
+  42 class VirtualSpaceNode : public CHeapObj&lt;mtClass&gt; {
+<span class="removed">  43   friend class VirtualSpaceList;</span>
+  44 
+  45   // Link to next VirtualSpaceNode
+  46   VirtualSpaceNode* _next;
+  47 
+<span class="removed">  48   // Whether this node is contained in class or metaspace.</span>
+<span class="removed">  49   const bool _is_class;</span>
+<span class="removed">  50 </span>
+<span class="removed">  51   // total in the VirtualSpace</span>
+  52   ReservedSpace _rs;
+<span class="removed">  53   VirtualSpace _virtual_space;</span>
+<span class="removed">  54   MetaWord* _top;</span>
+<span class="removed">  55   // count of chunks contained in this VirtualSpace</span>
+<span class="removed">  56   uintx _container_count;</span>
+<span class="removed">  57 </span>
+<span class="removed">  58   OccupancyMap* _occupancy_map;</span>
+<span class="removed">  59 </span>
+<span class="removed">  60   // Convenience functions to access the _virtual_space</span>
+<span class="removed">  61   char* low()  const { return virtual_space()-&gt;low(); }</span>
+<span class="removed">  62   char* high() const { return virtual_space()-&gt;high(); }</span>
+<span class="removed">  63   char* low_boundary()  const { return virtual_space()-&gt;low_boundary(); }</span>
+<span class="removed">  64   char* high_boundary() const { return virtual_space()-&gt;high_boundary(); }</span>
+<span class="removed">  65 </span>
+<span class="removed">  66   // The first Metachunk will be allocated at the bottom of the</span>
+<span class="removed">  67   // VirtualSpace</span>
+<span class="removed">  68   Metachunk* first_chunk() { return (Metachunk*) bottom(); }</span>
+<span class="removed">  69 </span>
+<span class="removed">  70   // Committed but unused space in the virtual space</span>
+<span class="removed">  71   size_t free_words_in_vs() const;</span>
+<span class="removed">  72 </span>
+<span class="removed">  73   // True if this node belongs to class metaspace.</span>
+<span class="removed">  74   bool is_class() const { return _is_class; }</span>
+<span class="removed">  75 </span>
+<span class="removed">  76   // Helper function for take_from_committed: allocate padding chunks</span>
+<span class="removed">  77   // until top is at the given address.</span>
+<span class="removed">  78   void allocate_padding_chunks_until_top_is_at(MetaWord* target_top);</span>
+<span class="removed">  79 </span>
+<span class="removed">  80  public:</span>
+<span class="removed">  81 </span>
+<span class="removed">  82   VirtualSpaceNode(bool is_class, size_t byte_size);</span>
+<span class="removed">  83   VirtualSpaceNode(bool is_class, ReservedSpace rs) :</span>
+<span class="removed">  84     _next(NULL), _is_class(is_class), _rs(rs), _top(NULL), _container_count(0), _occupancy_map(NULL) {}</span>
+<span class="removed">  85   ~VirtualSpaceNode();</span>
+<span class="removed">  86 </span>
+<span class="removed">  87   // Convenience functions for logical bottom and (committed) end</span>
+<span class="removed">  88   MetaWord* bottom() const { return (MetaWord*) _virtual_space.low(); }</span>
+<span class="removed">  89   MetaWord* end() const { return (MetaWord*) _virtual_space.high(); }</span>
+<span class="removed">  90 </span>
+<span class="removed">  91   const OccupancyMap* occupancy_map() const { return _occupancy_map; }</span>
+<span class="removed">  92   OccupancyMap* occupancy_map() { return _occupancy_map; }</span>
+<span class="removed">  93 </span>
+<span class="removed">  94   bool contains(const void* ptr) { return ptr &gt;= low() &amp;&amp; ptr &lt; high(); }</span>
+<span class="removed">  95 </span>
+<span class="removed">  96   size_t reserved_words() const  { return _virtual_space.reserved_size() / BytesPerWord; }</span>
+<span class="removed">  97   size_t committed_words() const { return _virtual_space.actual_committed_size() / BytesPerWord; }</span>
+  98 
+<span class="changed">  99   bool is_pre_committed() const { return _virtual_space.special(); }</span>
+
+ 100 
+<span class="changed"> 101   // address of next available space in _virtual_space;</span>
+<span class="changed"> 102   // Accessors</span>
+<span class="changed"> 103   VirtualSpaceNode* next() { return _next; }</span>
+<span class="changed"> 104   void set_next(VirtualSpaceNode* v) { _next = v; }</span>
+ 105 
+<span class="changed"> 106   void set_top(MetaWord* v) { _top = v; }</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 107 
+<span class="changed"> 108   // Accessors</span>
+<span class="changed"> 109   VirtualSpace* virtual_space() const { return (VirtualSpace*) &amp;_virtual_space; }</span>
+<span class="changed"> 110 </span>
+<span class="changed"> 111   // Returns true if "word_size" is available in the VirtualSpace</span>
+<span class="changed"> 112   bool is_available(size_t word_size) { return word_size &lt;= pointer_delta(end(), _top, sizeof(MetaWord)); }</span>
+<span class="changed"> 113 </span>
+<span class="changed"> 114   MetaWord* top() const { return _top; }</span>
+<span class="changed"> 115   void inc_top(size_t word_size) { _top += word_size; }</span>
+<span class="changed"> 116 </span>
+<span class="changed"> 117   uintx container_count() { return _container_count; }</span>
+<span class="changed"> 118   void inc_container_count();</span>
+<span class="changed"> 119   void dec_container_count();</span>
+<span class="changed"> 120 </span>
+<span class="changed"> 121   // used and capacity in this single entry in the list</span>
+<span class="changed"> 122   size_t used_words_in_vs() const;</span>
+<span class="changed"> 123   size_t capacity_words_in_vs() const;</span>
+<span class="changed"> 124 </span>
+<span class="changed"> 125   bool initialize();</span>
+<span class="changed"> 126 </span>
+<span class="changed"> 127   // get space from the virtual space</span>
+<span class="changed"> 128   Metachunk* take_from_committed(size_t chunk_word_size);</span>
+<span class="changed"> 129 </span>
+<span class="changed"> 130   // Allocate a chunk from the virtual space and return it.</span>
+<span class="changed"> 131   Metachunk* get_chunk_vs(size_t chunk_word_size);</span>
+<span class="changed"> 132 </span>
+<span class="changed"> 133   // Expands the committed space by at least min_words words.</span>
+<span class="changed"> 134   bool expand_by(size_t min_words, size_t preferred_words);</span>
+ 135 
+<span class="changed"> 136   // In preparation for deleting this node, remove all the chunks</span>
+<span class="changed"> 137   // in the node from any freelist.</span>
+<span class="changed"> 138   void purge(ChunkManager* chunk_manager);</span>
+ 139 
+<span class="changed"> 140   // If an allocation doesn't fit in the current node a new node is created.</span>
+<span class="changed"> 141   // Allocate chunks out of the remaining committed space in this node</span>
+<span class="changed"> 142   // to avoid wasting that memory.</span>
+<span class="changed"> 143   // This always adds up because all the chunk sizes are multiples of</span>
+<span class="changed"> 144   // the smallest chunk size.</span>
+<span class="changed"> 145   void retire(ChunkManager* chunk_manager);</span>
+ 146 
+<span class="changed"> 147   void print_on(outputStream* st) const                 { print_on(st, K); }</span>
+<span class="changed"> 148   void print_on(outputStream* st, size_t scale) const;</span>
+<span class="changed"> 149   void print_map(outputStream* st, bool is_class) const;</span>
+ 150 
+<span class="changed"> 151   // Debug support</span>
+<span class="changed"> 152   DEBUG_ONLY(void mangle();)</span>
+<span class="changed"> 153   // Verify counters and basic structure. Slow mode: verify all chunks in depth and occupancy map.</span>
+<span class="changed"> 154   DEBUG_ONLY(void verify(bool slow);)</span>
+<span class="changed"> 155   // Verify that all free chunks in this node are ideally merged</span>
+<span class="changed"> 156   // (there should not be multiple small chunks where a large chunk could exist.)</span>
+<span class="changed"> 157   DEBUG_ONLY(void verify_free_chunks_are_ideally_merged();)</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 158 
+ 159 };
+
+ 160 
+ 161 } // namespace metaspace
+ 162 
+ 163 #endif // SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
+</pre></td><td><pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+<span class="new">   3  * Copyright (c) 2018, 2019 SAP SE. All rights reserved.</span>
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
+  27 #define SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
+  28 
+<span class="changed">  29 </span>
+<span class="changed">  30 #include "memory/allocation.hpp"</span>
+<span class="changed">  31 #include "memory/metaspace/counter.hpp"</span>
+<span class="changed">  32 #include "memory/metaspace/commitMask.hpp"</span>
+<span class="changed">  33 #include "memory/metaspace/rootChunkArea.hpp"</span>
+<span class="changed">  34 #include "memory/metaspace/settings.hpp"</span>
+  35 #include "memory/memRegion.hpp"
+<span class="new">  36 #include "memory/virtualspace.hpp"</span>
+  37 #include "utilities/debug.hpp"
+<span class="new">  38 #include "utilities/bitMap.hpp"</span>
+  39 #include "utilities/globalDefinitions.hpp"
+  40 
+<span class="new">  41 </span>
+  42 class outputStream;
+  43 
+  44 namespace metaspace {
+  45 
+<span class="changed">  46 class CommitLimiter;</span>
+<span class="changed">  47 class FreeChunkListVector;</span>
+
+  48 
+<span class="changed">  49 // VirtualSpaceNode manages a single address range of the Metaspace.</span>
+<span class="changed">  50 //</span>
+<span class="changed">  51 // That address range may contain interleaved committed and uncommitted</span>
+<span class="changed">  52 // regions. It keeps track of which regions have committed and offers</span>
+<span class="changed">  53 // functions to commit and uncommit regions.</span>
+<span class="changed">  54 //</span>
+<span class="changed">  55 // It allocates and hands out memory ranges, starting at the bottom.</span>
+<span class="changed">  56 //</span>
+<span class="changed">  57 // Address range must be aligned to root chunk size.</span>
+<span class="changed">  58 //</span>
+  59 class VirtualSpaceNode : public CHeapObj&lt;mtClass&gt; {
+
+  60 
+  61   // Link to next VirtualSpaceNode
+  62   VirtualSpaceNode* _next;
+  63 
+
+
+
+
+  64   ReservedSpace _rs;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  65 
+<span class="changed">  66   // Start pointer of the area.</span>
+<span class="changed">  67   MetaWord* const _base;</span>
+  68 
+<span class="changed">  69   // Size, in words, of the whole node</span>
+<span class="changed">  70   const size_t _word_size;</span>
+
+
+  71 
+<span class="changed">  72   // Size, in words, of the range of this node which has been handed out in</span>
+<span class="changed">  73   // the form of chunks.</span>
+<span class="changed">  74   size_t _used_words;</span>
+<span class="changed">  75 </span>
+<span class="changed">  76   // The bitmap describing the commit state of the region:</span>
+<span class="changed">  77   // Each bit covers a region of 64K (see constants::commit_granule_size).</span>
+<span class="changed">  78   CommitMask _commit_mask;</span>
+<span class="changed">  79 </span>
+<span class="changed">  80   // An array/LUT of RootChunkArea objects. Each one describes</span>
+<span class="changed">  81   // fragmentation inside a root chunk.</span>
+<span class="changed">  82   RootChunkAreaLUT _root_chunk_area_lut;</span>
+<span class="changed">  83 </span>
+<span class="changed">  84   // Limiter object to ask before expanding the committed size of this node.</span>
+<span class="changed">  85   CommitLimiter* const _commit_limiter;</span>
+<span class="changed">  86 </span>
+<span class="changed">  87   // Points to outside size counters which we are to increase/decrease when we commit/uncommit</span>
+<span class="changed">  88   // space from this node.</span>
+<span class="changed">  89   SizeCounter* const _total_reserved_words_counter;</span>
+<span class="changed">  90   SizeCounter* const _total_committed_words_counter;</span>
+<span class="changed">  91 </span>
+<span class="changed">  92   // For debug and tracing purposes</span>
+<span class="changed">  93   const int _node_id;</span>
+<span class="changed">  94 </span>
+<span class="changed">  95   /// committing, uncommitting ///</span>
+<span class="changed">  96 </span>
+<span class="changed">  97   // Given a pointer into this node, calculate the start of the commit granule</span>
+<span class="changed">  98   // the pointer points into.</span>
+<span class="changed">  99   MetaWord* calc_start_of_granule(MetaWord* p) const {</span>
+<span class="changed"> 100     DEBUG_ONLY(check_pointer(p));</span>
+<span class="changed"> 101     return align_down(p, Settings::commit_granule_bytes());</span>
+<span class="changed"> 102   }</span>
+<span class="changed"> 103 </span>
+<span class="changed"> 104   // Given an address range, ensure it is committed.</span>
+<span class="changed"> 105   //</span>
+<span class="changed"> 106   // The range has to be aligned to granule size.</span>
+<span class="changed"> 107   //</span>
+<span class="changed"> 108   // Function will:</span>
+<span class="changed"> 109   // - check how many granules in that region are uncommitted; If all are committed, it</span>
+<span class="changed"> 110   //    returns true immediately.</span>
+<span class="changed"> 111   // - check if committing those uncommitted granules would bring us over the commit limit</span>
+<span class="changed"> 112   //    (GC threshold, MaxMetaspaceSize). If true, it returns false.</span>
+<span class="changed"> 113   // - commit the memory.</span>
+<span class="changed"> 114   // - mark the range as committed in the commit mask</span>
+<span class="changed"> 115   //</span>
+<span class="changed"> 116   // Returns true if success, false if it did hit a commit limit.</span>
+<span class="changed"> 117   bool commit_range(MetaWord* p, size_t word_size);</span>
+<span class="changed"> 118 </span>
+<span class="changed"> 119   //// creation ////</span>
+<span class="changed"> 120 </span>
+<span class="changed"> 121   // Create a new empty node spanning the given reserved space.</span>
+<span class="changed"> 122   VirtualSpaceNode(int node_id,</span>
+<span class="changed"> 123                    ReservedSpace rs,</span>
+<span class="changed"> 124                    CommitLimiter* limiter,</span>
+<span class="changed"> 125                    SizeCounter* reserve_counter,</span>
+<span class="changed"> 126                    SizeCounter* commit_counter);</span>
+<span class="changed"> 127 </span>
+<span class="changed"> 128 public:</span>
+<span class="changed"> 129 </span>
+<span class="changed"> 130   // Create a node of a given size</span>
+<span class="changed"> 131   static VirtualSpaceNode* create_node(int node_id,</span>
+<span class="changed"> 132                                        size_t word_size,</span>
+<span class="changed"> 133                                        CommitLimiter* limiter,</span>
+<span class="changed"> 134                                        SizeCounter* reserve_words_counter,</span>
+<span class="changed"> 135                                        SizeCounter* commit_words_counter);</span>
+<span class="changed"> 136 </span>
+<span class="changed"> 137   // Create a node over an existing space</span>
+<span class="changed"> 138   static VirtualSpaceNode* create_node(int node_id,</span>
+<span class="changed"> 139                                        ReservedSpace rs,</span>
+<span class="changed"> 140                                        CommitLimiter* limiter,</span>
+<span class="changed"> 141                                        SizeCounter* reserve_words_counter,</span>
+<span class="changed"> 142                                        SizeCounter* commit_words_counter);</span>
+ 143 
+<span class="changed"> 144   ~VirtualSpaceNode();</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 145 
+<span class="changed"> 146   // Note: public for gtests only, could be private.</span>
+<span class="changed"> 147   MetaWord* base() const        { return _base; }</span>
+
+ 148 
+<span class="changed"> 149   // Reserved size of the whole node.</span>
+<span class="changed"> 150   size_t word_size() const      { return _word_size; }</span>
+
+
+
+
+ 151 
+<span class="changed"> 152   //// Chunk allocation, splitting, merging /////</span>
+
+
+ 153 
+<span class="changed"> 154   // Allocate a root chunk from this node. Will fail and return NULL</span>
+<span class="changed"> 155   // if the node is full.</span>
+<span class="changed"> 156   // Note: this just returns a chunk whose memory is reserved; no memory is committed yet.</span>
+<span class="changed"> 157   // Hence, before using this chunk, it must be committed.</span>
+<span class="changed"> 158   // Also, no limits are checked, since no committing takes place.</span>
+<span class="changed"> 159   Metachunk* allocate_root_chunk();</span>
+<span class="changed"> 160 </span>
+<span class="changed"> 161   // Given a chunk c, split it recursively until you get a chunk of the given target_level.</span>
+<span class="changed"> 162   //</span>
+<span class="changed"> 163   // The resulting target chunk resides at the same address as the original chunk.</span>
+<span class="changed"> 164   // The resulting splinters are added to freelists.</span>
+<span class="changed"> 165   void split(chunklevel_t target_level, Metachunk* c, FreeChunkListVector* freelists);</span>
+<span class="changed"> 166 </span>
+<span class="changed"> 167   // Given a chunk, attempt to merge it recursively with its neighboring chunks.</span>
+<span class="changed"> 168   //</span>
+<span class="changed"> 169   // If successful (merged at least once), returns address of</span>
+<span class="changed"> 170   // the merged chunk; NULL otherwise.</span>
+<span class="changed"> 171   //</span>
+<span class="changed"> 172   // The merged chunks are removed from the freelists.</span>
+<span class="changed"> 173   //</span>
+<span class="changed"> 174   // !!! Please note that if this method returns a non-NULL value, the</span>
+<span class="changed"> 175   // original chunk will be invalid and should not be accessed anymore! !!!</span>
+<span class="changed"> 176   Metachunk* merge(Metachunk* c, FreeChunkListVector* freelists);</span>
+<span class="changed"> 177 </span>
+<span class="changed"> 178   // Given a chunk c, which must be "in use" and must not be a root chunk, attempt to</span>
+<span class="changed"> 179   // enlarge it in place by claiming its trailing buddy.</span>
+<span class="changed"> 180   //</span>
+<span class="changed"> 181   // This will only work if c is the leader of the buddy pair and the trailing buddy is free.</span>
+<span class="changed"> 182   //</span>
+<span class="changed"> 183   // If successful, the follower chunk will be removed from the freelists, the leader chunk c will</span>
+<span class="changed"> 184   // double in size (level decreased by one).</span>
+<span class="changed"> 185   //</span>
+<span class="changed"> 186   // On success, true is returned, false otherwise.</span>
+<span class="changed"> 187   bool attempt_enlarge_chunk(Metachunk* c, FreeChunkListVector* freelists);</span>
+<span class="changed"> 188 </span>
+<span class="changed"> 189   // Attempts to purge the node:</span>
+<span class="changed"> 190   //</span>
+<span class="changed"> 191   // If all chunks living in this node are free, they will all be removed from their freelists</span>
+<span class="changed"> 192   //   and deletes the node.</span>
+<span class="changed"> 193   //</span>
+<span class="changed"> 194   // Returns true if the node has been deleted, false if not.</span>
+<span class="changed"> 195   // !! If this returns true, do not access the node from this point on. !!</span>
+<span class="changed"> 196   bool attempt_purge(FreeChunkListVector* freelists);</span>
+<span class="changed"> 197 </span>
+<span class="changed"> 198   // Attempts to uncommit free areas according to the rules set in settings.</span>
+<span class="changed"> 199   // Returns number of words uncommitted.</span>
+<span class="changed"> 200   size_t uncommit_free_areas();</span>
+<span class="changed"> 201 </span>
+<span class="changed"> 202   /// misc /////</span>
+<span class="changed"> 203 </span>
+<span class="changed"> 204   // Returns size, in words, of the used space in this node alone.</span>
+<span class="changed"> 205   // (Notes:</span>
+<span class="changed"> 206   //  - This is the space handed out to the ChunkManager, so it is "used" from the viewpoint of this node,</span>
+<span class="changed"> 207   //    but not necessarily used for Metadata.</span>
+<span class="changed"> 208   //  - This may or may not be committed memory.</span>
+<span class="changed"> 209   size_t used_words() const             { return _used_words; }</span>
+<span class="changed"> 210 </span>
+<span class="changed"> 211   // Returns size, in words, of how much space is left in this node alone.</span>
+<span class="changed"> 212   size_t free_words() const             { return _word_size - _used_words; }</span>
+<span class="changed"> 213 </span>
+<span class="changed"> 214   // Returns size, in words, of committed space in this node alone.</span>
+<span class="changed"> 215   // Note: iterates over commit mask and hence may be a tad expensive on large nodes.</span>
+<span class="changed"> 216   size_t committed_words() const;</span>
+<span class="changed"> 217 </span>
+<span class="changed"> 218   //// Committing/uncommitting memory /////</span>
+<span class="changed"> 219 </span>
+<span class="changed"> 220   // Given an address range, ensure it is committed.</span>
+<span class="changed"> 221   //</span>
+<span class="changed"> 222   // The range does not have to be aligned to granule size. However, the function will always commit</span>
+<span class="changed"> 223   // whole granules.</span>
+<span class="changed"> 224   //</span>
+<span class="changed"> 225   // Function will:</span>
+<span class="changed"> 226   // - check how many granules in that region are uncommitted; If all are committed, it</span>
+<span class="changed"> 227   //    returns true immediately.</span>
+<span class="changed"> 228   // - check if committing those uncommitted granules would bring us over the commit limit</span>
+<span class="changed"> 229   //    (GC threshold, MaxMetaspaceSize). If true, it returns false.</span>
+<span class="changed"> 230   // - commit the memory.</span>
+<span class="changed"> 231   // - mark the range as committed in the commit mask</span>
+<span class="changed"> 232   //</span>
+<span class="changed"> 233   // Returns true if success, false if it did hit a commit limit.</span>
+<span class="changed"> 234   bool ensure_range_is_committed(MetaWord* p, size_t word_size);</span>
+<span class="changed"> 235 </span>
+<span class="changed"> 236   // Given an address range (which has to be aligned to commit granule size):</span>
+<span class="changed"> 237   //  - uncommit it</span>
+<span class="changed"> 238   //  - mark it as uncommitted in the commit mask</span>
+<span class="changed"> 239   void uncommit_range(MetaWord* p, size_t word_size);</span>
+<span class="changed"> 240 </span>
+<span class="changed"> 241   //// List stuff ////</span>
+<span class="changed"> 242   VirtualSpaceNode* next() const        { return _next; }</span>
+<span class="changed"> 243   void set_next(VirtualSpaceNode* vsn)  { _next = vsn; }</span>
+<span class="changed"> 244 </span>
+<span class="changed"> 245 </span>
+<span class="changed"> 246   /// Debug stuff ////</span>
+<span class="changed"> 247 </span>
+<span class="changed"> 248   // Print a description about this node.</span>
+<span class="changed"> 249   void print_on(outputStream* st) const;</span>
+<span class="changed"> 250 </span>
+<span class="changed"> 251   // Verify counters and basic structure. Slow mode: verify all chunks in depth</span>
+<span class="changed"> 252   bool contains(const MetaWord* p) const {</span>
+<span class="changed"> 253     return p &gt;= _base &amp;&amp; p &lt; _base + _used_words;</span>
+<span class="changed"> 254   }</span>
+<span class="changed"> 255 </span>
+<span class="changed"> 256 #ifdef ASSERT</span>
+<span class="changed"> 257   void check_pointer(const MetaWord* p) const {</span>
+<span class="changed"> 258     assert(contains(p), "invalid pointer");</span>
+<span class="changed"> 259   }</span>
+<span class="changed"> 260   void verify(bool slow) const;</span>
+<span class="changed"> 261 #endif</span>
+ 262 
+ 263 };
+<span class="new"> 264 </span>
+ 265 
+ 266 } // namespace metaspace
+ 267 
+ 268 #endif // SHARE_MEMORY_METASPACE_VIRTUALSPACENODE_HPP
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

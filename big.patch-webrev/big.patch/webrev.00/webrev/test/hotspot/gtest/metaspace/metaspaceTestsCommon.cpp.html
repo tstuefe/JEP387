@@ -1,0 +1,216 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  */
+  24 
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "metaspaceTestsCommon.hpp"
+  29 #include "metaspace/metaspace_rangehelpers.hpp"
+  30 
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 #ifdef _WIN32
+  35 #include &lt;psapi.h&gt;
+  36 #endif
+  37 
+  38 size_t get_workingset_size() {
+  39 #if defined(_WIN32)
+  40   PROCESS_MEMORY_COUNTERS info;
+  41   GetProcessMemoryInfo(GetCurrentProcess(), &amp;info, sizeof(info));
+  42   return (size_t)info.WorkingSetSize;
+  43 #elif defined(LINUX)
+  44   long result = 0L;
+  45   FILE* f = fopen("/proc/self/statm", "r");
+  46   if (f == NULL) {
+  47     return 0;
+  48   }
+  49   // Second number in statm, in num of pages
+  50   if (fscanf(f, "%*s%ld", &amp;result) != 1 ) {
+  51     fclose(f);
+  52     return 0;
+  53   }
+  54   fclose(f);
+  55   return (size_t)result * (size_t)os::vm_page_size();
+  56 #else
+  57   return 0L;
+  58 #endif
+  59 }
+  60 
+  61 
+  62 
+  63 void zap_range(MetaWord* p, size_t word_size) {
+  64   for (MetaWord* pzap = p; pzap &lt; p + word_size; pzap += os::vm_page_size() / BytesPerWord) {
+  65     *pzap = (MetaWord)NOT_LP64(0xFEFEFEFE) LP64_ONLY(0xFEFEFEFEEFEFEFEFULL);
+  66   }
+  67 }
+  68 
+  69 
+  70 
+  71 // Writes a uniqe pattern to p
+  72 void mark_address(MetaWord* p, uintx pattern) {
+  73   MetaWord x = (MetaWord)((uintx) p ^ pattern);
+  74   *p = x;
+  75 }
+  76 
+  77 // checks pattern at address
+  78 void check_marked_address(const MetaWord* p, uintx pattern) {
+  79   MetaWord x = (MetaWord)((uintx) p ^ pattern);
+  80   EXPECT_EQ(*p, x);
+  81 }
+  82 
+  83 // "fill_range_with_pattern" fills a range of heap words with pointers to itself.
+  84 //
+  85 // The idea is to fill a memory range with a pattern which is both marked clearly to the caller
+  86 // and cannot be moved without becoming invalid.
+  87 //
+  88 // The filled range can be checked with check_range_for_pattern. One also can only check
+  89 // a sub range of the original range.
+  90 void fill_range_with_pattern(MetaWord* p, size_t word_size, uintx pattern) {
+  91   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+  92   for (MetaWord* p2 = p; p2 &lt; p + word_size; p2 ++) {
+  93     mark_address(p2, pattern);
+  94   }
+  95 }
+  96 
+  97 void check_range_for_pattern(const MetaWord* p, size_t word_size, uintx pattern) {
+  98   assert(p != NULL, "sanity");
+  99   const MetaWord* p2 = p;
+ 100   while (p2 &lt; p + word_size) {
+ 101     check_marked_address(p2, pattern);
+ 102     p2 ++;
+ 103   }
+ 104 }
+ 105 
+ 106 
+ 107 // Similar to fill_range_with_pattern, but only marks start and end. This is optimized for cases
+ 108 // where fill_range_with_pattern just is too slow.
+ 109 // Use check_marked_range to check the range. In contrast to check_range_for_pattern, only the original
+ 110 // range can be checked.
+ 111 void mark_range(MetaWord* p, size_t word_size, uintx pattern) {
+ 112   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+ 113   mark_address(p, pattern);
+ 114   mark_address(p + word_size - 1, pattern);
+ 115 }
+ 116 
+ 117 void check_marked_range(const MetaWord* p, size_t word_size, uintx pattern) {
+ 118   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+ 119   check_marked_address(p, pattern);
+ 120   check_marked_address(p + word_size - 1, pattern);
+ 121 }
+ 122 
+ 123 void mark_range(MetaWord* p, size_t word_size) {
+ 124   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+ 125   uintx pattern = (uintx)p2i(p);
+ 126   mark_range(p, word_size, pattern);
+ 127 }
+ 128 
+ 129 void check_marked_range(const MetaWord* p, size_t word_size) {
+ 130   uintx pattern = (uintx)p2i(p);
+ 131   check_marked_range(p, word_size, pattern);
+ 132 }
+ 133 
+</pre></body></html>

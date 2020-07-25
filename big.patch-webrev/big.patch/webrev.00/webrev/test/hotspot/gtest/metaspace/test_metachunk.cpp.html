@@ -1,0 +1,480 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/test_metachunk.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "metaspace/metaspaceTestsCommon.hpp"
+  27 #include "metaspace/metaspace_testhelper.hpp"
+  28 #include "runtime/mutexLocker.hpp"
+  29 
+  30 using namespace metaspace::chunklevel;
+  31 
+  32 // Test ChunkManager::get_chunk
+  33 TEST_VM(metaspace, get_chunk) {
+  34 
+  35   MetaspaceTestHelper helper(8 * M);
+  36 
+  37   for (chunklevel_t pref_lvl = LOWEST_CHUNK_LEVEL; pref_lvl &lt;= HIGHEST_CHUNK_LEVEL; pref_lvl ++) {
+  38 
+  39     for (chunklevel_t max_lvl = pref_lvl; max_lvl &lt;= HIGHEST_CHUNK_LEVEL; max_lvl ++) {
+  40 
+  41       for (size_t min_committed_words = Settings::commit_granule_words();
+  42            min_committed_words &lt;= word_size_for_level(max_lvl); min_committed_words *= 2) {
+  43 
+  44         Metachunk* c = helper.alloc_chunk_expect_success(pref_lvl, max_lvl, min_committed_words);
+  45         helper.return_chunk(c);
+  46 
+  47       }
+  48     }
+  49   }
+  50 }
+  51 
+  52 // Test ChunkManager::get_chunk, but with a commit limit.
+  53 TEST_VM(metaspace, get_chunk_with_commit_limit) {
+  54 
+  55   const size_t commit_limit_words = 1 * M;
+  56   MetaspaceTestHelper helper(commit_limit_words);
+  57 
+  58   for (chunklevel_t pref_lvl = LOWEST_CHUNK_LEVEL; pref_lvl &lt;= HIGHEST_CHUNK_LEVEL; pref_lvl ++) {
+  59 
+  60     for (chunklevel_t max_lvl = pref_lvl; max_lvl &lt;= HIGHEST_CHUNK_LEVEL; max_lvl ++) {
+  61 
+  62       for (size_t min_committed_words = Settings::commit_granule_words();
+  63            min_committed_words &lt;= word_size_for_level(max_lvl); min_committed_words *= 2) {
+  64 
+  65         if (min_committed_words &lt;= commit_limit_words) {
+  66           Metachunk* c = helper.alloc_chunk_expect_success(pref_lvl, max_lvl, min_committed_words);
+  67           helper.return_chunk(c);
+  68         } else {
+  69           helper.alloc_chunk_expect_failure(pref_lvl, max_lvl, min_committed_words);
+  70         }
+  71 
+  72       }
+  73     }
+  74   }
+  75 }
+  76 
+  77 // Test that recommitting the used portion of a chunk will preserve the original content.
+  78 TEST_VM(metaspace, get_chunk_recommit) {
+  79 
+  80   MetaspaceTestHelper helper;
+  81   Metachunk* c = helper.alloc_chunk_expect_success(ROOT_CHUNK_LEVEL, ROOT_CHUNK_LEVEL, 0);
+  82   helper.uncommit_chunk_with_test(c);
+  83 
+  84   helper.commit_chunk_with_test(c, Settings::commit_granule_words());
+  85   helper.allocate_from_chunk(c, Settings::commit_granule_words());
+  86 
+  87   c-&gt;ensure_committed(Settings::commit_granule_words());
+  88   check_range_for_pattern(c-&gt;base(), c-&gt;used_words(), (uintx)c);
+  89 
+  90   c-&gt;ensure_committed(Settings::commit_granule_words() * 2);
+  91   check_range_for_pattern(c-&gt;base(), c-&gt;used_words(), (uintx)c);
+  92 
+  93   helper.return_chunk(c);
+  94 
+  95 }
+  96 
+  97 // Test ChunkManager::get_chunk, but with a reserve limit.
+  98 // (meaning, the underlying VirtualSpaceList cannot expand, like compressed class space).
+  99 TEST_VM(metaspace, get_chunk_with_reserve_limit) {
+ 100 
+ 101   const size_t reserve_limit_words = word_size_for_level(ROOT_CHUNK_LEVEL);
+ 102   const size_t commit_limit_words = 1024 * M; // just very high
+ 103   MetaspaceTestHelper helper(reserve_limit_words, commit_limit_words);
+ 104 
+ 105   // Reserve limit works at root chunk size granularity: if the chunk manager cannot satisfy
+ 106   //  a request for a chunk from its freelists, it will acquire a new root chunk from the
+ 107   //  underlying virtual space list. If that list is full and cannot be expanded (think ccs)
+ 108   //  we should get an error.
+ 109   // Testing this is simply testing a chunk allocation which should cause allocation of a new
+ 110   //  root chunk.
+ 111 
+ 112   // Cause allocation of the firstone root chunk, should still work:
+ 113   Metachunk* c1 = helper.alloc_chunk_expect_success(HIGHEST_CHUNK_LEVEL);
+ 114 
+ 115   // and this should need a new root chunk and hence fail:
+ 116   helper.alloc_chunk_expect_failure(ROOT_CHUNK_LEVEL);
+ 117 
+ 118   helper.return_chunk(c1);
+ 119 
+ 120 }
+ 121 
+ 122 // Test MetaChunk::allocate
+ 123 TEST_VM(metaspace, chunk_allocate_full) {
+ 124 
+ 125   MetaspaceTestHelper helper;
+ 126 
+ 127   for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl ++) {
+ 128     Metachunk* c = helper.alloc_chunk_expect_success(lvl);
+ 129     helper.allocate_from_chunk(c, c-&gt;word_size());
+ 130     helper.return_chunk(c);
+ 131   }
+ 132 
+ 133 }
+ 134 
+ 135 // Test MetaChunk::allocate
+ 136 TEST_VM(metaspace, chunk_allocate_random) {
+ 137 
+ 138   MetaspaceTestHelper helper;
+ 139 
+ 140   for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl ++) {
+ 141 
+ 142     Metachunk* c = helper.alloc_chunk_expect_success(lvl);
+ 143     helper.uncommit_chunk_with_test(c); // start out fully uncommitted
+ 144 
+ 145     RandSizeGenerator rgen(1, c-&gt;word_size() / 30);
+ 146     bool stop = false;
+ 147 
+ 148     while (!stop) {
+ 149       const size_t s = rgen.get();
+ 150       if (s &lt;= c-&gt;free_words()) {
+ 151         helper.commit_chunk_with_test(c, s);
+ 152         helper.allocate_from_chunk(c, s);
+ 153       } else {
+ 154         stop = true;
+ 155       }
+ 156 
+ 157     }
+ 158     helper.return_chunk(c);
+ 159 
+ 160   }
+ 161 
+ 162 }
+ 163 
+ 164 TEST_VM(metaspace, chunk_buddy_stuff) {
+ 165 
+ 166   for (chunklevel_t l = ROOT_CHUNK_LEVEL + 1; l &lt;= HIGHEST_CHUNK_LEVEL; l ++) {
+ 167 
+ 168     MetaspaceTestHelper helper;
+ 169 
+ 170     // Allocate two chunks; since we know the first chunk is the first in its area,
+ 171     // it has to be a leader, and the next one of the same size its buddy.
+ 172 
+ 173     // (Note: strictly speaking the ChunkManager does not promise any placement but
+ 174     //  we know how the placement works so these tests make sense).
+ 175 
+ 176     Metachunk* c1 = helper.alloc_chunk(CHUNK_LEVEL_1K);
+ 177     EXPECT_TRUE(c1-&gt;is_leader());
+ 178 
+ 179     Metachunk* c2 = helper.alloc_chunk(CHUNK_LEVEL_1K);
+ 180     EXPECT_FALSE(c2-&gt;is_leader());
+ 181 
+ 182     // buddies are adjacent in memory
+ 183     // (next/prev_in_vs needs lock)
+ 184     {
+ 185       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 186       EXPECT_EQ(c1-&gt;next_in_vs(), c2);
+ 187       EXPECT_EQ(c1-&gt;end(), c2-&gt;base());
+ 188       EXPECT_NULL(c1-&gt;prev_in_vs()); // since we know this is the first in the area
+ 189       EXPECT_EQ(c2-&gt;prev_in_vs(), c1);
+ 190     }
+ 191 
+ 192     helper.return_chunk(c1);
+ 193     helper.return_chunk(c2);
+ 194 
+ 195   }
+ 196 
+ 197 }
+ 198 
+ 199 
+ 200 TEST_VM(metaspace, chunk_allocate_with_commit_limit) {
+ 201 
+ 202   const size_t granule_sz = Settings::commit_granule_words();
+ 203   const size_t commit_limit = granule_sz * 3;
+ 204   MetaspaceTestHelper helper(commit_limit);
+ 205 
+ 206   // A big chunk, but uncommitted.
+ 207   Metachunk* c = helper.alloc_chunk_expect_success(ROOT_CHUNK_LEVEL, ROOT_CHUNK_LEVEL, 0);
+ 208   helper.uncommit_chunk_with_test(c); // ... just to make sure.
+ 209 
+ 210   // first granule...
+ 211   helper.commit_chunk_with_test(c, granule_sz);
+ 212   helper.allocate_from_chunk(c, granule_sz);
+ 213 
+ 214   // second granule...
+ 215   helper.commit_chunk_with_test(c, granule_sz);
+ 216   helper.allocate_from_chunk(c, granule_sz);
+ 217 
+ 218   // third granule...
+ 219   helper.commit_chunk_with_test(c, granule_sz);
+ 220   helper.allocate_from_chunk(c, granule_sz);
+ 221 
+ 222   // This should fail now.
+ 223   helper.commit_chunk_expect_failure(c, granule_sz);
+ 224 
+ 225   helper.return_chunk(c);
+ 226 
+ 227 }
+ 228 
+ 229 // Test splitting a chunk
+ 230 TEST_VM(metaspace, chunk_split_and_merge) {
+ 231 
+ 232   // Split works like this:
+ 233   //
+ 234   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 235   // |                                  A                                            |
+ 236   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 237   //
+ 238   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 239   // | A' | b  |    c    |         d         |                   e                   |
+ 240   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 241   //
+ 242   // A original chunk (A) is split to form a target chunk (A') and as a result splinter
+ 243   // chunks form (b..e). A' is the leader of the (A',b) pair, which is the leader of the
+ 244   // ((A',b), c) pair and so on. In other words, A' will be a leader chunk, all splinter
+ 245   // chunks are follower chunks.
+ 246   //
+ 247   // Merging reverses this operation:
+ 248   //
+ 249   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 250   // | A  | b  |    c    |         d         |                   e                   |
+ 251   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 252   //
+ 253   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 254   // |                                  A'                                           |
+ 255   //  ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ---- ----
+ 256   //
+ 257   // (A) will be merged with its buddy b, (A+b) with its buddy c and so on. The result
+ 258   // chunk is A'.
+ 259   // Note that merging also works, of course, if we were to start the merge at (b) (so,
+ 260   // with a follower chunk, not a leader). Also, at any point in the merge
+ 261   // process we may arrive at a follower chunk. So, the fact that in this test
+ 262   // we only expect a leader merge is a feature of the test, and of the fact that we
+ 263   // start each split test with a fresh MetaspaceTestHelper.
+ 264 
+ 265   // Note: Splitting and merging chunks is usually done from within the ChunkManager and
+ 266   //  subject to a lot of assumptions and hence asserts. Here, we have to explicitly use
+ 267   //  VirtualSpaceNode::split/::merge and therefore have to observe rules:
+ 268   // - both split and merge expect free chunks, so state has to be "free"
+ 269   // - but that would trigger the "ideally merged" assertion in the RootChunkArea, so the
+ 270   //   original chunk has to be a root chunk, we cannot just split any chunk manually.
+ 271   // - Also, after the split we have to completely re-merge to avoid triggering asserts
+ 272   //   in ~RootChunkArea()
+ 273   // - finally we have to lock manually
+ 274 
+ 275   MetaspaceTestHelper helper;
+ 276 
+ 277   const chunklevel_t orig_lvl = ROOT_CHUNK_LEVEL;
+ 278   for (chunklevel_t target_lvl = orig_lvl + 1; target_lvl &lt;= HIGHEST_CHUNK_LEVEL; target_lvl ++) {
+ 279 
+ 280     // Split a fully committed chunk. The resulting chunk should be fully
+ 281     //  committed as well, and have its content preserved.
+ 282     Metachunk* c = helper.alloc_chunk_expect_success(orig_lvl);
+ 283 
+ 284     // We allocate from this chunk to be able to completely paint the payload.
+ 285     helper.allocate_from_chunk(c, c-&gt;word_size());
+ 286 
+ 287     const uintx canary = os::random();
+ 288     fill_range_with_pattern(c-&gt;base(), c-&gt;word_size(), canary);
+ 289 
+ 290     FreeChunkListVector splinters;
+ 291 
+ 292     {
+ 293       // Splitting/Merging chunks is usually done by the chunkmanager, and no explicit
+ 294       // outside API exists. So we split/merge chunks via the underlying vs node, directly.
+ 295       // This means that we have to go through some extra hoops to not trigger any asserts.
+ 296       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 297       c-&gt;reset_used_words();
+ 298       c-&gt;set_free();
+ 299       c-&gt;vsnode()-&gt;split(target_lvl, c, &amp;splinters);
+ 300     }
+ 301 
+ 302     DEBUG_ONLY(helper.verify();)
+ 303 
+ 304     EXPECT_EQ(c-&gt;level(), target_lvl);
+ 305     EXPECT_TRUE(c-&gt;is_fully_committed());
+ 306     EXPECT_FALSE(c-&gt;is_root_chunk());
+ 307     EXPECT_TRUE(c-&gt;is_leader());
+ 308 
+ 309     check_range_for_pattern(c-&gt;base(), c-&gt;word_size(), canary);
+ 310 
+ 311     // I expect splinter chunks (one for each splinter level:
+ 312     //  e.g. splitting a 1M chunk to get a 64K chunk should yield splinters: [512K, 256K, 128K, 64K]
+ 313     for (chunklevel_t l = LOWEST_CHUNK_LEVEL; l &lt; HIGHEST_CHUNK_LEVEL; l ++) {
+ 314       const Metachunk* c2 = splinters.first_at_level(l);
+ 315       if (l &gt; orig_lvl &amp;&amp; l &lt;= target_lvl) {
+ 316         EXPECT_NOT_NULL(c2);
+ 317         EXPECT_EQ(c2-&gt;level(), l);
+ 318         EXPECT_TRUE(c2-&gt;is_free());
+ 319         EXPECT_TRUE(!c2-&gt;is_leader());
+ 320         DEBUG_ONLY(c2-&gt;verify(false));
+ 321         check_range_for_pattern(c2-&gt;base(), c2-&gt;word_size(), canary);
+ 322       } else {
+ 323         EXPECT_NULL(c2);
+ 324       }
+ 325     }
+ 326 
+ 327     // Revert the split by using merge. This should result in all splinters coalescing
+ 328     // to one chunk.
+ 329     {
+ 330       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 331       Metachunk* merged = c-&gt;vsnode()-&gt;merge(c, &amp;splinters);
+ 332 
+ 333       // the merged chunk should occupy the same address as the splinter
+ 334       // since it should have been the leader in the split.
+ 335       EXPECT_EQ(merged, c);
+ 336       EXPECT_TRUE(merged-&gt;is_root_chunk() || merged-&gt;is_leader());
+ 337 
+ 338       // Splitting should have arrived at the original chunk since none of the splinters are in use.
+ 339       EXPECT_EQ(c-&gt;level(), orig_lvl);
+ 340 
+ 341       // All splinters should have been removed from the list
+ 342       EXPECT_EQ(splinters.num_chunks(), 0);
+ 343     }
+ 344 
+ 345     helper.return_chunk(c);
+ 346 
+ 347   }
+ 348 
+ 349 }
+ 350 
+ 351 TEST_VM(metaspace, chunk_enlarge_in_place) {
+ 352 
+ 353   MetaspaceTestHelper helper;
+ 354 
+ 355   // Starting with the smallest chunk size, attempt to enlarge the chunk in place until we arrive
+ 356   // at root chunk size. Since the state is clean, this should work.
+ 357 
+ 358   Metachunk* c = helper.alloc_chunk_expect_success(HIGHEST_CHUNK_LEVEL);
+ 359 
+ 360   chunklevel_t l = c-&gt;level();
+ 361 
+ 362   while (l != ROOT_CHUNK_LEVEL) {
+ 363 
+ 364     // commit and allocate from chunk to pattern it...
+ 365     const size_t original_chunk_size = c-&gt;word_size();
+ 366     helper.commit_chunk_with_test(c, c-&gt;free_words());
+ 367     helper.allocate_from_chunk(c, c-&gt;free_words());
+ 368 
+ 369     size_t used_before = c-&gt;used_words();
+ 370     size_t free_before = c-&gt;free_words();
+ 371     size_t free_below_committed_before = c-&gt;free_below_committed_words();
+ 372     const MetaWord* top_before = c-&gt;top();
+ 373 
+ 374     EXPECT_TRUE(helper.cm().attempt_enlarge_chunk(c));
+ 375     EXPECT_EQ(l - 1, c-&gt;level());
+ 376     EXPECT_EQ(c-&gt;word_size(), original_chunk_size * 2);
+ 377 
+ 378     // Used words should not have changed
+ 379     EXPECT_EQ(c-&gt;used_words(), used_before);
+ 380     EXPECT_EQ(c-&gt;top(), top_before);
+ 381 
+ 382     // free words should be expanded by the old size (since old chunk is doubled in size)
+ 383     EXPECT_EQ(c-&gt;free_words(), free_before + original_chunk_size);
+ 384 
+ 385     // free below committed can be larger but never smaller
+ 386     EXPECT_GE(c-&gt;free_below_committed_words(), free_below_committed_before);
+ 387 
+ 388     // Old content should be preserved
+ 389     check_range_for_pattern(c-&gt;base(), original_chunk_size, (uintx)c);
+ 390 
+ 391     l = c-&gt;level();
+ 392   }
+ 393 
+ 394   helper.return_chunk(c);
+ 395 
+ 396 }
+ 397 
+</pre></body></html>

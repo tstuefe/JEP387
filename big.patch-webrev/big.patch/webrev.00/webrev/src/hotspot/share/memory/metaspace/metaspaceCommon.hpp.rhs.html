@@ -1,0 +1,367 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre><hr></hr>
+<pre>
+   1 /*
+<a name="1" id="anc1"></a><span class="new">   2  * Copyright (c) 2018, 2019, SAP SE. All rights reserved.</span>
+   3  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+  27 #define SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+  28 
+<a name="2" id="anc2"></a><span class="new">  29 #include "runtime/globals.hpp"</span>
+  30 #include "utilities/align.hpp"
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 class outputStream;
+  35 
+  36 namespace metaspace {
+  37 
+<a name="3" id="anc3"></a><span class="changed">  38 </span>
+<span class="changed">  39 // Metaspace allocation alignment:</span>
+<span class="changed">  40 </span>
+<span class="changed">  41 // 1) Metaspace allocations have to be aligned such that 64bit values are aligned</span>
+<span class="changed">  42 //  correctly.</span>
+<span class="changed">  43 //</span>
+<span class="changed">  44 // 2) Klass* structures allocated from Metaspace have to be aligned to KlassAlignmentInBytes.</span>
+<span class="changed">  45 //</span>
+<span class="changed">  46 // At the moment LogKlassAlignmentInBytes is 3, so KlassAlignmentInBytes == 8,</span>
+<span class="changed">  47 //  so (1) and (2) can both be fulfilled with an alignment of 8. Should we increase</span>
+<span class="changed">  48 //  KlassAlignmentInBytes at any time this will increase the necessary alignment as well. In</span>
+<span class="changed">  49 //  that case we may think about introducing a separate alignment just for the class space</span>
+<span class="changed">  50 //  since that alignment would only be needed for Klass structures.</span>
+<span class="changed">  51 </span>
+<span class="changed">  52 static const size_t allocation_alignment_bytes = 8;</span>
+<span class="changed">  53 STATIC_ASSERT(allocation_alignment_bytes == (size_t)KlassAlignmentInBytes);</span>
+<span class="changed">  54 </span>
+<span class="changed">  55 static const size_t allocation_alignment_words = allocation_alignment_bytes / BytesPerWord;</span>
+<span class="changed">  56 </span>
+<span class="changed">  57 </span>
+<span class="changed">  58 </span>
+<span class="changed">  59 // Utility functions</span>
+  60 
+  61 // Print a size, in words, scaled.
+  62 void print_scaled_words(outputStream* st, size_t word_size, size_t scale = 0, int width = -1);
+  63 
+  64 // Convenience helper: prints a size value and a percentage.
+  65 void print_scaled_words_and_percentage(outputStream* st, size_t word_size, size_t compare_word_size, size_t scale = 0, int width = -1);
+  66 
+  67 // Print a human readable size.
+  68 // byte_size: size, in bytes, to be printed.
+  69 // scale: one of 1 (byte-wise printing), sizeof(word) (word-size printing), K, M, G (scaled by KB, MB, GB respectively,
+  70 //         or 0, which means the best scale is choosen dynamically.
+  71 // width: printing width.
+  72 void print_human_readable_size(outputStream* st, size_t byte_size, size_t scale = 0, int width = -1);
+  73 
+  74 // Prints a percentage value. Values smaller than 1% but not 0 are displayed as "&lt;1%", values
+  75 // larger than 99% but not 100% are displayed as "&gt;100%".
+  76 void print_percentage(outputStream* st, size_t total, size_t part);
+  77 
+  78 
+<a name="4" id="anc4"></a><span class="new">  79 #ifdef ASSERT</span>
+  80 #define assert_is_aligned(value, alignment)                  \
+  81   assert(is_aligned((value), (alignment)),                   \
+  82          SIZE_FORMAT_HEX " is not aligned to "               \
+  83          SIZE_FORMAT, (size_t)(uintptr_t)value, (alignment))
+<a name="5" id="anc5"></a><span class="changed">  84 #else</span>
+<span class="changed">  85 #define assert_is_aligned(value, alignment)</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  86 #endif
+  87 
+<a name="6" id="anc6"></a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  88 
+  89 // Pretty printing helpers
+  90 const char* classes_plural(uintx num);
+  91 const char* loaders_plural(uintx num);
+  92 void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared);
+<a name="7" id="anc7"></a><span class="new">  93 </span>
+<span class="new">  94 </span>
+<span class="new">  95 // Since Metaspace verifications are expensive, we want to do them at a reduced rate,</span>
+<span class="new">  96 // but not completely avoiding them.</span>
+<span class="new">  97 // For that we introduce the macros SOMETIMES() and ASSERT_SOMETIMES() which will</span>
+<span class="new">  98 // execute code or assert at intervals controlled via VerifyMetaspaceInterval.</span>
+<span class="new">  99 #ifdef ASSERT</span>
+<span class="new"> 100 </span>
+<span class="new"> 101 #define EVERY_NTH(n)          \</span>
+<span class="new"> 102 { static int counter_ = 0;    \</span>
+<span class="new"> 103   if (n &gt; 0) {                \</span>
+<span class="new"> 104     counter_ ++;              \</span>
+<span class="new"> 105     if (counter_ &gt; n) {       \</span>
+<span class="new"> 106       counter_ = 0;           \</span>
+<span class="new"> 107 </span>
+<span class="new"> 108 #define END_EVERY_NTH         } } }</span>
+<span class="new"> 109 </span>
+<span class="new"> 110 #define SOMETIMES(code) \</span>
+<span class="new"> 111     EVERY_NTH(VerifyMetaspaceInterval) \</span>
+<span class="new"> 112     { code } \</span>
+<span class="new"> 113     END_EVERY_NTH</span>
+<span class="new"> 114 </span>
+<span class="new"> 115 #define ASSERT_SOMETIMES(condition, ...) \</span>
+<span class="new"> 116     EVERY_NTH(VerifyMetaspaceInterval) \</span>
+<span class="new"> 117     assert( (condition), __VA_ARGS__); \</span>
+<span class="new"> 118     END_EVERY_NTH</span>
+<span class="new"> 119 </span>
+<span class="new"> 120 #else</span>
+<span class="new"> 121 </span>
+<span class="new"> 122 #define SOMETIMES(code)</span>
+<span class="new"> 123 #define ASSERT_SOMETIMES(condition, ...)</span>
+<span class="new"> 124 </span>
+<span class="new"> 125 #endif // ASSERT</span>
+<span class="new"> 126 </span>
+ 127 
+ 128 } // namespace metaspace
+ 129 
+ 130 #endif // SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+<a name="8" id="anc8"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="8" type="hidden" /></form></body></html>

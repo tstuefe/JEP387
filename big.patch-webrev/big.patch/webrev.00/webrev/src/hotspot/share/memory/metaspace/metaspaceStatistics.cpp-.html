@@ -1,0 +1,359 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 #include "precompiled.hpp"
+  26 
+  27 #include "memory/metaspace/metachunk.hpp"
+  28 #include "memory/metaspace/metaspaceCommon.hpp"
+  29 #include "memory/metaspace/metaspaceStatistics.hpp"
+  30 #include "utilities/debug.hpp"
+  31 #include "utilities/globalDefinitions.hpp"
+  32 #include "utilities/ostream.hpp"
+  33 
+  34 namespace metaspace {
+  35 
+  36 // FreeChunksStatistics methods
+  37 
+  38 FreeChunksStatistics::FreeChunksStatistics()
+  39 : _num(0), _cap(0)
+  40 {}
+  41 
+  42 void FreeChunksStatistics::reset() {
+  43   _num = 0; _cap = 0;
+  44 }
+  45 
+  46 void FreeChunksStatistics::add(uintx n, size_t s) {
+  47   _num += n; _cap += s;
+  48 }
+  49 
+  50 void FreeChunksStatistics::add(const FreeChunksStatistics&amp; other) {
+  51   _num += other._num;
+  52   _cap += other._cap;
+  53 }
+  54 
+  55 void FreeChunksStatistics::print_on(outputStream* st, size_t scale) const {
+  56   st-&gt;print(UINTX_FORMAT, _num);
+  57   st-&gt;print(" chunks, total capacity ");
+  58   print_scaled_words(st, _cap, scale);
+  59 }
+  60 
+  61 // ChunkManagerStatistics methods
+  62 
+  63 void ChunkManagerStatistics::reset() {
+  64   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {
+  65     _chunk_stats[i].reset();
+  66   }
+  67 }
+  68 
+  69 size_t ChunkManagerStatistics::total_capacity() const {
+  70   return _chunk_stats[SpecializedIndex].cap() +
+  71       _chunk_stats[SmallIndex].cap() +
+  72       _chunk_stats[MediumIndex].cap() +
+  73       _chunk_stats[HumongousIndex].cap();
+  74 }
+  75 
+  76 void ChunkManagerStatistics::print_on(outputStream* st, size_t scale) const {
+  77   FreeChunksStatistics totals;
+  78   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {
+  79     st-&gt;cr();
+  80     st-&gt;print("%12s chunks: ", chunk_size_name(i));
+  81     if (_chunk_stats[i].num() &gt; 0) {
+  82       st-&gt;print(UINTX_FORMAT_W(4) ", capacity ", _chunk_stats[i].num());
+  83       print_scaled_words(st, _chunk_stats[i].cap(), scale);
+  84     } else {
+  85       st-&gt;print("(none)");
+  86     }
+  87     totals.add(_chunk_stats[i]);
+  88   }
+  89   st-&gt;cr();
+  90   st-&gt;print("%19s: " UINTX_FORMAT_W(4) ", capacity=", "Total", totals.num());
+  91   print_scaled_words(st, totals.cap(), scale);
+  92   st-&gt;cr();
+  93 }
+  94 
+  95 // UsedChunksStatistics methods
+  96 
+  97 UsedChunksStatistics::UsedChunksStatistics()
+  98 : _num(0), _cap(0), _used(0), _free(0), _waste(0), _overhead(0)
+  99 {}
+ 100 
+ 101 void UsedChunksStatistics::reset() {
+ 102   _num = 0;
+ 103   _cap = _overhead = _used = _free = _waste = 0;
+ 104 }
+ 105 
+ 106 void UsedChunksStatistics::add(const UsedChunksStatistics&amp; other) {
+ 107   _num += other._num;
+ 108   _cap += other._cap;
+ 109   _used += other._used;
+ 110   _free += other._free;
+ 111   _waste += other._waste;
+ 112   _overhead += other._overhead;
+ 113   DEBUG_ONLY(check_sanity());
+ 114 }
+ 115 
+ 116 void UsedChunksStatistics::print_on(outputStream* st, size_t scale) const {
+ 117   int col = st-&gt;position();
+ 118   st-&gt;print(UINTX_FORMAT_W(4) " chunk%s, ", _num, _num != 1 ? "s" : "");
+ 119   if (_num &gt; 0) {
+ 120     col += 14; st-&gt;fill_to(col);
+ 121 
+ 122     print_scaled_words(st, _cap, scale, 5);
+ 123     st-&gt;print(" capacity, ");
+ 124 
+ 125     col += 18; st-&gt;fill_to(col);
+ 126     print_scaled_words_and_percentage(st, _used, _cap, scale, 5);
+ 127     st-&gt;print(" used, ");
+ 128 
+ 129     col += 20; st-&gt;fill_to(col);
+ 130     print_scaled_words_and_percentage(st, _free, _cap, scale, 5);
+ 131     st-&gt;print(" free, ");
+ 132 
+ 133     col += 20; st-&gt;fill_to(col);
+ 134     print_scaled_words_and_percentage(st, _waste, _cap, scale, 5);
+ 135     st-&gt;print(" waste, ");
+ 136 
+ 137     col += 20; st-&gt;fill_to(col);
+ 138     print_scaled_words_and_percentage(st, _overhead, _cap, scale, 5);
+ 139     st-&gt;print(" overhead");
+ 140   }
+ 141   DEBUG_ONLY(check_sanity());
+ 142 }
+ 143 
+ 144 #ifdef ASSERT
+ 145 void UsedChunksStatistics::check_sanity() const {
+ 146   assert(_overhead == (Metachunk::overhead() * _num), "Sanity: Overhead.");
+ 147   assert(_cap == _used + _free + _waste + _overhead, "Sanity: Capacity.");
+ 148 }
+ 149 #endif
+ 150 
+ 151 // SpaceManagerStatistics methods
+ 152 
+ 153 SpaceManagerStatistics::SpaceManagerStatistics() { reset(); }
+ 154 
+ 155 void SpaceManagerStatistics::reset() {
+ 156   for (int i = 0; i &lt; NumberOfInUseLists; i ++) {
+ 157     _chunk_stats[i].reset();
+ 158     _free_blocks_num = 0; _free_blocks_cap_words = 0;
+ 159   }
+ 160 }
+ 161 
+ 162 void SpaceManagerStatistics::add_free_blocks_info(uintx num, size_t cap) {
+ 163   _free_blocks_num += num;
+ 164   _free_blocks_cap_words += cap;
+ 165 }
+ 166 
+ 167 void SpaceManagerStatistics::add(const SpaceManagerStatistics&amp; other) {
+ 168   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {
+ 169     _chunk_stats[i].add(other._chunk_stats[i]);
+ 170   }
+ 171   _free_blocks_num += other._free_blocks_num;
+ 172   _free_blocks_cap_words += other._free_blocks_cap_words;
+ 173 }
+ 174 
+ 175 // Returns total chunk statistics over all chunk types.
+ 176 UsedChunksStatistics SpaceManagerStatistics::totals() const {
+ 177   UsedChunksStatistics stat;
+ 178   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {
+ 179     stat.add(_chunk_stats[i]);
+ 180   }
+ 181   return stat;
+ 182 }
+ 183 
+ 184 void SpaceManagerStatistics::print_on(outputStream* st, size_t scale,  bool detailed) const {
+ 185   streamIndentor sti(st);
+ 186   if (detailed) {
+ 187     st-&gt;cr_indent();
+ 188     st-&gt;print("Usage by chunk type:");
+ 189     {
+ 190       streamIndentor sti2(st);
+ 191       for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {
+ 192         st-&gt;cr_indent();
+ 193         st-&gt;print("%15s: ", chunk_size_name(i));
+ 194         if (_chunk_stats[i].num() == 0) {
+ 195           st-&gt;print(" (none)");
+ 196         } else {
+ 197           _chunk_stats[i].print_on(st, scale);
+ 198         }
+ 199       }
+ 200 
+ 201       st-&gt;cr_indent();
+ 202       st-&gt;print("%15s: ", "-total-");
+ 203       totals().print_on(st, scale);
+ 204     }
+ 205     if (_free_blocks_num &gt; 0) {
+ 206       st-&gt;cr_indent();
+ 207       st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", _free_blocks_num);
+ 208       print_scaled_words(st, _free_blocks_cap_words, scale);
+ 209     }
+ 210   } else {
+ 211     totals().print_on(st, scale);
+ 212     st-&gt;print(", ");
+ 213     st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", _free_blocks_num);
+ 214     print_scaled_words(st, _free_blocks_cap_words, scale);
+ 215   }
+ 216 }
+ 217 
+ 218 // ClassLoaderMetaspaceStatistics methods
+ 219 
+ 220 ClassLoaderMetaspaceStatistics::ClassLoaderMetaspaceStatistics() { reset(); }
+ 221 
+ 222 void ClassLoaderMetaspaceStatistics::reset() {
+ 223   nonclass_sm_stats().reset();
+ 224   if (Metaspace::using_class_space()) {
+ 225     class_sm_stats().reset();
+ 226   }
+ 227 }
+ 228 
+ 229 // Returns total space manager statistics for both class and non-class metaspace
+ 230 SpaceManagerStatistics ClassLoaderMetaspaceStatistics::totals() const {
+ 231   SpaceManagerStatistics stats;
+ 232   stats.add(nonclass_sm_stats());
+ 233   if (Metaspace::using_class_space()) {
+ 234     stats.add(class_sm_stats());
+ 235   }
+ 236   return stats;
+ 237 }
+ 238 
+ 239 void ClassLoaderMetaspaceStatistics::add(const ClassLoaderMetaspaceStatistics&amp; other) {
+ 240   nonclass_sm_stats().add(other.nonclass_sm_stats());
+ 241   if (Metaspace::using_class_space()) {
+ 242     class_sm_stats().add(other.class_sm_stats());
+ 243   }
+ 244 }
+ 245 
+ 246 void ClassLoaderMetaspaceStatistics::print_on(outputStream* st, size_t scale, bool detailed) const {
+ 247   streamIndentor sti(st);
+ 248   st-&gt;cr_indent();
+ 249   if (Metaspace::using_class_space()) {
+ 250     st-&gt;print("Non-Class: ");
+ 251   }
+ 252   nonclass_sm_stats().print_on(st, scale, detailed);
+ 253   if (detailed) {
+ 254     st-&gt;cr();
+ 255   }
+ 256   if (Metaspace::using_class_space()) {
+ 257     st-&gt;cr_indent();
+ 258     st-&gt;print("    Class: ");
+ 259     class_sm_stats().print_on(st, scale, detailed);
+ 260     if (detailed) {
+ 261       st-&gt;cr();
+ 262     }
+ 263     st-&gt;cr_indent();
+ 264     st-&gt;print("     Both: ");
+ 265     totals().print_on(st, scale, detailed);
+ 266     if (detailed) {
+ 267       st-&gt;cr();
+ 268     }
+ 269   }
+ 270   st-&gt;cr();
+ 271 }
+ 272 
+ 273 } // end namespace metaspace
+ 274 
+ 275 
+ 276 
+</pre></body></html>

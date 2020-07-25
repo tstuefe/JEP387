@@ -1,0 +1,583 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory/metaspace </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metachunk.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceCommon.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/metaspaceCommon.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+   1 /*
+
+   2  * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 
+  27 #include "memory/metaspace/metaspaceCommon.hpp"
+  28 #include "memory/metaspace/virtualSpaceNode.hpp"
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 #include "utilities/ostream.hpp"
+  32 
+  33 namespace metaspace {
+  34 
+<span class="removed">  35 DEBUG_ONLY(internal_statistics_t g_internal_statistics;)</span>
+  36 
+  37 // Print a size, in words, scaled.
+  38 void print_scaled_words(outputStream* st, size_t word_size, size_t scale, int width) {
+  39   print_human_readable_size(st, word_size * sizeof(MetaWord), scale, width);
+  40 }
+  41 
+  42 // Convenience helper: prints a size value and a percentage.
+  43 void print_scaled_words_and_percentage(outputStream* st, size_t word_size, size_t compare_word_size, size_t scale, int width) {
+  44   print_scaled_words(st, word_size, scale, width);
+  45   st-&gt;print(" (");
+  46   print_percentage(st, compare_word_size, word_size);
+  47   st-&gt;print(")");
+  48 }
+  49 
+
+
+
+
+
+
+
+
+
+
+
+
+
+  50 
+  51 // Print a human readable size.
+  52 // byte_size: size, in bytes, to be printed.
+  53 // scale: one of 1 (byte-wise printing), sizeof(word) (word-size printing), K, M, G (scaled by KB, MB, GB respectively,
+  54 //         or 0, which means the best scale is choosen dynamically.
+  55 // width: printing width.
+  56 void print_human_readable_size(outputStream* st, size_t byte_size, size_t scale, int width)  {
+  57   if (scale == 0) {
+  58     // Dynamic mode. Choose scale for this value.
+  59     if (byte_size == 0) {
+  60       // Zero values are printed as bytes.
+  61       scale = 1;
+  62     } else {
+  63       if (byte_size &gt;= G) {
+  64         scale = G;
+  65       } else if (byte_size &gt;= M) {
+  66         scale = M;
+  67       } else if (byte_size &gt;= K) {
+  68         scale = K;
+  69       } else {
+  70         scale = 1;
+  71       }
+  72     }
+  73     return print_human_readable_size(st, byte_size, scale, width);
+  74   }
+  75 
+  76 #ifdef ASSERT
+<span class="changed">  77   assert(scale == 1 || scale == BytesPerWord || scale == K || scale == M || scale == G, "Invalid scale");</span>
+
+  78   // Special case: printing wordsize should only be done with word-sized values
+  79   if (scale == BytesPerWord) {
+  80     assert(byte_size % BytesPerWord == 0, "not word sized");
+  81   }
+  82 #endif
+  83 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  84   if (scale == 1) {
+  85     st-&gt;print("%*" PRIuPTR " bytes", width, byte_size);
+  86   } else if (scale == BytesPerWord) {
+  87     st-&gt;print("%*" PRIuPTR " words", width, byte_size / BytesPerWord);
+  88   } else {
+<span class="changed">  89     const char* display_unit = "";</span>
+<span class="changed">  90     switch(scale) {</span>
+<span class="changed">  91       case 1: display_unit = "bytes"; break;</span>
+<span class="changed">  92       case BytesPerWord: display_unit = "words"; break;</span>
+<span class="changed">  93       case K: display_unit = "KB"; break;</span>
+<span class="changed">  94       case M: display_unit = "MB"; break;</span>
+<span class="changed">  95       case G: display_unit = "GB"; break;</span>
+<span class="changed">  96       default:</span>
+<span class="changed">  97         ShouldNotReachHere();</span>
+<span class="changed">  98     }</span>
+  99     float display_value = (float) byte_size / scale;
+ 100     // Since we use width to display a number with two trailing digits, increase it a bit.
+ 101     width += 3;
+ 102     // Prevent very small but non-null values showing up as 0.00.
+ 103     if (byte_size &gt; 0 &amp;&amp; display_value &lt; 0.01f) {
+ 104       st-&gt;print("%*s %s", width, "&lt;0.01", display_unit);
+ 105     } else {
+ 106       st-&gt;print("%*.2f %s", width, display_value, display_unit);
+ 107     }
+ 108   }
+
+ 109 }
+ 110 
+ 111 // Prints a percentage value. Values smaller than 1% but not 0 are displayed as "&lt;1%", values
+ 112 // larger than 99% but not 100% are displayed as "&gt;100%".
+ 113 void print_percentage(outputStream* st, size_t total, size_t part) {
+ 114   if (total == 0) {
+ 115     st-&gt;print("  ?%%");
+ 116   } else if (part == 0) {
+ 117     st-&gt;print("  0%%");
+ 118   } else if (part == total) {
+ 119     st-&gt;print("100%%");
+ 120   } else {
+ 121     // Note: clearly print very-small-but-not-0% and very-large-but-not-100% percentages.
+ 122     float p = ((float)part / total) * 100.0f;
+ 123     if (p &lt; 1.0f) {
+ 124       st-&gt;print(" &lt;1%%");
+ 125     } else if (p &gt; 99.0f){
+ 126       st-&gt;print("&gt;99%%");
+ 127     } else {
+ 128       st-&gt;print("%3.0f%%", p);
+ 129     }
+ 130   }
+<span class="removed"> 131 }</span>
+<span class="removed"> 132 </span>
+<span class="removed"> 133 // Returns size of this chunk type.</span>
+<span class="removed"> 134 size_t get_size_for_nonhumongous_chunktype(ChunkIndex chunktype, bool is_class) {</span>
+<span class="removed"> 135   assert(is_valid_nonhumongous_chunktype(chunktype), "invalid chunk type.");</span>
+<span class="removed"> 136   size_t size = 0;</span>
+<span class="removed"> 137   if (is_class) {</span>
+<span class="removed"> 138     switch(chunktype) {</span>
+<span class="removed"> 139       case SpecializedIndex: size = ClassSpecializedChunk; break;</span>
+<span class="removed"> 140       case SmallIndex: size = ClassSmallChunk; break;</span>
+<span class="removed"> 141       case MediumIndex: size = ClassMediumChunk; break;</span>
+<span class="removed"> 142       default:</span>
+<span class="removed"> 143         ShouldNotReachHere();</span>
+<span class="removed"> 144     }</span>
+<span class="removed"> 145   } else {</span>
+<span class="removed"> 146     switch(chunktype) {</span>
+<span class="removed"> 147       case SpecializedIndex: size = SpecializedChunk; break;</span>
+<span class="removed"> 148       case SmallIndex: size = SmallChunk; break;</span>
+<span class="removed"> 149       case MediumIndex: size = MediumChunk; break;</span>
+<span class="removed"> 150       default:</span>
+<span class="removed"> 151         ShouldNotReachHere();</span>
+<span class="removed"> 152     }</span>
+<span class="removed"> 153   }</span>
+<span class="removed"> 154   return size;</span>
+<span class="removed"> 155 }</span>
+<span class="removed"> 156 </span>
+<span class="removed"> 157 ChunkIndex get_chunk_type_by_size(size_t size, bool is_class) {</span>
+<span class="removed"> 158   if (is_class) {</span>
+<span class="removed"> 159     if (size == ClassSpecializedChunk) {</span>
+<span class="removed"> 160       return SpecializedIndex;</span>
+<span class="removed"> 161     } else if (size == ClassSmallChunk) {</span>
+<span class="removed"> 162       return SmallIndex;</span>
+<span class="removed"> 163     } else if (size == ClassMediumChunk) {</span>
+<span class="removed"> 164       return MediumIndex;</span>
+<span class="removed"> 165     } else if (size &gt; ClassMediumChunk) {</span>
+<span class="removed"> 166       // A valid humongous chunk size is a multiple of the smallest chunk size.</span>
+<span class="removed"> 167       assert(is_aligned(size, ClassSpecializedChunk), "Invalid chunk size");</span>
+<span class="removed"> 168       return HumongousIndex;</span>
+<span class="removed"> 169     }</span>
+<span class="removed"> 170   } else {</span>
+<span class="removed"> 171     if (size == SpecializedChunk) {</span>
+<span class="removed"> 172       return SpecializedIndex;</span>
+<span class="removed"> 173     } else if (size == SmallChunk) {</span>
+<span class="removed"> 174       return SmallIndex;</span>
+<span class="removed"> 175     } else if (size == MediumChunk) {</span>
+<span class="removed"> 176       return MediumIndex;</span>
+<span class="removed"> 177     } else if (size &gt; MediumChunk) {</span>
+<span class="removed"> 178       // A valid humongous chunk size is a multiple of the smallest chunk size.</span>
+<span class="removed"> 179       assert(is_aligned(size, SpecializedChunk), "Invalid chunk size");</span>
+<span class="removed"> 180       return HumongousIndex;</span>
+<span class="removed"> 181     }</span>
+<span class="removed"> 182   }</span>
+<span class="removed"> 183   ShouldNotReachHere();</span>
+<span class="removed"> 184   return (ChunkIndex)-1;</span>
+<span class="removed"> 185 }</span>
+<span class="removed"> 186 </span>
+<span class="removed"> 187 ChunkIndex next_chunk_index(ChunkIndex i) {</span>
+<span class="removed"> 188   assert(i &lt; NumberOfInUseLists, "Out of bound");</span>
+<span class="removed"> 189   return (ChunkIndex) (i+1);</span>
+<span class="removed"> 190 }</span>
+<span class="removed"> 191 </span>
+<span class="removed"> 192 ChunkIndex prev_chunk_index(ChunkIndex i) {</span>
+<span class="removed"> 193   assert(i &gt; ZeroIndex, "Out of bound");</span>
+<span class="removed"> 194   return (ChunkIndex) (i-1);</span>
+ 195 }
+ 196 
+ 197 const char* loaders_plural(uintx num) {
+ 198   return num == 1 ? "loader" : "loaders";
+ 199 }
+ 200 
+ 201 const char* classes_plural(uintx num) {
+ 202   return num == 1 ? "class" : "classes";
+ 203 }
+ 204 
+ 205 void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared) {
+ 206   out-&gt;print(UINTX_FORMAT " %s", classes, classes_plural(classes));
+ 207   if (classes_shared &gt; 0) {
+ 208     out-&gt;print(" (" UINTX_FORMAT " shared)", classes_shared);
+ 209   }
+ 210 }
+ 211 
+ 212 } // namespace metaspace
+ 213 
+</pre></td><td><pre>
+   1 /*
+<span class="new">   2  * Copyright (c) 2018, 2019, SAP SE. All rights reserved.</span>
+   3  * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "memory/metaspace/metaspaceCommon.hpp"
+  29 #include "memory/metaspace/virtualSpaceNode.hpp"
+  30 #include "utilities/debug.hpp"
+  31 #include "utilities/globalDefinitions.hpp"
+  32 #include "utilities/ostream.hpp"
+  33 
+  34 namespace metaspace {
+  35 
+
+  36 
+  37 // Print a size, in words, scaled.
+  38 void print_scaled_words(outputStream* st, size_t word_size, size_t scale, int width) {
+  39   print_human_readable_size(st, word_size * sizeof(MetaWord), scale, width);
+  40 }
+  41 
+  42 // Convenience helper: prints a size value and a percentage.
+  43 void print_scaled_words_and_percentage(outputStream* st, size_t word_size, size_t compare_word_size, size_t scale, int width) {
+  44   print_scaled_words(st, word_size, scale, width);
+  45   st-&gt;print(" (");
+  46   print_percentage(st, compare_word_size, word_size);
+  47   st-&gt;print(")");
+  48 }
+  49 
+<span class="new">  50 static const char* display_unit_for_scale(size_t scale) {</span>
+<span class="new">  51   const char* s = NULL;</span>
+<span class="new">  52   switch(scale) {</span>
+<span class="new">  53     case 1: s = "bytes"; break;</span>
+<span class="new">  54     case BytesPerWord: s = "words"; break;</span>
+<span class="new">  55     case K: s = "KB"; break;</span>
+<span class="new">  56     case M: s = "MB"; break;</span>
+<span class="new">  57     case G: s = "GB"; break;</span>
+<span class="new">  58     default:</span>
+<span class="new">  59       ShouldNotReachHere();</span>
+<span class="new">  60   }</span>
+<span class="new">  61   return s;</span>
+<span class="new">  62 }</span>
+  63 
+  64 // Print a human readable size.
+  65 // byte_size: size, in bytes, to be printed.
+  66 // scale: one of 1 (byte-wise printing), sizeof(word) (word-size printing), K, M, G (scaled by KB, MB, GB respectively,
+  67 //         or 0, which means the best scale is choosen dynamically.
+  68 // width: printing width.
+  69 void print_human_readable_size(outputStream* st, size_t byte_size, size_t scale, int width)  {
+  70   if (scale == 0) {
+  71     // Dynamic mode. Choose scale for this value.
+  72     if (byte_size == 0) {
+  73       // Zero values are printed as bytes.
+  74       scale = 1;
+  75     } else {
+  76       if (byte_size &gt;= G) {
+  77         scale = G;
+  78       } else if (byte_size &gt;= M) {
+  79         scale = M;
+  80       } else if (byte_size &gt;= K) {
+  81         scale = K;
+  82       } else {
+  83         scale = 1;
+  84       }
+  85     }
+  86     return print_human_readable_size(st, byte_size, scale, width);
+  87   }
+  88 
+  89 #ifdef ASSERT
+<span class="changed">  90   assert(scale == 1 || scale == BytesPerWord ||</span>
+<span class="changed">  91          scale == K || scale == M || scale == G, "Invalid scale");</span>
+  92   // Special case: printing wordsize should only be done with word-sized values
+  93   if (scale == BytesPerWord) {
+  94     assert(byte_size % BytesPerWord == 0, "not word sized");
+  95   }
+  96 #endif
+  97 
+<span class="new">  98   if (width == -1) {</span>
+<span class="new">  99     if (scale == 1) {</span>
+<span class="new"> 100       st-&gt;print(SIZE_FORMAT " bytes", byte_size);</span>
+<span class="new"> 101     } else if (scale == BytesPerWord) {</span>
+<span class="new"> 102       st-&gt;print(SIZE_FORMAT " words", byte_size / BytesPerWord);</span>
+<span class="new"> 103     } else {</span>
+<span class="new"> 104       const char* display_unit = display_unit_for_scale(scale);</span>
+<span class="new"> 105       float display_value = (float) byte_size / scale;</span>
+<span class="new"> 106       // Prevent very small but non-null values showing up as 0.00.</span>
+<span class="new"> 107       if (byte_size &gt; 0 &amp;&amp; display_value &lt; 0.01f) {</span>
+<span class="new"> 108         st-&gt;print("&lt;0.01 %s", display_unit);</span>
+<span class="new"> 109       } else {</span>
+<span class="new"> 110         st-&gt;print("%.2f %s", display_value, display_unit);</span>
+<span class="new"> 111       }</span>
+<span class="new"> 112     }</span>
+<span class="new"> 113   } else {</span>
+ 114     if (scale == 1) {
+ 115       st-&gt;print("%*" PRIuPTR " bytes", width, byte_size);
+ 116     } else if (scale == BytesPerWord) {
+ 117       st-&gt;print("%*" PRIuPTR " words", width, byte_size / BytesPerWord);
+ 118     } else {
+<span class="changed"> 119       const char* display_unit = display_unit_for_scale(scale);</span>
+
+
+
+
+
+
+
+
+
+ 120       float display_value = (float) byte_size / scale;
+ 121       // Since we use width to display a number with two trailing digits, increase it a bit.
+ 122       width += 3;
+ 123       // Prevent very small but non-null values showing up as 0.00.
+ 124       if (byte_size &gt; 0 &amp;&amp; display_value &lt; 0.01f) {
+ 125         st-&gt;print("%*s %s", width, "&lt;0.01", display_unit);
+ 126       } else {
+ 127         st-&gt;print("%*.2f %s", width, display_value, display_unit);
+ 128       }
+ 129     }
+<span class="new"> 130   }</span>
+ 131 }
+ 132 
+ 133 // Prints a percentage value. Values smaller than 1% but not 0 are displayed as "&lt;1%", values
+ 134 // larger than 99% but not 100% are displayed as "&gt;100%".
+ 135 void print_percentage(outputStream* st, size_t total, size_t part) {
+ 136   if (total == 0) {
+ 137     st-&gt;print("  ?%%");
+ 138   } else if (part == 0) {
+ 139     st-&gt;print("  0%%");
+ 140   } else if (part == total) {
+ 141     st-&gt;print("100%%");
+ 142   } else {
+ 143     // Note: clearly print very-small-but-not-0% and very-large-but-not-100% percentages.
+ 144     float p = ((float)part / total) * 100.0f;
+ 145     if (p &lt; 1.0f) {
+ 146       st-&gt;print(" &lt;1%%");
+ 147     } else if (p &gt; 99.0f){
+ 148       st-&gt;print("&gt;99%%");
+ 149     } else {
+ 150       st-&gt;print("%3.0f%%", p);
+ 151     }
+ 152   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 153 }
+ 154 
+ 155 const char* loaders_plural(uintx num) {
+ 156   return num == 1 ? "loader" : "loaders";
+ 157 }
+ 158 
+ 159 const char* classes_plural(uintx num) {
+ 160   return num == 1 ? "class" : "classes";
+ 161 }
+ 162 
+ 163 void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared) {
+ 164   out-&gt;print(UINTX_FORMAT " %s", classes, classes_plural(classes));
+ 165   if (classes_shared &gt; 0) {
+ 166     out-&gt;print(" (" UINTX_FORMAT " shared)", classes_shared);
+ 167   }
+ 168 }
+ 169 
+ 170 } // namespace metaspace
+ 171 
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metachunk.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceCommon.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

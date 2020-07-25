@@ -1,0 +1,172 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff src/hotspot/share/classfile/classLoaderData.cpp</title>
+</head>
+<body id="SUNWwebrev">
+<center>&lt prev <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/classfile/classLoaderData.hpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/classfile/classLoaderData.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 58,67 ****</span>
+<span class="newmarker">--- 58,69 ----</span>
+  #include "gc/shared/oopStorageSet.hpp"
+  #include "logging/log.hpp"
+  #include "logging/logStream.hpp"
+  #include "memory/allocation.inline.hpp"
+  #include "memory/metadataFactory.hpp"
+<span class="new">+ #include "memory/metaspace/classLoaderMetaspace.hpp"</span>
+<span class="new">+ #include "memory/metaspace/metaspaceEnums.hpp"</span>
+  #include "memory/resourceArea.hpp"
+  #include "oops/access.inline.hpp"
+  #include "oops/oop.inline.hpp"
+  #include "oops/oopHandle.inline.hpp"
+  #include "oops/weakHandle.inline.hpp"
+<hr /><span class="oldmarker">*** 71,80 ****</span>
+<span class="newmarker">--- 73,84 ----</span>
+  #include "runtime/safepoint.hpp"
+  #include "utilities/growableArray.hpp"
+  #include "utilities/macros.hpp"
+  #include "utilities/ostream.hpp"
+  
+<span class="new">+ using metaspace::ClassLoaderMetaspace;</span>
+<span class="new">+ </span>
+  ClassLoaderData * ClassLoaderData::_the_null_class_loader_data = NULL;
+  
+  void ClassLoaderData::init_null_class_loader_data() {
+    assert(_the_null_class_loader_data == NULL, "cannot initialize twice");
+    assert(ClassLoaderDataGraph::_head == NULL, "cannot initialize twice");
+<hr /><span class="oldmarker">*** 757,773 ****</span>
+      MutexLocker ml(_metaspace_lock,  Mutex::_no_safepoint_check_flag);
+      // Check if _metaspace got allocated while we were waiting for this lock.
+      if ((metaspace = _metaspace) == NULL) {
+        if (this == the_null_class_loader_data()) {
+          assert (class_loader() == NULL, "Must be");
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, Metaspace::BootMetaspaceType);</span>
+        } else if (has_class_mirror_holder()) {
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, Metaspace::ClassMirrorHolderMetaspaceType);</span>
+        } else if (class_loader()-&gt;is_a(SystemDictionary::reflect_DelegatingClassLoader_klass())) {
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, Metaspace::ReflectionMetaspaceType);</span>
+        } else {
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, Metaspace::StandardMetaspaceType);</span>
+        }
+        // Ensure _metaspace is stable, since it is examined without a lock
+        Atomic::release_store(&amp;_metaspace, metaspace);
+      }
+    }
+<span class="newmarker">--- 761,777 ----</span>
+      MutexLocker ml(_metaspace_lock,  Mutex::_no_safepoint_check_flag);
+      // Check if _metaspace got allocated while we were waiting for this lock.
+      if ((metaspace = _metaspace) == NULL) {
+        if (this == the_null_class_loader_data()) {
+          assert (class_loader() == NULL, "Must be");
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, metaspace::BootMetaspaceType);</span>
+        } else if (has_class_mirror_holder()) {
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, metaspace::ClassMirrorHolderMetaspaceType);</span>
+        } else if (class_loader()-&gt;is_a(SystemDictionary::reflect_DelegatingClassLoader_klass())) {
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, metaspace::ReflectionMetaspaceType);</span>
+        } else {
+<span class="changed">!         metaspace = new ClassLoaderMetaspace(_metaspace_lock, metaspace::StandardMetaspaceType);</span>
+        }
+        // Ensure _metaspace is stable, since it is examined without a lock
+        Atomic::release_store(&amp;_metaspace, metaspace);
+      }
+    }
+<hr /><span class="oldmarker">*** 948,960 ****</span>
+<span class="newmarker">--- 952,966 ----</span>
+  
+    guarantee(this == class_loader_data(cl) || has_class_mirror_holder(), "Must be the same");
+    guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
+  
+    // Verify the integrity of the allocated space.
+<span class="new">+ #ifdef ASSERT</span>
+    if (metaspace_or_null() != NULL) {
+      metaspace_or_null()-&gt;verify();
+    }
+<span class="new">+ #endif</span>
+  
+    for (Klass* k = _klasses; k != NULL; k = k-&gt;next_link()) {
+      guarantee(k-&gt;class_loader_data() == this, "Must be the same");
+      k-&gt;verify();
+      assert(k != k-&gt;next_link(), "no loops!");
+</pre>
+<center>&lt prev <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/classfile/classLoaderData.hpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

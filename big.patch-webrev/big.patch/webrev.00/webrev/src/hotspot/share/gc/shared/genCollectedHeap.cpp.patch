@@ -1,0 +1,19 @@
+--- old/src/hotspot/share/gc/shared/genCollectedHeap.cpp	2020-07-16 14:20:32.304108746 +0200
++++ new/src/hotspot/share/gc/shared/genCollectedHeap.cpp	2020-07-16 14:20:31.964107453 +0200
+@@ -59,6 +59,7 @@
+ #include "memory/filemap.hpp"
+ #include "memory/iterator.hpp"
+ #include "memory/metaspaceCounters.hpp"
++#include "memory/metaspace/metaspaceSizesSnapshot.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/oop.inline.hpp"
+@@ -667,7 +668,7 @@
+ 
+     // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+     ClassLoaderDataGraph::purge();
+-    MetaspaceUtils::verify_metrics();
++    DEBUG_ONLY(MetaspaceUtils::verify(false);)
+     // Resize the metaspace capacity after full collections
+     MetaspaceGC::compute_new_size();
+     update_full_collections_completed();

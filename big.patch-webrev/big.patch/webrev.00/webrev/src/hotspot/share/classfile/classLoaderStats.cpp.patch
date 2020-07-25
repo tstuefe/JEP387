@@ -1,0 +1,37 @@
+--- old/src/hotspot/share/classfile/classLoaderStats.cpp	2020-07-16 14:20:22.776072504 +0200
++++ new/src/hotspot/share/classfile/classLoaderStats.cpp	2020-07-16 14:20:22.432071195 +0200
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include "precompiled.hpp"
++#include "memory/metaspace/classLoaderMetaspace.hpp"
+ #include "classfile/classLoaderData.inline.hpp"
+ #include "classfile/classLoaderDataGraph.hpp"
+ #include "classfile/classLoaderStats.hpp"
+@@ -78,17 +79,19 @@
+   }
+   _total_classes += csc._num_classes;
+ 
+-  ClassLoaderMetaspace* ms = cld->metaspace_or_null();
++  metaspace::ClassLoaderMetaspace* ms = cld->metaspace_or_null();
+   if (ms != NULL) {
++    size_t used_bytes, capacity_bytes;
++    ms->calculate_jfr_stats(&used_bytes, &capacity_bytes);
+     if(cld->has_class_mirror_holder()) {
+-      cls->_hidden_chunk_sz += ms->allocated_chunks_bytes();
+-      cls->_hidden_block_sz += ms->allocated_blocks_bytes();
++      cls->_hidden_chunk_sz += capacity_bytes;
++      cls->_hidden_block_sz += used_bytes;
+     } else {
+-      cls->_chunk_sz = ms->allocated_chunks_bytes();
+-      cls->_block_sz = ms->allocated_blocks_bytes();
++      cls->_chunk_sz = capacity_bytes;
++      cls->_block_sz = used_bytes;
+     }
+-    _total_chunk_sz += ms->allocated_chunks_bytes();
+-    _total_block_sz += ms->allocated_blocks_bytes();
++    _total_chunk_sz += capacity_bytes;
++    _total_block_sz += used_bytes;
+   }
+ }
+ 

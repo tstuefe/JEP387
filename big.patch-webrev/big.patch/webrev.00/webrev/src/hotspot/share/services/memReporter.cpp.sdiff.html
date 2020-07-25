@@ -1,0 +1,499 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/services </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/services/virtualMemoryTracker.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/services/memReporter.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 #include "precompiled.hpp"
+  25 
+
+  26 #include "memory/allocation.hpp"
+
+
+  27 #include "services/mallocTracker.hpp"
+  28 #include "services/memReporter.hpp"
+  29 #include "services/threadStackTracker.hpp"
+  30 #include "services/virtualMemoryTracker.hpp"
+  31 #include "utilities/globalDefinitions.hpp"
+  32 
+  33 size_t MemReporterBase::reserved_total(const MallocMemory* malloc, const VirtualMemory* vm) const {
+  34   return malloc-&gt;malloc_size() + malloc-&gt;arena_size() + vm-&gt;reserved();
+  35 }
+  36 
+  37 size_t MemReporterBase::committed_total(const MallocMemory* malloc, const VirtualMemory* vm) const {
+  38   return malloc-&gt;malloc_size() + malloc-&gt;arena_size() + vm-&gt;committed();
+  39 }
+  40 
+  41 void MemReporterBase::print_total(size_t reserved, size_t committed) const {
+  42   const char* scale = current_scale();
+  43   output()-&gt;print("reserved=" SIZE_FORMAT "%s, committed=" SIZE_FORMAT "%s",
+  44     amount_in_current_scale(reserved), scale, amount_in_current_scale(committed), scale);
+  45 }
+  46 
+
+</pre><hr></hr><pre>
+ 192 
+ 193     if (amount_in_current_scale(malloc_memory-&gt;arena_size()) &gt; 0) {
+ 194       print_arena_line(malloc_memory-&gt;arena_size(), malloc_memory-&gt;arena_count());
+ 195     }
+ 196 
+ 197     if (flag == mtNMT &amp;&amp;
+ 198       amount_in_current_scale(_malloc_snapshot-&gt;malloc_overhead()-&gt;size()) &gt; 0) {
+ 199       out-&gt;print_cr("%27s (tracking overhead=" SIZE_FORMAT "%s)", " ",
+ 200         amount_in_current_scale(_malloc_snapshot-&gt;malloc_overhead()-&gt;size()), scale);
+ 201     } else if (flag == mtClass) {
+ 202       // Metadata information
+ 203       report_metadata(Metaspace::NonClassType);
+ 204       if (Metaspace::using_class_space()) {
+ 205         report_metadata(Metaspace::ClassType);
+ 206       }
+ 207     }
+ 208     out-&gt;print_cr(" ");
+ 209   }
+ 210 }
+ 211 
+<span class="changed"> 212 void MemSummaryReporter::report_metadata(Metaspace::MetadataType type) const {</span>
+<span class="changed"> 213   assert(type == Metaspace::NonClassType || type == Metaspace::ClassType,</span>
+<span class="changed"> 214     "Invalid metadata type");</span>
+<span class="changed"> 215   const char* name = (type == Metaspace::NonClassType) ?</span>
+<span class="changed"> 216     "Metadata:   " : "Class space:";</span>
+ 217 
+ 218   outputStream* out = output();
+ 219   const char* scale = current_scale();
+<span class="changed"> 220   size_t committed   = MetaspaceUtils::committed_bytes(type);</span>
+<span class="changed"> 221   size_t used = MetaspaceUtils::used_bytes(type);</span>
+<span class="changed"> 222   size_t free = (MetaspaceUtils::capacity_bytes(type) - used)</span>
+<span class="changed"> 223               + MetaspaceUtils::free_chunks_total_bytes(type)</span>
+<span class="changed"> 224               + MetaspaceUtils::free_in_vs_bytes(type);</span>
+
+
+ 225 
+ 226   assert(committed &gt;= used + free, "Sanity");
+ 227   size_t waste = committed - (used + free);
+ 228 
+ 229   out-&gt;print_cr("%27s (  %s)", " ", name);
+ 230   out-&gt;print("%27s (    ", " ");
+<span class="changed"> 231   print_total(MetaspaceUtils::reserved_bytes(type), committed);</span>
+ 232   out-&gt;print_cr(")");
+ 233   out-&gt;print_cr("%27s (    used=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(used), scale);
+ 234   out-&gt;print_cr("%27s (    free=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(free), scale);
+ 235   out-&gt;print_cr("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%)", " ", amount_in_current_scale(waste),
+ 236     scale, ((float)waste * 100)/committed);
+ 237 }
+ 238 
+ 239 void MemDetailReporter::report_detail() {
+ 240   // Start detail report
+ 241   outputStream* out = output();
+ 242   out-&gt;print_cr("Details:\n");
+ 243 
+ 244   report_malloc_sites();
+ 245   report_virtual_memory_allocation_sites();
+ 246 }
+ 247 
+ 248 void MemDetailReporter::report_malloc_sites() {
+ 249   MallocSiteIterator         malloc_itr = _baseline.malloc_sites(MemBaseline::by_size);
+ 250   if (malloc_itr.is_empty()) return;
+ 251 
+
+</pre><hr></hr><pre>
+ 582       if (overhead_diff != 0) {
+ 583         out-&gt;print(" %+ld%s", overhead_diff, scale);
+ 584       }
+ 585       out-&gt;print_cr(")");
+ 586     } else if (flag == mtClass) {
+ 587       assert(current_ms != NULL &amp;&amp; early_ms != NULL, "Sanity");
+ 588       print_metaspace_diff(current_ms, early_ms);
+ 589     }
+ 590     out-&gt;print_cr(" ");
+ 591   }
+ 592 }
+ 593 
+ 594 void MemSummaryDiffReporter::print_metaspace_diff(const MetaspaceSnapshot* current_ms,
+ 595                                                   const MetaspaceSnapshot* early_ms) const {
+ 596   print_metaspace_diff(Metaspace::NonClassType, current_ms, early_ms);
+ 597   if (Metaspace::using_class_space()) {
+ 598     print_metaspace_diff(Metaspace::ClassType, current_ms, early_ms);
+ 599   }
+ 600 }
+ 601 
+<span class="changed"> 602 void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType type,</span>
+ 603                                                   const MetaspaceSnapshot* current_ms,
+ 604                                                   const MetaspaceSnapshot* early_ms) const {
+<span class="changed"> 605   const char* name = (type == Metaspace::NonClassType) ?</span>
+<span class="changed"> 606     "Metadata:   " : "Class space:";</span>
+ 607 
+ 608   outputStream* out = output();
+ 609   const char* scale = current_scale();
+ 610 
+ 611   out-&gt;print_cr("%27s (  %s)", " ", name);
+ 612   out-&gt;print("%27s (    ", " ");
+<span class="changed"> 613   print_virtual_memory_diff(current_ms-&gt;reserved_in_bytes(type),</span>
+<span class="changed"> 614                             current_ms-&gt;committed_in_bytes(type),</span>
+<span class="changed"> 615                             early_ms-&gt;reserved_in_bytes(type),</span>
+<span class="changed"> 616                             early_ms-&gt;committed_in_bytes(type));</span>
+ 617   out-&gt;print_cr(")");
+ 618 
+<span class="changed"> 619   long diff_used = diff_in_current_scale(current_ms-&gt;used_in_bytes(type),</span>
+<span class="changed"> 620                                          early_ms-&gt;used_in_bytes(type));</span>
+<span class="changed"> 621   long diff_free = diff_in_current_scale(current_ms-&gt;free_in_bytes(type),</span>
+<span class="changed"> 622                                          early_ms-&gt;free_in_bytes(type));</span>
+<span class="changed"> 623 </span>
+<span class="changed"> 624   size_t current_waste = current_ms-&gt;committed_in_bytes(type)</span>
+<span class="changed"> 625     - (current_ms-&gt;used_in_bytes(type) + current_ms-&gt;free_in_bytes(type));</span>
+<span class="changed"> 626   size_t early_waste = early_ms-&gt;committed_in_bytes(type)</span>
+<span class="changed"> 627     - (early_ms-&gt;used_in_bytes(type) + early_ms-&gt;free_in_bytes(type));</span>
+ 628   long diff_waste = diff_in_current_scale(current_waste, early_waste);
+ 629 
+ 630   // Diff used
+ 631   out-&gt;print("%27s (    used=" SIZE_FORMAT "%s", " ",
+<span class="changed"> 632     amount_in_current_scale(current_ms-&gt;used_in_bytes(type)), scale);</span>
+ 633   if (diff_used != 0) {
+ 634     out-&gt;print(" %+ld%s", diff_used, scale);
+ 635   }
+ 636   out-&gt;print_cr(")");
+ 637 
+ 638   // Diff free
+ 639   out-&gt;print("%27s (    free=" SIZE_FORMAT "%s", " ",
+<span class="changed"> 640     amount_in_current_scale(current_ms-&gt;free_in_bytes(type)), scale);</span>
+ 641   if (diff_free != 0) {
+ 642     out-&gt;print(" %+ld%s", diff_free, scale);
+ 643   }
+ 644   out-&gt;print_cr(")");
+ 645 
+ 646 
+ 647   // Diff waste
+ 648   out-&gt;print("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%", " ",
+ 649     amount_in_current_scale(current_waste), scale,
+<span class="changed"> 650     ((float)current_waste * 100) / current_ms-&gt;committed_in_bytes(type));</span>
+ 651   if (diff_waste != 0) {
+ 652     out-&gt;print(" %+ld%s", diff_waste, scale);
+ 653   }
+ 654   out-&gt;print_cr(")");
+ 655 }
+ 656 
+ 657 void MemDetailDiffReporter::report_diff() {
+ 658   MemSummaryDiffReporter::report_diff();
+ 659   diff_malloc_sites();
+ 660   diff_virtual_memory_sites();
+ 661 }
+ 662 
+ 663 void MemDetailDiffReporter::diff_malloc_sites() const {
+ 664   MallocSiteIterator early_itr = _early_baseline.malloc_sites(MemBaseline::by_site_and_type);
+ 665   MallocSiteIterator current_itr = _current_baseline.malloc_sites(MemBaseline::by_site_and_type);
+ 666 
+ 667   const MallocSite* early_site   = early_itr.next();
+ 668   const MallocSite* current_site = current_itr.next();
+ 669 
+ 670   while (early_site != NULL || current_site != NULL) {
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 #include "precompiled.hpp"
+  25 
+<span class="new">  26 </span>
+  27 #include "memory/allocation.hpp"
+<span class="new">  28 #include "memory/metaspace.hpp"</span>
+<span class="new">  29 #include "memory/metaspace/metaspaceEnums.hpp"</span>
+  30 #include "services/mallocTracker.hpp"
+  31 #include "services/memReporter.hpp"
+  32 #include "services/threadStackTracker.hpp"
+  33 #include "services/virtualMemoryTracker.hpp"
+  34 #include "utilities/globalDefinitions.hpp"
+  35 
+  36 size_t MemReporterBase::reserved_total(const MallocMemory* malloc, const VirtualMemory* vm) const {
+  37   return malloc-&gt;malloc_size() + malloc-&gt;arena_size() + vm-&gt;reserved();
+  38 }
+  39 
+  40 size_t MemReporterBase::committed_total(const MallocMemory* malloc, const VirtualMemory* vm) const {
+  41   return malloc-&gt;malloc_size() + malloc-&gt;arena_size() + vm-&gt;committed();
+  42 }
+  43 
+  44 void MemReporterBase::print_total(size_t reserved, size_t committed) const {
+  45   const char* scale = current_scale();
+  46   output()-&gt;print("reserved=" SIZE_FORMAT "%s, committed=" SIZE_FORMAT "%s",
+  47     amount_in_current_scale(reserved), scale, amount_in_current_scale(committed), scale);
+  48 }
+  49 
+
+</pre><hr></hr><pre>
+ 195 
+ 196     if (amount_in_current_scale(malloc_memory-&gt;arena_size()) &gt; 0) {
+ 197       print_arena_line(malloc_memory-&gt;arena_size(), malloc_memory-&gt;arena_count());
+ 198     }
+ 199 
+ 200     if (flag == mtNMT &amp;&amp;
+ 201       amount_in_current_scale(_malloc_snapshot-&gt;malloc_overhead()-&gt;size()) &gt; 0) {
+ 202       out-&gt;print_cr("%27s (tracking overhead=" SIZE_FORMAT "%s)", " ",
+ 203         amount_in_current_scale(_malloc_snapshot-&gt;malloc_overhead()-&gt;size()), scale);
+ 204     } else if (flag == mtClass) {
+ 205       // Metadata information
+ 206       report_metadata(Metaspace::NonClassType);
+ 207       if (Metaspace::using_class_space()) {
+ 208         report_metadata(Metaspace::ClassType);
+ 209       }
+ 210     }
+ 211     out-&gt;print_cr(" ");
+ 212   }
+ 213 }
+ 214 
+<span class="changed"> 215 void MemSummaryReporter::report_metadata(Metaspace::MetadataType mdType) const {</span>
+<span class="changed"> 216   DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));</span>
+<span class="changed"> 217   const char* const name = metaspace::describe_mdtype(mdType);</span>
+
+
+ 218 
+ 219   outputStream* out = output();
+ 220   const char* scale = current_scale();
+<span class="changed"> 221   size_t committed   = MetaspaceUtils::committed_bytes(mdType);</span>
+<span class="changed"> 222   size_t used = MetaspaceUtils::used_bytes(mdType);</span>
+<span class="changed"> 223   size_t free = 0; //</span>
+<span class="changed"> 224       // TODO think this thru. What is free in this context?</span>
+<span class="changed"> 225       // (MetaspaceUtils::capacity_bytes(type) - used)</span>
+<span class="changed"> 226   //         + MetaspaceUtils::free_chunks_total_bytes(type)</span>
+<span class="changed"> 227   //          + MetaspaceUtils::free_in_vs_bytes(type);</span>
+ 228 
+ 229   assert(committed &gt;= used + free, "Sanity");
+ 230   size_t waste = committed - (used + free);
+ 231 
+ 232   out-&gt;print_cr("%27s (  %s)", " ", name);
+ 233   out-&gt;print("%27s (    ", " ");
+<span class="changed"> 234   print_total(MetaspaceUtils::reserved_bytes(mdType), committed);</span>
+ 235   out-&gt;print_cr(")");
+ 236   out-&gt;print_cr("%27s (    used=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(used), scale);
+ 237   out-&gt;print_cr("%27s (    free=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(free), scale);
+ 238   out-&gt;print_cr("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%)", " ", amount_in_current_scale(waste),
+ 239     scale, ((float)waste * 100)/committed);
+ 240 }
+ 241 
+ 242 void MemDetailReporter::report_detail() {
+ 243   // Start detail report
+ 244   outputStream* out = output();
+ 245   out-&gt;print_cr("Details:\n");
+ 246 
+ 247   report_malloc_sites();
+ 248   report_virtual_memory_allocation_sites();
+ 249 }
+ 250 
+ 251 void MemDetailReporter::report_malloc_sites() {
+ 252   MallocSiteIterator         malloc_itr = _baseline.malloc_sites(MemBaseline::by_size);
+ 253   if (malloc_itr.is_empty()) return;
+ 254 
+
+</pre><hr></hr><pre>
+ 585       if (overhead_diff != 0) {
+ 586         out-&gt;print(" %+ld%s", overhead_diff, scale);
+ 587       }
+ 588       out-&gt;print_cr(")");
+ 589     } else if (flag == mtClass) {
+ 590       assert(current_ms != NULL &amp;&amp; early_ms != NULL, "Sanity");
+ 591       print_metaspace_diff(current_ms, early_ms);
+ 592     }
+ 593     out-&gt;print_cr(" ");
+ 594   }
+ 595 }
+ 596 
+ 597 void MemSummaryDiffReporter::print_metaspace_diff(const MetaspaceSnapshot* current_ms,
+ 598                                                   const MetaspaceSnapshot* early_ms) const {
+ 599   print_metaspace_diff(Metaspace::NonClassType, current_ms, early_ms);
+ 600   if (Metaspace::using_class_space()) {
+ 601     print_metaspace_diff(Metaspace::ClassType, current_ms, early_ms);
+ 602   }
+ 603 }
+ 604 
+<span class="changed"> 605 void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType mdType,</span>
+ 606                                                   const MetaspaceSnapshot* current_ms,
+ 607                                                   const MetaspaceSnapshot* early_ms) const {
+<span class="changed"> 608   DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));</span>
+<span class="changed"> 609   const char* const name = metaspace::describe_mdtype(mdType);</span>
+ 610 
+ 611   outputStream* out = output();
+ 612   const char* scale = current_scale();
+ 613 
+ 614   out-&gt;print_cr("%27s (  %s)", " ", name);
+ 615   out-&gt;print("%27s (    ", " ");
+<span class="changed"> 616   print_virtual_memory_diff(current_ms-&gt;reserved_in_bytes(mdType),</span>
+<span class="changed"> 617                             current_ms-&gt;committed_in_bytes(mdType),</span>
+<span class="changed"> 618                             early_ms-&gt;reserved_in_bytes(mdType),</span>
+<span class="changed"> 619                             early_ms-&gt;committed_in_bytes(mdType));</span>
+ 620   out-&gt;print_cr(")");
+ 621 
+<span class="changed"> 622   long diff_used = diff_in_current_scale(current_ms-&gt;used_in_bytes(mdType),</span>
+<span class="changed"> 623                                          early_ms-&gt;used_in_bytes(mdType));</span>
+<span class="changed"> 624   long diff_free = diff_in_current_scale(current_ms-&gt;free_in_bytes(mdType),</span>
+<span class="changed"> 625                                          early_ms-&gt;free_in_bytes(mdType));</span>
+<span class="changed"> 626 </span>
+<span class="changed"> 627   size_t current_waste = current_ms-&gt;committed_in_bytes(mdType)</span>
+<span class="changed"> 628     - (current_ms-&gt;used_in_bytes(mdType) + current_ms-&gt;free_in_bytes(mdType));</span>
+<span class="changed"> 629   size_t early_waste = early_ms-&gt;committed_in_bytes(mdType)</span>
+<span class="changed"> 630     - (early_ms-&gt;used_in_bytes(mdType) + early_ms-&gt;free_in_bytes(mdType));</span>
+ 631   long diff_waste = diff_in_current_scale(current_waste, early_waste);
+ 632 
+ 633   // Diff used
+ 634   out-&gt;print("%27s (    used=" SIZE_FORMAT "%s", " ",
+<span class="changed"> 635     amount_in_current_scale(current_ms-&gt;used_in_bytes(mdType)), scale);</span>
+ 636   if (diff_used != 0) {
+ 637     out-&gt;print(" %+ld%s", diff_used, scale);
+ 638   }
+ 639   out-&gt;print_cr(")");
+ 640 
+ 641   // Diff free
+ 642   out-&gt;print("%27s (    free=" SIZE_FORMAT "%s", " ",
+<span class="changed"> 643     amount_in_current_scale(current_ms-&gt;free_in_bytes(mdType)), scale);</span>
+ 644   if (diff_free != 0) {
+ 645     out-&gt;print(" %+ld%s", diff_free, scale);
+ 646   }
+ 647   out-&gt;print_cr(")");
+ 648 
+ 649 
+ 650   // Diff waste
+ 651   out-&gt;print("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%", " ",
+ 652     amount_in_current_scale(current_waste), scale,
+<span class="changed"> 653     ((float)current_waste * 100) / current_ms-&gt;committed_in_bytes(mdType));</span>
+ 654   if (diff_waste != 0) {
+ 655     out-&gt;print(" %+ld%s", diff_waste, scale);
+ 656   }
+ 657   out-&gt;print_cr(")");
+ 658 }
+ 659 
+ 660 void MemDetailDiffReporter::report_diff() {
+ 661   MemSummaryDiffReporter::report_diff();
+ 662   diff_malloc_sites();
+ 663   diff_virtual_memory_sites();
+ 664 }
+ 665 
+ 666 void MemDetailDiffReporter::diff_malloc_sites() const {
+ 667   MallocSiteIterator early_itr = _early_baseline.malloc_sites(MemBaseline::by_site_and_type);
+ 668   MallocSiteIterator current_itr = _current_baseline.malloc_sites(MemBaseline::by_site_and_type);
+ 669 
+ 670   const MallocSite* early_site   = early_itr.next();
+ 671   const MallocSite* current_site = current_itr.next();
+ 672 
+ 673   while (early_site != NULL || current_site != NULL) {
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/services/virtualMemoryTracker.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

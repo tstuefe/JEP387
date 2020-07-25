@@ -1,0 +1,171 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/smallBlocks.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACE_SMALLBLOCKS_HPP
+  26 #define SHARE_MEMORY_METASPACE_SMALLBLOCKS_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 #include "memory/binaryTreeDictionary.hpp"
+  30 #include "memory/metaspace/metablock.hpp"
+  31 #include "utilities/globalDefinitions.hpp"
+  32 
+  33 class outputStream;
+  34 
+  35 namespace metaspace {
+  36 
+  37 class SmallBlocks : public CHeapObj&lt;mtClass&gt; {
+  38 
+  39   const static uint _small_block_max_size = sizeof(TreeChunk&lt;Metablock,  FreeList&lt;Metablock&gt; &gt;)/HeapWordSize;
+  40   // Note: this corresponds to the imposed miminum allocation size, see SpaceManager::get_allocation_word_size()
+  41   const static uint _small_block_min_size = sizeof(Metablock)/HeapWordSize;
+  42 
+  43 private:
+  44   FreeList&lt;Metablock&gt; _small_lists[_small_block_max_size - _small_block_min_size];
+  45 
+  46   FreeList&lt;Metablock&gt;&amp; list_at(size_t word_size) {
+  47     assert(word_size &gt;= _small_block_min_size, "There are no metaspace objects less than %u words", _small_block_min_size);
+  48     return _small_lists[word_size - _small_block_min_size];
+  49   }
+  50 
+  51 public:
+  52   SmallBlocks() {
+  53     for (uint i = _small_block_min_size; i &lt; _small_block_max_size; i++) {
+  54       uint k = i - _small_block_min_size;
+  55       _small_lists[k].set_size(i);
+  56     }
+  57   }
+  58 
+  59   // Returns the total size, in words, of all blocks, across all block sizes.
+  60   size_t total_size() const;
+  61 
+  62   // Returns the total number of all blocks across all block sizes.
+  63   uintx total_num_blocks() const;
+  64 
+  65   static uint small_block_max_size() { return _small_block_max_size; }
+  66   static uint small_block_min_size() { return _small_block_min_size; }
+  67 
+  68   MetaWord* get_block(size_t word_size) {
+  69     if (list_at(word_size).count() &gt; 0) {
+  70       MetaWord* new_block = (MetaWord*) list_at(word_size).get_chunk_at_head();
+  71       return new_block;
+  72     } else {
+  73       return NULL;
+  74     }
+  75   }
+  76   void return_block(Metablock* free_chunk, size_t word_size) {
+  77     list_at(word_size).return_chunk_at_head(free_chunk, false);
+  78     assert(list_at(word_size).count() &gt; 0, "Should have a chunk");
+  79   }
+  80 
+  81   void print_on(outputStream* st) const;
+  82 
+  83 };
+  84 
+  85 } // namespace metaspace
+  86 
+  87 
+  88 #endif // SHARE_MEMORY_METASPACE_SMALLBLOCKS_HPP
+</pre></body></html>

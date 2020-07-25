@@ -1,0 +1,268 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/metaspace_rangehelpers.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  */
+  24 
+  25 #ifndef GTEST_METASPACE_METASPACE_RANGEHELPERS_HPP
+  26 #define GTEST_METASPACE_METASPACE_RANGEHELPERS_HPP
+  27 
+  28 // We use ranges-of-things in these tests a lot so some helpers help
+  29 // keeping the code small.
+  30 
+  31 #include "memory/allocation.hpp"
+  32 #include "memory/metaspace/chunkLevel.hpp"
+  33 #include "runtime/os.hpp"
+  34 #include "utilities/align.hpp"
+  35 #include "utilities/debug.hpp"
+  36 #include "utilities/globalDefinitions.hpp"
+  37 
+  38 
+  39 using metaspace::chunklevel_t;
+  40 using namespace metaspace::chunklevel;
+  41 
+  42 
+  43 // A range of numerical values.
+  44 template &lt;typename T, typename Td&gt;
+  45 class Range : public StackObj {
+  46 
+  47   // start and size of range
+  48   T   _start;
+  49   Td  _size;
+  50 
+  51   static Td random_uncapped_offset() {
+  52     if (sizeof(Td) &gt; 4) {
+  53       return (Td)((uint64_t)os::random() * os::random());
+  54     } else {
+  55       return (Td)os::random();
+  56     }
+  57   }
+  58 
+  59 protected:
+  60 
+  61   static void swap_if_needed(T&amp; lo, T&amp; hi) {
+  62     if (lo &gt; hi) {
+  63       T v = lo;
+  64       lo = hi;
+  65       hi = v;
+  66     }
+  67   }
+  68 
+  69 public:
+  70 
+  71   // Lowest value in range
+  72   T lowest() const      { return _start; }
+  73 
+  74   // Highest value in range (including)
+  75   T highest() const     { return _start + (_size - 1); }
+  76 
+  77   T start() const       { return _start; }
+  78   T end() const         { return _start + _size; }
+  79 
+  80   // Number of values in range
+  81   Td size() const       { return _size; }
+  82 
+  83   bool is_empty() const { return size() == 0; }
+  84 
+  85   bool contains(T v) const {
+  86     return v &gt;= _start &amp;&amp; v &lt; end();
+  87   }
+  88 
+  89   bool contains(Range&lt;T, Td&gt; r) const {
+  90     return contains(r.lowest()) &amp;&amp; contains(r.highest());
+  91   }
+  92 
+  93   // Create a range from [start, end)
+  94   Range(T start, T end) : _start(start), _size(end - start) {
+  95     assert(end &gt;= start, "start and end reversed");
+  96   }
+  97 
+  98   // a range with a given size, starting at 0
+  99   Range(Td size) : _start(0), _size(size) {}
+ 100 
+ 101   // Return a random offset
+ 102   Td random_offset() const {
+ 103     assert(!is_empty(), "Range too small");
+ 104     Td v = random_uncapped_offset() % size();
+ 105     return v;
+ 106   }
+ 107 
+ 108   // Return a random value within the range
+ 109   T random_value() const {
+ 110     assert(!is_empty(), "Range too small");
+ 111     T v = _start + random_offset();
+ 112     assert(contains(v), "Sanity");
+ 113     return v;
+ 114   }
+ 115 
+ 116   // Return the head of this range up to but excluding &lt;split_point&gt;
+ 117   Range&lt;T, Td&gt; head(Td split_point) const {
+ 118     assert(_size &gt;= split_point, "Sanity");
+ 119     return Range&lt;T, Td&gt;(_start, _start + split_point);
+ 120   }
+ 121 
+ 122   // Return the tail of this range, starting at &lt;split_point&gt;
+ 123   Range&lt;T, Td&gt; tail(Td split_point) const {
+ 124     assert(_size &gt; split_point, "Sanity");
+ 125     return Range&lt;T, Td&gt;(_start + split_point, end());
+ 126   }
+ 127 
+ 128   // Return a non-empty random sub range.
+ 129   Range&lt;T, Td&gt; random_subrange() const {
+ 130     assert(size() &gt; 1, "Range too small");
+ 131     Td sz = MAX2((Td)1, random_offset());
+ 132     return random_sized_subrange(sz);
+ 133   }
+ 134 
+ 135   // Return a subrange of given size at a random start position
+ 136   Range&lt;T, Td&gt; random_sized_subrange(Td subrange_size) const {
+ 137     assert(subrange_size &gt; 0 &amp;&amp; subrange_size &lt; _size, "invalid size");
+ 138     T start = head(_size - subrange_size).random_value();
+ 139     return Range&lt;T, Td&gt;(start, start + subrange_size);
+ 140   }
+ 141 
+ 142   //// aligned ranges ////
+ 143 
+ 144   bool range_is_aligned(Td alignment) const {
+ 145     return is_aligned(_size, alignment) &amp;&amp; is_aligned(_start, alignment);
+ 146   }
+ 147 
+ 148   // Return a non-empty aligned random sub range.
+ 149   Range&lt;T, Td&gt; random_aligned_subrange(Td alignment) const {
+ 150     assert(alignment &gt; 0, "Sanity");
+ 151     assert(range_is_aligned(alignment), "Outer range needs to be aligned"); // to keep matters simple
+ 152     assert(_size &gt;= alignment, "Outer range too small.");
+ 153     Td sz = MAX2((Td)1, random_offset());
+ 154     sz = align_up(sz, alignment);
+ 155     return random_aligned_sized_subrange(sz, alignment);
+ 156   }
+ 157 
+ 158   // Return a subrange of given size at a random aligned start position
+ 159   Range&lt;T, Td&gt; random_aligned_sized_subrange(Td subrange_size, Td alignment) const {
+ 160     assert(alignment &gt; 0, "Sanity");
+ 161     assert(range_is_aligned(alignment), "Outer range needs to be aligned"); // to keep matters simple
+ 162     assert(subrange_size &gt; 0 &amp;&amp; subrange_size &lt;= _size &amp;&amp;
+ 163            is_aligned(subrange_size, alignment), "invalid subrange size");
+ 164     if (_size == subrange_size) {
+ 165       return *this;
+ 166     }
+ 167     T start = head(_size - subrange_size).random_value();
+ 168     start = align_down(start, alignment);
+ 169     return Range&lt;T, Td&gt;(start, start + subrange_size);
+ 170   }
+ 171 
+ 172 };
+ 173 
+ 174 typedef Range&lt;int, int&gt; IntRange;
+ 175 typedef Range&lt;size_t, size_t&gt; SizeRange;
+ 176 typedef Range&lt;chunklevel_t, int&gt; ChunkLevelRange;
+ 177 
+ 178 struct ChunkLevelRanges : public AllStatic {
+ 179   static ChunkLevelRange small_chunks()  { return ChunkLevelRange(CHUNK_LEVEL_32K, CHUNK_LEVEL_1K + 1); }
+ 180   static ChunkLevelRange medium_chunks() { return ChunkLevelRange(CHUNK_LEVEL_512K, CHUNK_LEVEL_32K + 1); }
+ 181   static ChunkLevelRange large_chunks()  { return ChunkLevelRange(CHUNK_LEVEL_4M, CHUNK_LEVEL_512K + 1); }
+ 182   static ChunkLevelRange all_chunks()    { return ChunkLevelRange(CHUNK_LEVEL_4M, CHUNK_LEVEL_1K + 1); }
+ 183 };
+ 184 
+ 185 #endif // GTEST_METASPACE_METASPACE_RANGEHELPERS_HPP
+</pre></body></html>

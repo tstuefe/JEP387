@@ -1,0 +1,270 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_METASPACESTATISTICS_HPP
+  27 #define SHARE_MEMORY_METASPACE_METASPACESTATISTICS_HPP
+  28 
+  29 #include "utilities/globalDefinitions.hpp"
+  30 #include "memory/metaspace.hpp" // for MetadataType enum
+  31 #include "memory/metaspace/metachunk.hpp" // for ChunkIndex enum
+  32 
+  33 class outputStream;
+  34 
+  35 namespace metaspace {
+  36 
+  37 // Contains statistics for a number of free chunks.
+  38 class FreeChunksStatistics {
+  39   uintx _num;         // Number of chunks
+  40   size_t _cap;        // Total capacity, in words
+  41 
+  42 public:
+  43   FreeChunksStatistics();
+  44 
+  45   void reset();
+  46 
+  47   uintx num() const { return _num; }
+  48   size_t cap() const { return _cap; }
+  49 
+  50   void add(uintx n, size_t s);
+  51   void add(const FreeChunksStatistics&amp; other);
+  52   void print_on(outputStream* st, size_t scale) const;
+  53 
+  54 }; // end: FreeChunksStatistics
+  55 
+  56 
+  57 // Contains statistics for a ChunkManager.
+  58 class ChunkManagerStatistics {
+  59 
+  60   FreeChunksStatistics _chunk_stats[NumberOfInUseLists];
+  61 
+  62 public:
+  63 
+  64   // Free chunk statistics, by chunk index.
+  65   const FreeChunksStatistics&amp; chunk_stats(ChunkIndex index) const   { return _chunk_stats[index]; }
+  66   FreeChunksStatistics&amp; chunk_stats(ChunkIndex index)               { return _chunk_stats[index]; }
+  67 
+  68   void reset();
+  69   size_t total_capacity() const;
+  70 
+  71   void print_on(outputStream* st, size_t scale) const;
+  72 
+  73 }; // ChunkManagerStatistics
+  74 
+  75 // Contains statistics for a number of chunks in use.
+  76 // Each chunk has a used and free portion; however, there are current chunks (serving
+  77 // potential future metaspace allocations) and non-current chunks. Unused portion of the
+  78 // former is counted as free, unused portion of the latter counts as waste.
+  79 class UsedChunksStatistics {
+  80   uintx _num;     // Number of chunks
+  81   size_t _cap;    // Total capacity in words.
+  82   size_t _used;   // Total used area, in words
+  83   size_t _free;   // Total free area (unused portions of current chunks), in words
+  84   size_t _waste;  // Total waste area (unused portions of non-current chunks), in words
+  85   size_t _overhead; // Total sum of chunk overheads, in words.
+  86 
+  87 public:
+  88 
+  89   UsedChunksStatistics();
+  90 
+  91   void reset();
+  92 
+  93   uintx num() const { return _num; }
+  94 
+  95   // Total capacity, in words
+  96   size_t cap() const { return _cap; }
+  97 
+  98   // Total used area, in words
+  99   size_t used() const { return _used; }
+ 100 
+ 101   // Total free area (unused portions of current chunks), in words
+ 102   size_t free() const { return _free; }
+ 103 
+ 104   // Total waste area (unused portions of non-current chunks), in words
+ 105   size_t waste() const { return _waste; }
+ 106 
+ 107   // Total area spent in overhead (chunk headers), in words
+ 108   size_t overhead() const { return _overhead; }
+ 109 
+ 110   void add_num(uintx n) { _num += n; }
+ 111   void add_cap(size_t s) { _cap += s; }
+ 112   void add_used(size_t s) { _used += s; }
+ 113   void add_free(size_t s) { _free += s; }
+ 114   void add_waste(size_t s) { _waste += s; }
+ 115   void add_overhead(size_t s) { _overhead += s; }
+ 116 
+ 117   void add(const UsedChunksStatistics&amp; other);
+ 118 
+ 119   void print_on(outputStream* st, size_t scale) const;
+ 120 
+ 121 #ifdef ASSERT
+ 122   void check_sanity() const;
+ 123 #endif
+ 124 
+ 125 }; // UsedChunksStatistics
+ 126 
+ 127 // Class containing statistics for one or more space managers.
+ 128 class SpaceManagerStatistics {
+ 129 
+ 130   UsedChunksStatistics _chunk_stats[NumberOfInUseLists];
+ 131   uintx _free_blocks_num;
+ 132   size_t _free_blocks_cap_words;
+ 133 
+ 134 public:
+ 135 
+ 136   SpaceManagerStatistics();
+ 137 
+ 138   // Chunk statistics by chunk index
+ 139   const UsedChunksStatistics&amp; chunk_stats(ChunkIndex index) const   { return _chunk_stats[index]; }
+ 140   UsedChunksStatistics&amp; chunk_stats(ChunkIndex index)               { return _chunk_stats[index]; }
+ 141 
+ 142   uintx free_blocks_num () const                                    { return _free_blocks_num; }
+ 143   size_t free_blocks_cap_words () const                             { return _free_blocks_cap_words; }
+ 144 
+ 145   void reset();
+ 146 
+ 147   void add_free_blocks_info(uintx num, size_t cap);
+ 148 
+ 149   // Returns total chunk statistics over all chunk types.
+ 150   UsedChunksStatistics totals() const;
+ 151 
+ 152   void add(const SpaceManagerStatistics&amp; other);
+ 153 
+ 154   void print_on(outputStream* st, size_t scale,  bool detailed) const;
+ 155 
+ 156 }; // SpaceManagerStatistics
+ 157 
+ 158 class ClassLoaderMetaspaceStatistics {
+ 159 
+ 160   SpaceManagerStatistics _sm_stats[Metaspace::MetadataTypeCount];
+ 161 
+ 162 public:
+ 163 
+ 164   ClassLoaderMetaspaceStatistics();
+ 165 
+ 166   const SpaceManagerStatistics&amp; sm_stats(Metaspace::MetadataType mdType) const { return _sm_stats[mdType]; }
+ 167   SpaceManagerStatistics&amp; sm_stats(Metaspace::MetadataType mdType)             { return _sm_stats[mdType]; }
+ 168 
+ 169   const SpaceManagerStatistics&amp; nonclass_sm_stats() const { return sm_stats(Metaspace::NonClassType); }
+ 170   SpaceManagerStatistics&amp; nonclass_sm_stats()             { return sm_stats(Metaspace::NonClassType); }
+ 171   const SpaceManagerStatistics&amp; class_sm_stats() const    { return sm_stats(Metaspace::ClassType); }
+ 172   SpaceManagerStatistics&amp; class_sm_stats()                { return sm_stats(Metaspace::ClassType); }
+ 173 
+ 174   void reset();
+ 175 
+ 176   void add(const ClassLoaderMetaspaceStatistics&amp; other);
+ 177 
+ 178   // Returns total space manager statistics for both class and non-class metaspace
+ 179   SpaceManagerStatistics totals() const;
+ 180 
+ 181   void print_on(outputStream* st, size_t scale, bool detailed) const;
+ 182 
+ 183 }; // ClassLoaderMetaspaceStatistics
+ 184 
+ 185 } // namespace metaspace
+ 186 
+ 187 #endif // SHARE_MEMORY_METASPACE_METASPACESTATISTICS_HPP
+</pre></body></html>

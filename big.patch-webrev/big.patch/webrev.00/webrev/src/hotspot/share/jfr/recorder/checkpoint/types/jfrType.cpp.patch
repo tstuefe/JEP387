@@ -1,0 +1,23 @@
+--- old/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp	2020-07-16 14:20:44.164153860 +0200
++++ new/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp	2020-07-16 14:20:43.816152537 +0200
+@@ -39,9 +39,10 @@
+ #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
+ #include "jfr/support/jfrThreadLocal.hpp"
+ #include "jfr/writers/jfrJavaEventWriter.hpp"
++#include "memory/metaspace.hpp"
++#include "memory/metaspace/metaspaceEnums.hpp"
+ #include "jfr/utilities/jfrThreadIterator.hpp"
+ #include "memory/iterator.hpp"
+-#include "memory/metaspaceGCThresholdUpdater.hpp"
+ #include "memory/referenceType.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/compressedOops.hpp"
+@@ -196,7 +197,7 @@
+   writer.write_count(nof_entries);
+   for (u4 i = 0; i < nof_entries; ++i) {
+     writer.write_key(i);
+-    writer.write(Metaspace::metadata_type_name((Metaspace::MetadataType)i));
++    writer.write(metaspace::describe_mdtype((Metaspace::MetadataType)i));
+   }
+ }
+ 

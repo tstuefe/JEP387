@@ -1,0 +1,645 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory/metaspace </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/spaceManager.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceList.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/spaceManager.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  26 #define SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 #include "memory/metaspace.hpp"
+<span class="changed">  30 #include "memory/metaspace/blockFreelist.hpp"</span>
+<span class="changed">  31 #include "memory/metaspace/metaspaceCommon.hpp"</span>
+  32 #include "memory/metaspace/metachunk.hpp"
+<span class="changed">  33 #include "memory/metaspace/metaspaceStatistics.hpp"</span>
+<span class="changed">  34 #include "utilities/debug.hpp"</span>
+<span class="changed">  35 #include "utilities/globalDefinitions.hpp"</span>
+  36 
+  37 class outputStream;
+  38 class Mutex;
+  39 
+  40 namespace metaspace {
+  41 
+<span class="removed">  42 //  SpaceManager - used by Metaspace to handle allocations</span>
+<span class="removed">  43 class SpaceManager : public CHeapObj&lt;mtClass&gt; {</span>
+<span class="removed">  44   friend class ::ClassLoaderMetaspace;</span>
+<span class="removed">  45   friend class Metadebug;</span>
+<span class="removed">  46 </span>
+<span class="removed">  47  private:</span>
+<span class="removed">  48 </span>
+<span class="removed">  49   // protects allocations</span>
+<span class="removed">  50   Mutex* const _lock;</span>
+<span class="removed">  51 </span>
+<span class="removed">  52   // Type of metadata allocated.</span>
+<span class="removed">  53   const Metaspace::MetadataType   _mdtype;</span>
+<span class="removed">  54 </span>
+<span class="removed">  55   // Type of metaspace</span>
+<span class="removed">  56   const Metaspace::MetaspaceType  _space_type;</span>
+<span class="removed">  57 </span>
+<span class="removed">  58   // List of chunks in use by this SpaceManager.  Allocations</span>
+<span class="removed">  59   // are done from the current chunk.  The list is used for deallocating</span>
+<span class="removed">  60   // chunks when the SpaceManager is freed.</span>
+<span class="removed">  61   Metachunk* _chunk_list;</span>
+<span class="removed">  62   Metachunk* _current_chunk;</span>
+  63 
+<span class="changed">  64   enum {</span>
+
+  65 
+<span class="changed">  66     // Maximum number of small chunks to allocate to a SpaceManager</span>
+<span class="changed">  67     small_chunk_limit = 4,</span>
+  68 
+<span class="changed">  69     // Maximum number of specialize chunks to allocate for anonymous and delegating</span>
+<span class="changed">  70     // metadata space to a SpaceManager</span>
+<span class="changed">  71     anon_and_delegating_metadata_specialize_chunk_limit = 4,</span>
+
+
+
+  72 
+<span class="changed">  73     allocation_from_dictionary_limit = 4 * K</span>
+<span class="changed">  74 </span>
+<span class="changed">  75   };</span>
+  76 
+<span class="changed">  77   // Some running counters, but lets keep their number small to not add to much to</span>
+<span class="changed">  78   // the per-classloader footprint.</span>
+<span class="changed">  79   // Note: capacity = used + free + waste + overhead. We do not keep running counters for</span>
+<span class="changed">  80   // free and waste. Their sum can be deduced from the three other values.</span>
+<span class="changed">  81   size_t _overhead_words;</span>
+<span class="changed">  82   size_t _capacity_words;</span>
+<span class="changed">  83   size_t _used_words;</span>
+<span class="changed">  84   uintx _num_chunks_by_type[NumberOfInUseLists];</span>
+  85 
+<span class="changed">  86   // Free lists of blocks are per SpaceManager since they</span>
+<span class="changed">  87   // are assumed to be in chunks in use by the SpaceManager</span>
+<span class="changed">  88   // and all chunks in use by a SpaceManager are freed when</span>
+<span class="changed">  89   // the class loader using the SpaceManager is collected.</span>
+<span class="changed">  90   BlockFreelist* _block_freelists;</span>
+  91 
+<span class="changed">  92  private:</span>
+<span class="changed">  93   // Accessors</span>
+<span class="changed">  94   Metachunk* chunk_list() const { return _chunk_list; }</span>
+  95 
+<span class="changed">  96   BlockFreelist* block_freelists() const { return _block_freelists; }</span>
+
+  97 
+<span class="changed">  98   Metaspace::MetadataType mdtype() { return _mdtype; }</span>
+
+  99 
+<span class="changed"> 100   VirtualSpaceList* vs_list()   const { return Metaspace::get_space_list(_mdtype); }</span>
+<span class="changed"> 101   ChunkManager* chunk_manager() const { return Metaspace::get_chunk_manager(_mdtype); }</span>
+ 102 
+<span class="changed"> 103   Metachunk* current_chunk() const { return _current_chunk; }</span>
+<span class="changed"> 104   void set_current_chunk(Metachunk* v) {</span>
+<span class="changed"> 105     _current_chunk = v;</span>
+<span class="changed"> 106   }</span>
+ 107 
+<span class="changed"> 108   Metachunk* find_current_chunk(size_t word_size);</span>
+ 109 
+<span class="changed"> 110   // Add chunk to the list of chunks in use</span>
+<span class="changed"> 111   void add_chunk(Metachunk* v, bool make_current);</span>
+<span class="changed"> 112   void retire_current_chunk();</span>
+ 113 
+ 114   Mutex* lock() const { return _lock; }
+
+ 115 
+<span class="changed"> 116   // Adds to the given statistic object. Expects to be locked with lock().</span>
+<span class="changed"> 117   void add_to_statistics_locked(SpaceManagerStatistics* out) const;</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 118 
+<span class="removed"> 119   // Verify internal counters against the current state. Expects to be locked with lock().</span>
+<span class="removed"> 120   DEBUG_ONLY(void verify_metrics_locked() const;)</span>
+<span class="removed"> 121 </span>
+<span class="removed"> 122  public:</span>
+<span class="removed"> 123   SpaceManager(Metaspace::MetadataType mdtype,</span>
+<span class="removed"> 124                Metaspace::MetaspaceType space_type,</span>
+<span class="removed"> 125                Mutex* lock);</span>
+ 126   ~SpaceManager();
+ 127 
+<span class="changed"> 128   enum ChunkMultiples {</span>
+<span class="changed"> 129     MediumChunkMultiple = 4</span>
+<span class="changed"> 130   };</span>
+<span class="changed"> 131 </span>
+<span class="changed"> 132   static size_t specialized_chunk_size(bool is_class) { return is_class ? ClassSpecializedChunk : SpecializedChunk; }</span>
+<span class="changed"> 133   static size_t small_chunk_size(bool is_class)       { return is_class ? ClassSmallChunk : SmallChunk; }</span>
+<span class="changed"> 134   static size_t medium_chunk_size(bool is_class)      { return is_class ? ClassMediumChunk : MediumChunk; }</span>
+<span class="changed"> 135 </span>
+<span class="changed"> 136   static size_t smallest_chunk_size(bool is_class)    { return specialized_chunk_size(is_class); }</span>
+<span class="changed"> 137 </span>
+<span class="changed"> 138   // Accessors</span>
+<span class="changed"> 139   bool is_class() const { return _mdtype == Metaspace::ClassType; }</span>
+<span class="changed"> 140 </span>
+<span class="changed"> 141   size_t specialized_chunk_size() const { return specialized_chunk_size(is_class()); }</span>
+<span class="changed"> 142   size_t small_chunk_size()       const { return small_chunk_size(is_class()); }</span>
+<span class="changed"> 143   size_t medium_chunk_size()      const { return medium_chunk_size(is_class()); }</span>
+<span class="changed"> 144 </span>
+<span class="changed"> 145   size_t smallest_chunk_size()    const { return smallest_chunk_size(is_class()); }</span>
+<span class="changed"> 146 </span>
+<span class="changed"> 147   size_t medium_chunk_bunch()     const { return medium_chunk_size() * MediumChunkMultiple; }</span>
+<span class="changed"> 148 </span>
+<span class="changed"> 149   bool is_humongous(size_t word_size) { return word_size &gt; medium_chunk_size(); }</span>
+<span class="changed"> 150 </span>
+<span class="changed"> 151   size_t capacity_words() const     { return _capacity_words; }</span>
+<span class="changed"> 152   size_t used_words() const         { return _used_words; }</span>
+<span class="changed"> 153   size_t overhead_words() const     { return _overhead_words; }</span>
+<span class="changed"> 154 </span>
+<span class="changed"> 155   // Adjust local, global counters after a new chunk has been added.</span>
+<span class="changed"> 156   void account_for_new_chunk(const Metachunk* new_chunk);</span>
+<span class="changed"> 157 </span>
+<span class="changed"> 158   // Adjust local, global counters after space has been allocated from the current chunk.</span>
+<span class="changed"> 159   void account_for_allocation(size_t words);</span>
+<span class="changed"> 160 </span>
+<span class="changed"> 161   // Adjust global counters just before the SpaceManager dies, after all its chunks</span>
+<span class="changed"> 162   // have been returned to the freelist.</span>
+<span class="changed"> 163   void account_for_spacemanager_death();</span>
+<span class="changed"> 164 </span>
+<span class="changed"> 165   // Adjust the initial chunk size to match one of the fixed chunk list sizes,</span>
+<span class="changed"> 166   // or return the unadjusted size if the requested size is humongous.</span>
+<span class="changed"> 167   static size_t adjust_initial_chunk_size(size_t requested, bool is_class_space);</span>
+<span class="changed"> 168   size_t adjust_initial_chunk_size(size_t requested) const;</span>
+<span class="changed"> 169 </span>
+<span class="changed"> 170   // Get the initial chunks size for this metaspace type.</span>
+<span class="changed"> 171   size_t get_initial_chunk_size(Metaspace::MetaspaceType type) const;</span>
+<span class="changed"> 172 </span>
+<span class="changed"> 173   // Todo: remove this once we have counters by chunk type.</span>
+<span class="changed"> 174   uintx num_chunks_by_type(ChunkIndex chunk_type) const       { return _num_chunks_by_type[chunk_type]; }</span>
+<span class="changed"> 175 </span>
+<span class="changed"> 176   Metachunk* get_new_chunk(size_t chunk_word_size);</span>
+<span class="changed"> 177 </span>
+<span class="changed"> 178   // Block allocation and deallocation.</span>
+<span class="changed"> 179   // Allocates a block from the current chunk</span>
+ 180   MetaWord* allocate(size_t word_size);
+ 181 
+<span class="changed"> 182   // Helper for allocations</span>
+<span class="changed"> 183   MetaWord* allocate_work(size_t word_size);</span>
+<span class="changed"> 184 </span>
+<span class="changed"> 185   // Returns a block to the per manager freelist</span>
+ 186   void deallocate(MetaWord* p, size_t word_size);
+ 187 
+<span class="changed"> 188   // Based on the allocation size and a minimum chunk size,</span>
+<span class="changed"> 189   // returned chunk size (for expanding space for chunk allocation).</span>
+<span class="changed"> 190   size_t calc_chunk_size(size_t allocation_word_size);</span>
+<span class="changed"> 191 </span>
+<span class="changed"> 192   // Called when an allocation from the current chunk fails.</span>
+<span class="changed"> 193   // Gets a new chunk (may require getting a new virtual space),</span>
+<span class="changed"> 194   // and allocates from that chunk.</span>
+<span class="changed"> 195   MetaWord* grow_and_allocate(size_t word_size);</span>
+<span class="changed"> 196 </span>
+<span class="changed"> 197   // Notify memory usage to MemoryService.</span>
+<span class="changed"> 198   void track_metaspace_memory_usage();</span>
+ 199 
+<span class="changed"> 200   // debugging support.</span>
+
+ 201 
+ 202   void print_on(outputStream* st) const;
+<span class="changed"> 203   void locked_print_chunks_in_use_on(outputStream* st) const;</span>
+<span class="changed"> 204 </span>
+<span class="changed"> 205   void verify();</span>
+<span class="changed"> 206   void verify_chunk_size(Metachunk* chunk);</span>
+<span class="changed"> 207 </span>
+<span class="changed"> 208   // This adjusts the size given to be greater than the minimum allocation size in</span>
+<span class="changed"> 209   // words for data in metaspace.  Esentially the minimum size is currently 3 words.</span>
+<span class="changed"> 210   size_t get_allocation_word_size(size_t word_size) {</span>
+<span class="changed"> 211     size_t byte_size = word_size * BytesPerWord;</span>
+<span class="changed"> 212 </span>
+<span class="changed"> 213     size_t raw_bytes_size = MAX2(byte_size, sizeof(Metablock));</span>
+<span class="changed"> 214     raw_bytes_size = align_up(raw_bytes_size, Metachunk::object_alignment());</span>
+<span class="changed"> 215 </span>
+<span class="changed"> 216     size_t raw_word_size = raw_bytes_size / BytesPerWord;</span>
+<span class="changed"> 217     assert(raw_word_size * BytesPerWord == raw_bytes_size, "Size problem");</span>
+<span class="changed"> 218 </span>
+<span class="changed"> 219     return raw_word_size;</span>
+<span class="changed"> 220   }</span>
+<span class="changed"> 221 </span>
+<span class="changed"> 222   // Adds to the given statistic object.</span>
+<span class="changed"> 223   void add_to_statistics(SpaceManagerStatistics* out) const;</span>
+<span class="changed"> 224 </span>
+<span class="changed"> 225   // Verify internal counters against the current state.</span>
+<span class="changed"> 226   DEBUG_ONLY(void verify_metrics() const;)</span>
+ 227 
+ 228 };
+<span class="removed"> 229 </span>
+ 230 
+ 231 } // namespace metaspace
+ 232 
+ 233 #endif // SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+</pre></td><td><pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+<span class="new">   3  * Copyright (c) 2018, 2019 SAP SE. All rights reserved.</span>
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  27 #define SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace.hpp"
+<span class="changed">  31 #include "memory/metaspace/chunkManager.hpp"</span>
+
+  32 #include "memory/metaspace/metachunk.hpp"
+<span class="changed">  33 #include "memory/metaspace/metachunkList.hpp"</span>
+<span class="changed">  34 #include "memory/metaspace/metaspaceCommon.hpp"</span>
+<span class="changed">  35 </span>
+  36 
+  37 class outputStream;
+  38 class Mutex;
+  39 
+  40 namespace metaspace {
+  41 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  42 
+<span class="changed">  43 class ArenaGrowthPolicy;</span>
+<span class="changed">  44 class FreeBlocks;</span>
+  45 
+<span class="changed">  46 struct sm_stats_t;</span>
+
+  47 
+<span class="changed">  48 // The SpaceManager:</span>
+<span class="changed">  49 // - keeps a list of chunks-in-use by the class loader, as well as a current chunk used</span>
+<span class="changed">  50 //   to allocate from</span>
+<span class="changed">  51 // - keeps a dictionary of free MetaBlocks. Those can be remnants of a retired chunk or</span>
+<span class="changed">  52 //   allocations which were not needed anymore for some reason (e.g. releasing half-allocated</span>
+<span class="changed">  53 //   structures when class loading fails)</span>
+  54 
+<span class="changed">  55 class SpaceManager : public CHeapObj&lt;mtClass&gt; {</span>
+
+
+  56 
+<span class="changed">  57   // Lock handed down from the associated ClassLoaderData.</span>
+<span class="changed">  58   //  Protects allocations from this space.</span>
+<span class="changed">  59   Mutex* const _lock;</span>
+
+
+
+
+
+  60 
+<span class="changed">  61   // The chunk manager to allocate chunks from.</span>
+<span class="changed">  62   ChunkManager* const _chunk_manager;</span>
+
+
+
+  63 
+<span class="changed">  64   // The chunk allocation strategy to use.</span>
+<span class="changed">  65   const ArenaGrowthPolicy* const _growth_policy;</span>
+
+  66 
+<span class="changed">  67   // List of chunks. Head of the list is the current chunk.</span>
+<span class="changed">  68   MetachunkList _chunks;</span>
+  69 
+<span class="changed">  70   // Structure to take care of leftover/deallocated space in used chunks</span>
+<span class="changed">  71   FreeBlocks* _fbl;</span>
+  72 
+<span class="changed">  73   Metachunk* current_chunk()              { return _chunks.first(); }</span>
+<span class="changed">  74   const Metachunk* current_chunk() const  { return _chunks.first(); }</span>
+  75 
+<span class="changed">  76   // Points to outside size counter which we are to increase/decrease when we allocate memory</span>
+<span class="changed">  77   // on behalf of a user or when we are destroyed.</span>
+<span class="changed">  78   SizeAtomicCounter* const _total_used_words_counter;</span>
+
+  79 
+<span class="changed">  80   const char* const _name;</span>
+  81 
+<span class="changed">  82   // Whether or not this is a "micro loader" which is not expected to load more than one class.</span>
+<span class="changed">  83   const bool _is_micro_loader;</span>
+
+  84 
+  85   Mutex* lock() const                           { return _lock; }
+<span class="new">  86   ChunkManager* chunk_manager() const           { return _chunk_manager; }</span>
+  87 
+<span class="changed">  88   // free block list</span>
+<span class="changed">  89   FreeBlocks* fbl() const                       { return _fbl; }</span>
+<span class="changed">  90   void add_allocation_to_fbl(MetaWord* p, size_t word_size);</span>
+<span class="changed">  91 </span>
+<span class="changed">  92   // Given a chunk, add its remaining free committed space to the free block list.</span>
+<span class="changed">  93   void salvage_chunk(Metachunk* c);</span>
+<span class="changed">  94 </span>
+<span class="changed">  95   // Allocate a new chunk from the underlying chunk manager able to hold at least</span>
+<span class="changed">  96   // requested word size.</span>
+<span class="changed">  97   Metachunk* allocate_new_chunk(size_t requested_word_size);</span>
+<span class="changed">  98 </span>
+<span class="changed">  99   // Returns the level of the next chunk to be added, acc to growth policy.</span>
+<span class="changed"> 100   chunklevel_t next_chunk_level() const;</span>
+<span class="changed"> 101 </span>
+<span class="changed"> 102   // Attempt to enlarge the current chunk to make it large enough to hold at least</span>
+<span class="changed"> 103   //  requested_word_size additional words.</span>
+<span class="changed"> 104   //</span>
+<span class="changed"> 105   // On success, true is returned, false otherwise.</span>
+<span class="changed"> 106   bool attempt_enlarge_current_chunk(size_t requested_word_size);</span>
+<span class="changed"> 107 </span>
+<span class="changed"> 108   // Prematurely returns a metaspace allocation to the _block_freelists</span>
+<span class="changed"> 109   // because it is not needed anymore (requires CLD lock to be active).</span>
+<span class="changed"> 110   void deallocate_locked(MetaWord* p, size_t word_size);</span>
+<span class="changed"> 111 </span>
+<span class="changed"> 112   // Returns true if the area indicated by pointer and size have actually been allocated</span>
+<span class="changed"> 113   // from this space manager.</span>
+<span class="changed"> 114   DEBUG_ONLY(bool is_valid_area(MetaWord* p, size_t word_size) const;)</span>
+<span class="changed"> 115 </span>
+<span class="changed"> 116 public:</span>
+<span class="changed"> 117 </span>
+<span class="changed"> 118   SpaceManager(ChunkManager* chunk_manager,</span>
+<span class="changed"> 119                const ArenaGrowthPolicy* growth_policy,</span>
+<span class="changed"> 120                Mutex* lock,</span>
+<span class="changed"> 121                SizeAtomicCounter* total_used_words_counter,</span>
+<span class="changed"> 122                const char* name,</span>
+<span class="changed"> 123                bool is_micro_loader);</span>
+ 124 
+
+
+
+
+
+
+
+ 125   ~SpaceManager();
+ 126 
+<span class="changed"> 127   // Allocate memory from Metaspace.</span>
+<span class="changed"> 128   // 1) Attempt to allocate from the dictionary of deallocated blocks.</span>
+<span class="changed"> 129   // 2) Attempt to allocate from the current chunk.</span>
+<span class="changed"> 130   // 3) Attempt to enlarge the current chunk in place if it is too small.</span>
+<span class="changed"> 131   // 4) Attempt to get a new chunk and allocate from that chunk.</span>
+<span class="changed"> 132   // At any point, if we hit a commit limit, we return NULL.</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 133   MetaWord* allocate(size_t word_size);
+ 134 
+<span class="changed"> 135   // Prematurely returns a metaspace allocation to the _block_freelists because it is not</span>
+<span class="changed"> 136   // needed anymore.</span>
+
+
+ 137   void deallocate(MetaWord* p, size_t word_size);
+ 138 
+<span class="changed"> 139   // Update statistics. This walks all in-use chunks.</span>
+<span class="changed"> 140   void add_to_statistics(sm_stats_t* out) const;</span>
+
+
+
+
+
+
+
+
+
+ 141 
+<span class="changed"> 142   DEBUG_ONLY(void verify(bool slow) const;)</span>
+<span class="changed"> 143   DEBUG_ONLY(void verify_locked(bool slow) const;)</span>
+ 144 
+ 145   void print_on(outputStream* st) const;
+<span class="changed"> 146   void print_on_locked(outputStream* st) const;</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 147 
+ 148 };
+
+ 149 
+ 150 } // namespace metaspace
+ 151 
+ 152 #endif // SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/spaceManager.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceList.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

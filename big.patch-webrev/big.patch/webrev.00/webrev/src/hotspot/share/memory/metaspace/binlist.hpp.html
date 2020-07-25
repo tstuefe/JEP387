@@ -1,0 +1,281 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/binlist.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 
+   2 /*
+   3  * Copyright (c) 2020, SAP SE. All rights reserved.
+   4  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   5  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   6  *
+   7  * This code is free software; you can redistribute it and/or modify it
+   8  * under the terms of the GNU General Public License version 2 only, as
+   9  * published by the Free Software Foundation.
+  10  *
+  11  * This code is distributed in the hope that it will be useful, but WITHOUT
+  12  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  13  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  14  * version 2 for more details (a copy is included in the LICENSE file that
+  15  * accompanied this code).
+  16  *
+  17  * You should have received a copy of the GNU General Public License version
+  18  * 2 along with this work; if not, write to the Free Software Foundation,
+  19  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  20  *
+  21  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  22  * or visit www.oracle.com if you need additional information or have any
+  23  * questions.
+  24  *
+  25  */
+  26 
+  27 #ifndef SHARE_MEMORY_METASPACE_BINLIST_HPP
+  28 #define SHARE_MEMORY_METASPACE_BINLIST_HPP
+  29 
+  30 #include "utilities/align.hpp"
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 #include "memory/metaspace/counter.hpp"
+  34 #include "memory/metaspace/metaspaceCommon.hpp"
+  35 
+  36 namespace metaspace {
+  37 
+  38 // BinList is a data structure to manage small to very small memory blocks
+  39 // (only a few words). Memory blocks are kept in linked lists. Each list
+  40 // contains blocks of only one size. There is a list for blocks of two words,
+  41 // for blocks of three words, etc. The list heads are kept in a vector,
+  42 // ordered by block size.
+  43 //
+  44 // This structure is very fast in insertion - O(1).
+  45 // On retrieval, we attempt to find the closest fit to a given size, walking the
+  46 // list head vector (a bitmask is used to speed that part up).
+  47 //
+  48 // This structure is rather expensive in memory cost (one pointer per managed
+  49 // block size) so we only use it for a small number of sizes, see class FreeBlocks.
+  50 
+  51 template &lt;size_t smallest_size, int num_lists&gt;
+  52 class BinListImpl {
+  53 
+  54   struct block_t { block_t* next; size_t size; };
+  55 
+  56   // a mask to speed up searching for populated lists.
+  57   // 0 marks an empty list, 1 for a non-empty one.
+  58   typedef uint32_t mask_t;
+  59   STATIC_ASSERT(num_lists &lt;= sizeof(mask_t) * 8);
+  60 
+  61   mask_t _mask;
+  62 
+  63   // minimal block size must be large enough to hold a block.
+  64   STATIC_ASSERT(smallest_size * sizeof(MetaWord) &gt;= sizeof(block_t));
+  65 
+  66 public:
+  67 
+  68   // block sizes this structure can keep are limited by [_min_block_size, _max_block_size)
+  69   const static size_t minimal_word_size = smallest_size;
+  70   const static size_t maximal_word_size = minimal_word_size + num_lists;
+  71 
+  72 private:
+  73 
+  74   block_t* _v[num_lists];
+  75 
+  76   MemRangeCounter _counter;
+  77 
+  78   static int index_for_word_size(size_t word_size) {
+  79     int index = (int)(word_size - minimal_word_size);
+  80     assert(index &gt;= 0 &amp;&amp; index &lt; num_lists, "Invalid index %d", index);
+  81     return index;
+  82   }
+  83 
+  84   static size_t word_size_for_index(int index) {
+  85     assert(index &gt;= 0 &amp;&amp; index &lt; num_lists, "Invalid index %d", index);
+  86     return minimal_word_size + index;
+  87   }
+  88 
+  89   // Search the range [index, _num_lists) for the smallest non-empty list. Returns -1 on fail.
+  90   int index_for_next_non_empty_list(int index) {
+  91     assert(index &gt;= 0 &amp;&amp; index &lt; num_lists, "Invalid index %d", index);
+  92     int i2 = index;
+  93     mask_t m = _mask &gt;&gt; i2;
+  94     if (m &gt; 0) {
+  95       // count leading zeros would be helpful.
+  96       while ((m &amp; 1) == 0) {
+  97         assert(_v[i2] == NULL, "mask mismatch");
+  98         i2 ++;
+  99         m &gt;&gt;= 1;
+ 100       }
+ 101       // We must have found something.
+ 102       assert(i2 &lt; num_lists, "sanity.");
+ 103       assert(_v[i2] != NULL, "mask mismatch");
+ 104       return i2;
+ 105     }
+ 106     return -1;
+ 107   }
+ 108 
+ 109   void mask_set_bit(int bit) { _mask |= (((mask_t)1) &lt;&lt; bit); }
+ 110   void mask_clr_bit(int bit) { _mask &amp;= ~(((mask_t)1) &lt;&lt; bit); }
+ 111 
+ 112 public:
+ 113 
+ 114   BinListImpl() : _mask(0) {
+ 115     for (int i = 0; i &lt; num_lists; i ++) {
+ 116       _v[i] = NULL;
+ 117     }
+ 118   }
+ 119 
+ 120   void add_block(MetaWord* p, size_t word_size) {
+ 121     assert(word_size &gt;= minimal_word_size &amp;&amp;
+ 122            word_size &lt; maximal_word_size, "bad block size");
+ 123     const int index = index_for_word_size(word_size);
+ 124     block_t* b = (block_t*)p;
+ 125     b-&gt;size = word_size;
+ 126     b-&gt;next = _v[index];
+ 127     _v[index] = b;
+ 128     _counter.add(word_size);
+ 129     mask_set_bit(index);
+ 130   }
+ 131 
+ 132   // Given a word_size, searches and returns a block of at least that size.
+ 133   // Block may be larger. Real block size is returned in *p_real_word_size.
+ 134   MetaWord* get_block(size_t word_size, size_t* p_real_word_size) {
+ 135     assert(word_size &gt;= minimal_word_size &amp;&amp;
+ 136            word_size &lt; maximal_word_size, "bad block size " SIZE_FORMAT ".", word_size);
+ 137     int index = index_for_word_size(word_size);
+ 138     index = index_for_next_non_empty_list(index);
+ 139     if (index != -1) {
+ 140       assert(_v[index] != NULL &amp;&amp;
+ 141              _v[index]-&gt;size &gt;= word_size, "sanity");
+ 142 
+ 143       MetaWord* const p = (MetaWord*)_v[index];
+ 144       const size_t real_word_size = word_size_for_index(index);
+ 145 
+ 146       _v[index] = _v[index]-&gt;next;
+ 147       if (_v[index] == NULL) {
+ 148         mask_clr_bit(index);
+ 149       }
+ 150 
+ 151       _counter.sub(real_word_size);
+ 152       *p_real_word_size = real_word_size;
+ 153 
+ 154       return p;
+ 155 
+ 156     } else {
+ 157 
+ 158       *p_real_word_size = 0;
+ 159       return NULL;
+ 160 
+ 161     }
+ 162   }
+ 163 
+ 164 
+ 165   // Returns number of blocks in this structure
+ 166   unsigned count() const { return _counter.count(); }
+ 167 
+ 168   // Returns total size, in words, of all elements.
+ 169   size_t total_size() const { return _counter.total_size(); }
+ 170 
+ 171   bool is_empty() const { return _mask == 0; }
+ 172 
+ 173 #ifdef ASSERT
+ 174   void verify() const {
+ 175     MemRangeCounter local_counter;
+ 176     for (int i = 0; i &lt; num_lists; i ++) {
+ 177       assert(((_mask &gt;&gt; i) &amp; 1) == ((_v[i] == 0) ? 0 : 1), "sanity");
+ 178       const size_t s = minimal_word_size + i;
+ 179       for (block_t* b = _v[i]; b != NULL; b = b-&gt;next) {
+ 180         assert(b-&gt;size == s, "bad block size");
+ 181         local_counter.add(s);
+ 182       }
+ 183     }
+ 184     local_counter.check(_counter);
+ 185   }
+ 186 #endif // ASSERT
+ 187 
+ 188 
+ 189 };
+ 190 
+ 191 typedef BinListImpl&lt;2, 8&gt;  BinList8;
+ 192 typedef BinListImpl&lt;2, 16&gt; BinList16;
+ 193 typedef BinListImpl&lt;2, 32&gt; BinList32;
+ 194 typedef BinListImpl&lt;2, 64&gt; BinList64;
+ 195 
+ 196 } // namespace metaspace
+ 197 
+ 198 #endif // SHARE_MEMORY_METASPACE_BINLIST_HPP
+</pre></body></html>

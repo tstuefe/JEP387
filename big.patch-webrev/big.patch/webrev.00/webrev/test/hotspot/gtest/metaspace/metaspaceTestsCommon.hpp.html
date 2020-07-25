@@ -1,0 +1,350 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  */
+  24 
+  25 #ifndef GTEST_METASPACE_METASPACETESTCOMMON_HPP
+  26 #define GTEST_METASPACE_METASPACETESTCOMMON_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 
+  30 
+  31 #include "memory/metaspace/arenaGrowthPolicy.hpp"
+  32 #include "memory/metaspace/binlist.hpp"
+  33 #include "memory/metaspace/blocktree.hpp"
+  34 #include "memory/metaspace/chunkHeaderPool.hpp"
+  35 #include "memory/metaspace/chunkLevel.hpp"
+  36 #include "memory/metaspace/chunkManager.hpp"
+  37 #include "memory/metaspace/counter.hpp"
+  38 #include "memory/metaspace/commitLimiter.hpp"
+  39 #include "memory/metaspace/commitMask.hpp"
+  40 #include "memory/metaspace/freeBlocks.hpp"
+  41 #include "memory/metaspace/freeChunkList.hpp"
+  42 #include "memory/metaspace/metachunk.hpp"
+  43 #include "memory/metaspace/metaspaceCommon.hpp"
+  44 #include "memory/metaspace/metaspaceEnums.hpp"
+  45 #include "memory/metaspace/metaspaceStatistics.hpp"
+  46 #include "memory/metaspace/virtualSpaceList.hpp"
+  47 #include "memory/metaspace/spaceManager.hpp"
+  48 #include "memory/metaspace/settings.hpp"
+  49 #include "runtime/mutexLocker.hpp"
+  50 #include "runtime/os.hpp"
+  51 
+  52 #include "utilities/align.hpp"
+  53 #include "utilities/debug.hpp"
+  54 #include "utilities/globalDefinitions.hpp"
+  55 
+  56 #include "unittest.hpp"
+  57 
+  58 #include &lt;stdio.h&gt;
+  59 
+  60 
+  61 //////////////////////////////////////////////////////////
+  62 // handy aliases
+  63 
+  64 using metaspace::BinListImpl;
+  65 using metaspace::BlockTree;
+  66 using metaspace::ArenaGrowthPolicy;
+  67 using metaspace::ChunkHeaderPool;
+  68 using metaspace::ChunkManager;
+  69 using metaspace::CommitLimiter;
+  70 using metaspace::CommitMask;
+  71 using metaspace::SizeCounter;
+  72 using metaspace::SizeAtomicCounter;
+  73 using metaspace::IntCounter;
+  74 using metaspace::FreeBlocks;
+  75 using metaspace::FreeChunkList;
+  76 using metaspace::FreeChunkListVector;
+  77 using metaspace::MemRangeCounter;
+  78 using metaspace::Metachunk;
+  79 using metaspace::MetachunkList;
+  80 using metaspace::Settings;
+  81 using metaspace::sm_stats_t;
+  82 using metaspace::in_use_chunk_stats_t;
+  83 using metaspace::cm_stats_t;
+  84 using metaspace::SizeCounter;
+  85 using metaspace::SpaceManager;
+  86 using metaspace::VirtualSpaceList;
+  87 using metaspace::VirtualSpaceNode;
+  88 
+  89 using metaspace::chunklevel_t;
+  90 using namespace metaspace::chunklevel;
+  91 
+  92 
+  93 /////////////////////////////////////////////////////////////////////
+  94 // A little mockup to mimick and test the CommitMask in various tests
+  95 
+  96 class TestMap {
+  97   const size_t _len;
+  98   char* _arr;
+  99 public:
+ 100   TestMap(size_t len) : _len(len), _arr(NULL) {
+ 101     _arr = NEW_C_HEAP_ARRAY(char, len, mtInternal);
+ 102     memset(_arr, 0, _len);
+ 103   }
+ 104   ~TestMap() { FREE_C_HEAP_ARRAY(char, _arr); }
+ 105 
+ 106   int get_num_set(size_t from, size_t to) const {
+ 107     int result = 0;
+ 108     for(size_t i = from; i &lt; to; i ++) {
+ 109       if (_arr[i] &gt; 0) {
+ 110         result ++;
+ 111       }
+ 112     }
+ 113     return result;
+ 114   }
+ 115 
+ 116   size_t get_num_set() const { return get_num_set(0, _len); }
+ 117 
+ 118   void set_range(size_t from, size_t to) {
+ 119     memset(_arr + from, 1, to - from);
+ 120   }
+ 121 
+ 122   void clear_range(size_t from, size_t to) {
+ 123     memset(_arr + from, 0, to - from);
+ 124   }
+ 125 
+ 126   bool at(size_t pos) const {
+ 127     return _arr[pos] == 1;
+ 128   }
+ 129 
+ 130 };
+ 131 
+ 132 
+ 133 ///////////////////////////////////////////////////////////
+ 134 // Helper class for generating random allocation sizes
+ 135 class RandSizeGenerator {
+ 136   const size_t _min; // [
+ 137   const size_t _max; // )
+ 138   const float _outlier_chance; // 0.0 -- 1.0
+ 139   const size_t _outlier_min; // [
+ 140   const size_t _outlier_max; // )
+ 141 public:
+ 142   RandSizeGenerator(size_t min, size_t max)
+ 143     : _min(min), _max(max), _outlier_chance(0.0), _outlier_min(min), _outlier_max(max)
+ 144   {}
+ 145 
+ 146   RandSizeGenerator(size_t min, size_t max, float outlier_chance, size_t outlier_min, size_t outlier_max)
+ 147     : _min(min), _max(max), _outlier_chance(outlier_chance), _outlier_min(outlier_min), _outlier_max(outlier_max)
+ 148   {}
+ 149 
+ 150   size_t min() const { return _min; }
+ 151   size_t max() const { return _max; }
+ 152 
+ 153   size_t get() const {
+ 154     size_t l1 = _min;
+ 155     size_t l2 = _max;
+ 156     int r = os::random() % 1000;
+ 157     if ((float)r &lt; _outlier_chance * 1000.0) {
+ 158       l1 = _outlier_min;
+ 159       l2 = _outlier_max;
+ 160     }
+ 161     const size_t d = l2 - l1;
+ 162     return l1 + (os::random() % d);
+ 163   }
+ 164 
+ 165 }; // end RandSizeGenerator
+ 166 
+ 167 size_t get_random_size(size_t min, size_t max);
+ 168 
+ 169 ///////////////////////////////////////////////////////////
+ 170 // Function to test-access a memory range
+ 171 
+ 172 void zap_range(MetaWord* p, size_t word_size);
+ 173 
+ 174 // "fill_range_with_pattern" fills a range of heap words with pointers to itself.
+ 175 //
+ 176 // The idea is to fill a memory range with a pattern which is both marked clearly to the caller
+ 177 // and cannot be moved without becoming invalid.
+ 178 //
+ 179 // The filled range can be checked with check_range_for_pattern. One also can only check
+ 180 // a sub range of the original range.
+ 181 void fill_range_with_pattern(MetaWord* p, uintx pattern, size_t word_size);
+ 182 void check_range_for_pattern(const MetaWord* p, uintx pattern, size_t word_size);
+ 183 
+ 184 // Writes a uniqe pattern to p
+ 185 void mark_address(MetaWord* p, uintx pattern);
+ 186 // checks pattern at address
+ 187 void check_marked_address(const MetaWord* p, uintx pattern);
+ 188 
+ 189 // Similar to fill_range_with_pattern, but only marks start and end. This is optimized for cases
+ 190 // where fill_range_with_pattern just is too slow.
+ 191 // Use check_marked_range to check the range. In contrast to check_range_for_pattern, only the original
+ 192 // range can be checked.
+ 193 void mark_range(MetaWord* p, uintx pattern, size_t word_size);
+ 194 void check_marked_range(const MetaWord* p, uintx pattern, size_t word_size);
+ 195 
+ 196 void mark_range(MetaWord* p, size_t word_size);
+ 197 void check_marked_range(const MetaWord* p, size_t word_size);
+ 198 
+ 199 //////////////////////////////////////////////////////////
+ 200 // Some helpers to avoid typing out those annoying casts for NULL
+ 201 
+ 202 #define ASSERT_NOT_NULL(ptr)      ASSERT_NE((void*)NULL, (void*)ptr)
+ 203 #define ASSERT_NULL(ptr)          ASSERT_EQ((void*)NULL, (void*)ptr)
+ 204 #define EXPECT_NOT_NULL(ptr)      EXPECT_NE((void*)NULL, (void*)ptr)
+ 205 #define EXPECT_NULL(ptr)          EXPECT_EQ((void*)NULL, (void*)ptr)
+ 206 
+ 207 #define EXPECT_0(v)               EXPECT_EQ((intptr_t)0, (intptr_t)v)
+ 208 
+ 209 
+ 210 //////////////////////////////////////////////////////////
+ 211 // logging
+ 212 
+ 213 // Define "LOG_PLEASE" to switch on logging for a particular test before inclusion of this header.
+ 214 #ifdef LOG_PLEASE
+ 215   #define LOG(...) { printf(__VA_ARGS__); printf("\n"); fflush(stdout); }
+ 216 #else
+ 217   #define LOG(...)
+ 218 #endif
+ 219 
+ 220 //////////////////////////////////////////////////////////
+ 221 // Helper
+ 222 
+ 223 size_t get_workingset_size();
+ 224 
+ 225 // A simple preallocated buffer used to "feed" someone.
+ 226 // Mimicks chunk retirement leftover blocks.
+ 227 class FeederBuffer {
+ 228 
+ 229   MetaWord* _buf;
+ 230 
+ 231   // Buffer capacity in size of words.
+ 232   const size_t _cap;
+ 233 
+ 234   // Used words.
+ 235   size_t _used;
+ 236 
+ 237 public:
+ 238 
+ 239   FeederBuffer(size_t size) : _buf(NULL), _cap(size), _used(0) {
+ 240     _buf = NEW_C_HEAP_ARRAY(MetaWord, _cap, mtInternal);
+ 241   }
+ 242 
+ 243   ~FeederBuffer() {
+ 244     FREE_C_HEAP_ARRAY(MetaWord, _buf);
+ 245   }
+ 246 
+ 247   MetaWord* get(size_t word_size) {
+ 248     if (_used + word_size &gt; _cap) {
+ 249       return NULL;
+ 250     }
+ 251     MetaWord* p = _buf + _used;
+ 252     _used += word_size;
+ 253     return p;
+ 254   }
+ 255 
+ 256   bool is_valid_pointer(MetaWord* p) const {
+ 257     return p &gt;= _buf &amp;&amp; p &lt; _buf + _used;
+ 258   }
+ 259 
+ 260   bool is_valid_range(MetaWord* p, size_t word_size) const {
+ 261     return is_valid_pointer(p) &amp;&amp;
+ 262            word_size &gt; 0 ? is_valid_pointer(p + word_size - 1) : true;
+ 263   }
+ 264 
+ 265 };
+ 266 
+ 267 #endif // GTEST_METASPACE_METASPACETESTCOMMON_HPP
+</pre></body></html>

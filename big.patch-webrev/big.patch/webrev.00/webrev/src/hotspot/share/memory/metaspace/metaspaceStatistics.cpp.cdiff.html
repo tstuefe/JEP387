@@ -1,0 +1,593 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60221">60221</a> : imported patch big.patch</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 1,8 ****</span>
+  /*
+<span class="changed">!  * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2018 SAP SE. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<span class="newmarker">--- 1,8 ----</span>
+  /*
+<span class="changed">!  * Copyright (c) 2018, 2019 SAP SE. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2018, 2019 Oracle and/or its affiliates. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<hr /><span class="oldmarker">*** 22,264 ****</span>
+   * questions.
+   *
+   */
+  #include "precompiled.hpp"
+  
+<span class="changed">! #include "memory/metaspace/metachunk.hpp"</span>
+  #include "memory/metaspace/metaspaceCommon.hpp"
+  #include "memory/metaspace/metaspaceStatistics.hpp"
+  #include "utilities/debug.hpp"
+  #include "utilities/globalDefinitions.hpp"
+  #include "utilities/ostream.hpp"
+  
+  namespace metaspace {
+  
+<span class="changed">! // FreeChunksStatistics methods</span>
+<span class="changed">! </span>
+<span class="changed">! FreeChunksStatistics::FreeChunksStatistics()</span>
+<span class="changed">! : _num(0), _cap(0)</span>
+<span class="changed">! {}</span>
+  
+<span class="changed">! void FreeChunksStatistics::reset() {</span>
+<span class="changed">!   _num = 0; _cap = 0;</span>
+  }
+  
+<span class="changed">! void FreeChunksStatistics::add(uintx n, size_t s) {</span>
+<span class="changed">!   _num += n; _cap += s;</span>
+  }
+  
+<span class="changed">! void FreeChunksStatistics::add(const FreeChunksStatistics&amp; other) {</span>
+<span class="changed">!   _num += other._num;</span>
+<span class="changed">!   _cap += other._cap;</span>
+  }
+  
+<span class="removed">- void FreeChunksStatistics::print_on(outputStream* st, size_t scale) const {</span>
+<span class="removed">-   st-&gt;print(UINTX_FORMAT, _num);</span>
+<span class="removed">-   st-&gt;print(" chunks, total capacity ");</span>
+<span class="removed">-   print_scaled_words(st, _cap, scale);</span>
+<span class="removed">- }</span>
+  
+<span class="changed">! // ChunkManagerStatistics methods</span>
+  
+<span class="changed">! void ChunkManagerStatistics::reset() {</span>
+<span class="changed">!   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {</span>
+<span class="changed">!     _chunk_stats[i].reset();</span>
+<span class="changed">!   }</span>
+<span class="changed">! }</span>
+  
+<span class="changed">! size_t ChunkManagerStatistics::total_capacity() const {</span>
+<span class="changed">!   return _chunk_stats[SpecializedIndex].cap() +</span>
+<span class="changed">!       _chunk_stats[SmallIndex].cap() +</span>
+<span class="changed">!       _chunk_stats[MediumIndex].cap() +</span>
+<span class="changed">!       _chunk_stats[HumongousIndex].cap();</span>
+<span class="changed">! }</span>
+  
+<span class="changed">! void ChunkManagerStatistics::print_on(outputStream* st, size_t scale) const {</span>
+<span class="changed">!   FreeChunksStatistics totals;</span>
+<span class="changed">!   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {</span>
+<span class="changed">!     st-&gt;cr();</span>
+<span class="changed">!     st-&gt;print("%12s chunks: ", chunk_size_name(i));</span>
+<span class="changed">!     if (_chunk_stats[i].num() &gt; 0) {</span>
+<span class="changed">!       st-&gt;print(UINTX_FORMAT_W(4) ", capacity ", _chunk_stats[i].num());</span>
+<span class="changed">!       print_scaled_words(st, _chunk_stats[i].cap(), scale);</span>
+      } else {
+        st-&gt;print("(none)");
+      }
+<span class="removed">-     totals.add(_chunk_stats[i]);</span>
+    }
+    st-&gt;cr();
+<span class="changed">!   st-&gt;print("%19s: " UINTX_FORMAT_W(4) ", capacity=", "Total", totals.num());</span>
+<span class="changed">!   print_scaled_words(st, totals.cap(), scale);</span>
+    st-&gt;cr();
+  }
+  
+<span class="changed">! // UsedChunksStatistics methods</span>
+<span class="changed">! </span>
+<span class="changed">! UsedChunksStatistics::UsedChunksStatistics()</span>
+<span class="changed">! : _num(0), _cap(0), _used(0), _free(0), _waste(0), _overhead(0)</span>
+<span class="changed">! {}</span>
+<span class="changed">! </span>
+<span class="changed">! void UsedChunksStatistics::reset() {</span>
+<span class="changed">!   _num = 0;</span>
+<span class="changed">!   _cap = _overhead = _used = _free = _waste = 0;</span>
+<span class="changed">! }</span>
+<span class="changed">! </span>
+<span class="changed">! void UsedChunksStatistics::add(const UsedChunksStatistics&amp; other) {</span>
+<span class="changed">!   _num += other._num;</span>
+<span class="changed">!   _cap += other._cap;</span>
+<span class="changed">!   _used += other._used;</span>
+<span class="changed">!   _free += other._free;</span>
+<span class="changed">!   _waste += other._waste;</span>
+<span class="changed">!   _overhead += other._overhead;</span>
+<span class="changed">!   DEBUG_ONLY(check_sanity());</span>
+  }
+  
+<span class="changed">! void UsedChunksStatistics::print_on(outputStream* st, size_t scale) const {</span>
+    int col = st-&gt;position();
+<span class="changed">!   st-&gt;print(UINTX_FORMAT_W(4) " chunk%s, ", _num, _num != 1 ? "s" : "");</span>
+<span class="changed">!   if (_num &gt; 0) {</span>
+      col += 14; st-&gt;fill_to(col);
+  
+<span class="changed">!     print_scaled_words(st, _cap, scale, 5);</span>
+<span class="changed">!     st-&gt;print(" capacity, ");</span>
+  
+      col += 18; st-&gt;fill_to(col);
+<span class="changed">!     print_scaled_words_and_percentage(st, _used, _cap, scale, 5);</span>
+      st-&gt;print(" used, ");
+  
+      col += 20; st-&gt;fill_to(col);
+<span class="changed">!     print_scaled_words_and_percentage(st, _free, _cap, scale, 5);</span>
+      st-&gt;print(" free, ");
+  
+      col += 20; st-&gt;fill_to(col);
+<span class="changed">!     print_scaled_words_and_percentage(st, _waste, _cap, scale, 5);</span>
+<span class="changed">!     st-&gt;print(" waste, ");</span>
+  
+<span class="removed">-     col += 20; st-&gt;fill_to(col);</span>
+<span class="removed">-     print_scaled_words_and_percentage(st, _overhead, _cap, scale, 5);</span>
+<span class="removed">-     st-&gt;print(" overhead");</span>
+    }
+<span class="removed">-   DEBUG_ONLY(check_sanity());</span>
+  }
+  
+  #ifdef ASSERT
+<span class="changed">! void UsedChunksStatistics::check_sanity() const {</span>
+<span class="changed">!   assert(_overhead == (Metachunk::overhead() * _num), "Sanity: Overhead.");</span>
+<span class="changed">!   assert(_cap == _used + _free + _waste + _overhead, "Sanity: Capacity.");</span>
+  }
+  #endif
+  
+  // SpaceManagerStatistics methods
+  
+<span class="changed">! SpaceManagerStatistics::SpaceManagerStatistics() { reset(); }</span>
+<span class="changed">! </span>
+<span class="changed">! void SpaceManagerStatistics::reset() {</span>
+<span class="changed">!   for (int i = 0; i &lt; NumberOfInUseLists; i ++) {</span>
+<span class="changed">!     _chunk_stats[i].reset();</span>
+<span class="changed">!     _free_blocks_num = 0; _free_blocks_cap_words = 0;</span>
+    }
+  }
+  
+<span class="removed">- void SpaceManagerStatistics::add_free_blocks_info(uintx num, size_t cap) {</span>
+<span class="removed">-   _free_blocks_num += num;</span>
+<span class="removed">-   _free_blocks_cap_words += cap;</span>
+<span class="removed">- }</span>
+<span class="removed">- </span>
+<span class="removed">- void SpaceManagerStatistics::add(const SpaceManagerStatistics&amp; other) {</span>
+<span class="removed">-   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {</span>
+<span class="removed">-     _chunk_stats[i].add(other._chunk_stats[i]);</span>
+<span class="removed">-   }</span>
+<span class="removed">-   _free_blocks_num += other._free_blocks_num;</span>
+<span class="removed">-   _free_blocks_cap_words += other._free_blocks_cap_words;</span>
+<span class="removed">- }</span>
+  
+  // Returns total chunk statistics over all chunk types.
+<span class="changed">! UsedChunksStatistics SpaceManagerStatistics::totals() const {</span>
+<span class="changed">!   UsedChunksStatistics stat;</span>
+<span class="changed">!   for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {</span>
+<span class="changed">!     stat.add(_chunk_stats[i]);</span>
+    }
+<span class="changed">!   return stat;</span>
+  }
+  
+<span class="changed">! void SpaceManagerStatistics::print_on(outputStream* st, size_t scale,  bool detailed) const {</span>
+    streamIndentor sti(st);
+    if (detailed) {
+      st-&gt;cr_indent();
+<span class="changed">!     st-&gt;print("Usage by chunk type:");</span>
+      {
+        streamIndentor sti2(st);
+<span class="changed">!       for (ChunkIndex i = ZeroIndex; i &lt; NumberOfInUseLists; i = next_chunk_index(i)) {</span>
+          st-&gt;cr_indent();
+<span class="changed">!         st-&gt;print("%15s: ", chunk_size_name(i));</span>
+<span class="changed">!         if (_chunk_stats[i].num() == 0) {</span>
+            st-&gt;print(" (none)");
+          } else {
+<span class="changed">!           _chunk_stats[i].print_on(st, scale);</span>
+          }
+        }
+  
+        st-&gt;cr_indent();
+        st-&gt;print("%15s: ", "-total-");
+        totals().print_on(st, scale);
+      }
+<span class="changed">!     if (_free_blocks_num &gt; 0) {</span>
+        st-&gt;cr_indent();
+<span class="changed">!       st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", _free_blocks_num);</span>
+<span class="changed">!       print_scaled_words(st, _free_blocks_cap_words, scale);</span>
+      }
+    } else {
+      totals().print_on(st, scale);
+      st-&gt;print(", ");
+<span class="changed">!     st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", _free_blocks_num);</span>
+<span class="changed">!     print_scaled_words(st, _free_blocks_cap_words, scale);</span>
+    }
+  }
+  
+<span class="changed">! // ClassLoaderMetaspaceStatistics methods</span>
+<span class="changed">! </span>
+<span class="changed">! ClassLoaderMetaspaceStatistics::ClassLoaderMetaspaceStatistics() { reset(); }</span>
+  
+<span class="changed">! void ClassLoaderMetaspaceStatistics::reset() {</span>
+<span class="changed">!   nonclass_sm_stats().reset();</span>
+<span class="changed">!   if (Metaspace::using_class_space()) {</span>
+<span class="changed">!     class_sm_stats().reset();</span>
+<span class="changed">!   }</span>
+  }
+  
+<span class="changed">! // Returns total space manager statistics for both class and non-class metaspace</span>
+<span class="changed">! SpaceManagerStatistics ClassLoaderMetaspaceStatistics::totals() const {</span>
+<span class="changed">!   SpaceManagerStatistics stats;</span>
+<span class="changed">!   stats.add(nonclass_sm_stats());</span>
+<span class="changed">!   if (Metaspace::using_class_space()) {</span>
+<span class="changed">!     stats.add(class_sm_stats());</span>
+<span class="changed">!   }</span>
+<span class="changed">!   return stats;</span>
+<span class="changed">! }</span>
+  
+<span class="changed">! void ClassLoaderMetaspaceStatistics::add(const ClassLoaderMetaspaceStatistics&amp; other) {</span>
+<span class="changed">!   nonclass_sm_stats().add(other.nonclass_sm_stats());</span>
+<span class="changed">!   if (Metaspace::using_class_space()) {</span>
+<span class="changed">!     class_sm_stats().add(other.class_sm_stats());</span>
+<span class="changed">!   }</span>
+  }
+  
+<span class="changed">! void ClassLoaderMetaspaceStatistics::print_on(outputStream* st, size_t scale, bool detailed) const {</span>
+    streamIndentor sti(st);
+    st-&gt;cr_indent();
+    if (Metaspace::using_class_space()) {
+      st-&gt;print("Non-Class: ");
+    }
+<span class="changed">!   nonclass_sm_stats().print_on(st, scale, detailed);</span>
+    if (detailed) {
+      st-&gt;cr();
+    }
+    if (Metaspace::using_class_space()) {
+      st-&gt;cr_indent();
+      st-&gt;print("    Class: ");
+<span class="changed">!     class_sm_stats().print_on(st, scale, detailed);</span>
+      if (detailed) {
+        st-&gt;cr();
+      }
+      st-&gt;cr_indent();
+      st-&gt;print("     Both: ");
+<span class="newmarker">--- 22,241 ----</span>
+   * questions.
+   *
+   */
+  #include "precompiled.hpp"
+  
+<span class="changed">! </span>
+<span class="changed">! #include "memory/metaspace/chunkLevel.hpp"</span>
+  #include "memory/metaspace/metaspaceCommon.hpp"
+  #include "memory/metaspace/metaspaceStatistics.hpp"
+<span class="new">+ </span>
+  #include "utilities/debug.hpp"
+  #include "utilities/globalDefinitions.hpp"
+  #include "utilities/ostream.hpp"
+  
+  namespace metaspace {
+  
+<span class="changed">! // ChunkManagerStatistics methods</span>
+  
+<span class="changed">! // Returns total word size of all chunks in this manager.</span>
+<span class="changed">! void cm_stats_t::add(const cm_stats_t&amp; other) {</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     num_chunks[l] += other.num_chunks[l];</span>
+<span class="changed">!     committed_word_size[l] += other.committed_word_size[l];</span>
+<span class="changed">!   }</span>
+  }
+  
+<span class="changed">! // Returns total word size of all chunks in this manager.</span>
+<span class="changed">! size_t cm_stats_t::total_word_size() const {</span>
+<span class="changed">!   size_t s = 0;</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     s += num_chunks[l] * chunklevel::word_size_for_level(l);</span>
+<span class="changed">!   }</span>
+<span class="changed">!   return s;</span>
+  }
+  
+<span class="changed">! // Returns total committed word size of all chunks in this manager.</span>
+<span class="changed">! size_t cm_stats_t::total_committed_word_size() const {</span>
+<span class="changed">!   size_t s = 0;</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     s += committed_word_size[l];</span>
+<span class="changed">!   }</span>
+<span class="changed">!   return s;</span>
+  }
+  
+  
+<span class="changed">! void cm_stats_t::print_on(outputStream* st, size_t scale) const {</span>
+<span class="changed">!   // Note: used as part of MetaspaceReport so formatting matters.</span>
+<span class="changed">!   size_t total_size = 0;</span>
+<span class="changed">!   size_t total_committed_size = 0;</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     st-&gt;cr();</span>
+<span class="changed">!     chunklevel::print_chunk_size(st, l);</span>
+<span class="changed">!     st-&gt;print(": ");</span>
+<span class="changed">!     if (num_chunks[l] &gt; 0) {</span>
+<span class="changed">!       const size_t word_size = num_chunks[l] * chunklevel::word_size_for_level(l);</span>
+  
+<span class="changed">!       st-&gt;print("%4d, capacity=", num_chunks[l]);</span>
+<span class="changed">!       print_scaled_words(st, word_size, scale);</span>
+  
+<span class="changed">!       st-&gt;print(", committed=");</span>
+<span class="changed">!       print_scaled_words_and_percentage(st, committed_word_size[l], word_size, scale);</span>
+  
+<span class="changed">!       total_size += word_size;</span>
+<span class="changed">!       total_committed_size += committed_word_size[l];</span>
+      } else {
+        st-&gt;print("(none)");
+      }
+    }
+    st-&gt;cr();
+<span class="changed">!   st-&gt;print("Total word size: ");</span>
+<span class="changed">!   print_scaled_words(st, total_size, scale);</span>
+<span class="changed">!   st-&gt;print(", committed: ");</span>
+<span class="changed">!   print_scaled_words_and_percentage(st, total_committed_size, total_size, scale);</span>
+    st-&gt;cr();
+  }
+  
+<span class="changed">! #ifdef ASSERT</span>
+<span class="changed">! void cm_stats_t::verify() const {</span>
+<span class="changed">!   assert(total_committed_word_size() &lt;= total_word_size(),</span>
+<span class="changed">!          "Sanity");</span>
+  }
+<span class="new">+ #endif</span>
+  
+<span class="changed">! // UsedChunksStatistics methods</span>
+<span class="changed">! </span>
+<span class="changed">! void in_use_chunk_stats_t::print_on(outputStream* st, size_t scale) const {</span>
+    int col = st-&gt;position();
+<span class="changed">!   st-&gt;print("%4d chunk%s, ", num, num != 1 ? "s" : "");</span>
+<span class="changed">!   if (num &gt; 0) {</span>
+      col += 14; st-&gt;fill_to(col);
+  
+<span class="changed">!     print_scaled_words(st, word_size, scale, 5);</span>
+<span class="changed">!     st-&gt;print(" capacity,");</span>
+<span class="changed">! </span>
+<span class="changed">!     col += 20; st-&gt;fill_to(col);</span>
+<span class="changed">!     print_scaled_words_and_percentage(st, committed_words, word_size, scale, 5);</span>
+<span class="changed">!     st-&gt;print(" committed, ");</span>
+  
+      col += 18; st-&gt;fill_to(col);
+<span class="changed">!     print_scaled_words_and_percentage(st, used_words, word_size, scale, 5);</span>
+      st-&gt;print(" used, ");
+  
+      col += 20; st-&gt;fill_to(col);
+<span class="changed">!     print_scaled_words_and_percentage(st, free_words, word_size, scale, 5);</span>
+      st-&gt;print(" free, ");
+  
+      col += 20; st-&gt;fill_to(col);
+<span class="changed">!     print_scaled_words_and_percentage(st, waste_words, word_size, scale, 5);</span>
+<span class="changed">!     st-&gt;print(" waste ");</span>
+  
+    }
+  }
+  
+  #ifdef ASSERT
+<span class="changed">! void in_use_chunk_stats_t::verify() const {</span>
+<span class="changed">!   assert(word_size &gt;= committed_words &amp;&amp;</span>
+<span class="changed">!       committed_words == used_words + free_words + waste_words,</span>
+<span class="changed">!          "Sanity: cap " SIZE_FORMAT ", committed " SIZE_FORMAT ", used " SIZE_FORMAT ", free " SIZE_FORMAT ", waste " SIZE_FORMAT ".",</span>
+<span class="changed">!          word_size, committed_words, used_words, free_words, waste_words);</span>
+  }
+  #endif
+  
+  // SpaceManagerStatistics methods
+  
+<span class="changed">! void sm_stats_t::add(const sm_stats_t&amp; other) {</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     stats[l].add(other.stats[l]);</span>
+    }
+<span class="new">+   free_blocks_num += other.free_blocks_num;</span>
+<span class="new">+   free_blocks_word_size += other.free_blocks_word_size;</span>
+  }
+  
+  
+  // Returns total chunk statistics over all chunk types.
+<span class="changed">! in_use_chunk_stats_t sm_stats_t::totals() const {</span>
+<span class="changed">!   in_use_chunk_stats_t out;</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     out.add(stats[l]);</span>
+    }
+<span class="changed">!   return out;</span>
+  }
+  
+<span class="changed">! void sm_stats_t::print_on(outputStream* st, size_t scale,  bool detailed) const {</span>
+    streamIndentor sti(st);
+    if (detailed) {
+      st-&gt;cr_indent();
+<span class="changed">!     st-&gt;print("Usage by chunk level:");</span>
+      {
+        streamIndentor sti2(st);
+<span class="changed">!       for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+          st-&gt;cr_indent();
+<span class="changed">!         chunklevel::print_chunk_size(st, l);</span>
+<span class="changed">!         st-&gt;print(" chunks: ");</span>
+<span class="changed">!         if (stats[l].num == 0) {</span>
+            st-&gt;print(" (none)");
+          } else {
+<span class="changed">!           stats[l].print_on(st, scale);</span>
+          }
+        }
+  
+        st-&gt;cr_indent();
+        st-&gt;print("%15s: ", "-total-");
+        totals().print_on(st, scale);
+      }
+<span class="changed">!     if (free_blocks_num &gt; 0) {</span>
+        st-&gt;cr_indent();
+<span class="changed">!       st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", free_blocks_num);</span>
+<span class="changed">!       print_scaled_words(st, free_blocks_word_size, scale);</span>
+      }
+    } else {
+      totals().print_on(st, scale);
+      st-&gt;print(", ");
+<span class="changed">!     st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", free_blocks_num);</span>
+<span class="changed">!     print_scaled_words(st, free_blocks_word_size, scale);</span>
+    }
+  }
+  
+<span class="changed">! #ifdef ASSERT</span>
+  
+<span class="changed">! void sm_stats_t::verify() const {</span>
+<span class="changed">!   size_t total_used = 0;</span>
+<span class="changed">!   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {</span>
+<span class="changed">!     stats[l].verify();</span>
+<span class="changed">!     total_used += stats[l].used_words;</span>
+<span class="changed">!   }</span>
+<span class="changed">!   // Deallocated allocations still count as used</span>
+<span class="changed">!   assert(total_used &gt;= free_blocks_word_size,</span>
+<span class="changed">!          "Sanity");</span>
+  }
+<span class="new">+ #endif</span>
+  
+<span class="changed">! // ClassLoaderMetaspaceStatistics methods</span>
+  
+<span class="changed">! // Returns total space manager statistics for both class and non-class metaspace</span>
+<span class="changed">! sm_stats_t clms_stats_t::totals() const {</span>
+<span class="changed">!   sm_stats_t out;</span>
+<span class="changed">!   out.add(sm_stats_nonclass);</span>
+<span class="changed">!   out.add(sm_stats_class);</span>
+<span class="changed">!   return out;</span>
+  }
+  
+<span class="changed">! void clms_stats_t::print_on(outputStream* st, size_t scale, bool detailed) const {</span>
+    streamIndentor sti(st);
+    st-&gt;cr_indent();
+    if (Metaspace::using_class_space()) {
+      st-&gt;print("Non-Class: ");
+    }
+<span class="changed">!   sm_stats_nonclass.print_on(st, scale, detailed);</span>
+    if (detailed) {
+      st-&gt;cr();
+    }
+    if (Metaspace::using_class_space()) {
+      st-&gt;cr_indent();
+      st-&gt;print("    Class: ");
+<span class="changed">!     sm_stats_class.print_on(st, scale, detailed);</span>
+      if (detailed) {
+        st-&gt;cr();
+      }
+      st-&gt;cr_indent();
+      st-&gt;print("     Both: ");
+<hr /><span class="oldmarker">*** 268,276 ****</span>
+<span class="newmarker">--- 245,261 ----</span>
+      }
+    }
+    st-&gt;cr();
+  }
+  
+<span class="new">+ </span>
+<span class="new">+ #ifdef ASSERT</span>
+<span class="new">+ void clms_stats_t::verify() const {</span>
+<span class="new">+   sm_stats_nonclass.verify();</span>
+<span class="new">+   sm_stats_class.verify();</span>
+<span class="new">+ }</span>
+<span class="new">+ #endif</span>
+<span class="new">+ </span>
+  } // end namespace metaspace
+  
+  
+  
+</pre>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceStatistics.hpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

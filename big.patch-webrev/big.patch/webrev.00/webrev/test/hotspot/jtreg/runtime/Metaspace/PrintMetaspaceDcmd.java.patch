@@ -1,0 +1,39 @@
+--- old/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java	2020-07-16 14:21:37.328356090 +0200
++++ new/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java	2020-07-16 14:21:36.964354706 +0200
+@@ -87,10 +87,19 @@
+         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "by-chunktype"});
+         output = new OutputAnalyzer(pb.start());
+         output.shouldHaveExitValue(0);
+-        output.shouldContain("specialized:");
+-        output.shouldContain("small:");
+-        output.shouldContain("medium:");
+-        output.shouldContain("humongous:");
++        output.shouldContain("1k:");
++        output.shouldContain("2k:");
++        output.shouldContain("4k:");
++        output.shouldContain("8k:");
++        output.shouldContain("16k:");
++        output.shouldContain("32k:");
++        output.shouldContain("64k:");
++        output.shouldContain("128k:");
++        output.shouldContain("256k:");
++        output.shouldContain("512k:");
++        output.shouldContain("1m:");
++        output.shouldContain("2m:");
++        output.shouldContain("4m:");
+ 
+         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "vslist"});
+         output = new OutputAnalyzer(pb.start());
+@@ -98,12 +107,6 @@
+         output.shouldContain("Virtual space list");
+         output.shouldMatch("node.*reserved.*committed.*used.*");
+ 
+-        pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "vsmap"});
+-        output = new OutputAnalyzer(pb.start());
+-        output.shouldHaveExitValue(0);
+-        output.shouldContain("Virtual space map:");
+-        output.shouldContain("HHHHHHHHHHH");
+-
+         // Test with different scales
+         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=G"});
+         output = new OutputAnalyzer(pb.start());
