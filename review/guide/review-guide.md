@@ -27,8 +27,8 @@
             - [2.3.2.1. class Metachunk](#2321-class-metachunk)
                 - [2.3.2.1.1. Metachunk Memory](#23211-metachunk-memory)
                 - [2.3.2.1.2. Metachunk::allocate()](#23212-metachunkallocate)
-            - [2.3.2.2. class SpaceManager](#2322-class-spacemanager)
-                - [2.3.2.2.1. SpaceManager::allocate()](#23221-spacemanagerallocate)
+            - [2.3.2.2. class MetaspaceArena](#2322-class-metaspacearena)
+                - [2.3.2.2.1. MetaspaceArena::allocate()](#23221-metaspacearenaallocate)
                 - [2.3.2.2.2. Retiring chunks](#23222-retiring-chunks)
             - [2.3.2.3. class ClassLoaderMetaspace](#2323-class-classloadermetaspace)
                 - [2.3.2.3.1. class ArenaGrowthPolicy](#23231-class-arenagrowthpolicy)
@@ -39,26 +39,26 @@
         - [2.5.2. Counters](#252-counters)
         - [2.5.3. MetachunkList and MetachunkListVector](#253-metachunklist-and-metachunklistvector)
         - [2.5.4. Allocation guards](#254-allocation-guards)
-    - [2.6. Locking and concurrency](#26-locking-and-concurrency)
+    - [3. Locking and concurrency](#3-locking-and-concurrency)
 
 <!-- /TOC -->
 
 
 # 1. Preface
 
-Elastic Metaspace is a proposal for a rewrite of the Metaspace Subsystem.
+Elastic Metaspace is an ongoing rewrite of the Metaspace Subsystem. The corresponding proposal is [JEP 387](https://openjdk.java.net/jeps/387).
 
-This is a review guide and an architectural description of Elastic Metaspace. Its main intent is to make life easier for reviewers and to give an overview of the core mechanics.
+This document is both a review guide and an architectural description of the new metaspace.
 
 ## 1.1. Suggested reading
 
-The [JEP draft](https://openjdk.java.net/jeps/8221173) explains core concepts in greater detail.
+- The [JEP](https://openjdk.java.net/jeps/8221173) explains core concepts in greater detail.
 
-A very brief talk I gave at Fosdem 2020 about Metaspace both old and new: [Slides](https://www.slideshare.net/ThomasStuefe/taming-metaspace-a-look-at-the-machinery-and-a-proposal-for-a-better-one-fosdem-2020), [Recording](https://www.youtube.com/watch?v=XqaQ-z70sQs) .
+- A very brief talk we gave at Fosdem 2020 about Metaspace both old and new: [Slides](https://www.slideshare.net/ThomasStuefe/taming-metaspace-a-look-at-the-machinery-and-a-proposal-for-a-better-one-fosdem-2020), [Recording](https://www.youtube.com/watch?v=XqaQ-z70sQs) .
 
-A somewhat longer presentation I gave to Oracle employees in March 2020: [Slides](https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/pres/metaspace2.pdf) .
+- A presentation we gave in March 2020: [Slides](https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/pres/metaspace2.pdf) .
 
-A series of articles with a bit more depth describing the current Metaspace implementation: https://stuefe.de/posts/metaspace/what-is-metaspace .
+- A series of articles with a bit more depth describing the current Metaspace implementation: https://stuefe.de/posts/metaspace/what-is-metaspace .
 
 ## 1.2. Metaspace in three paragraphs or less
 
@@ -256,7 +256,7 @@ VirtualSpaceNode also knows about root chunks: the memory is divided into a seri
 
 ```
 
-One root chunk area can contain a root chunk or a number of smaller chunks. E.g. splitting off a 64K chunk from a 4M root chunk will split the chunk into: 2x64K, 1x128K, 1x256K, 1x512K, 1x1M, 1x2M. But note that the VirtulSpaceNode has no knowledge of this, nor does it care.
+One root chunk area can contain a root chunk or a number of smaller chunks. E.g. splitting off a 64K chunk from a 4M root chunk will split the chunk into: 2x64K, 1x128K, 1x256K, 1x512K, 1x1M, 1x2M. But note that the VirtualSpaceNode has no knowledge of this, nor does it care.
 
 Note that the concepts of commit granules and of root chunks and the buddy allocator are almost completely orthogonal; at this layer, they exist independently from each other.
 
@@ -315,7 +315,7 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
     `ChunkManager::return_chunk()`
 
-    Callers call this (typically a `SpaceManager` before its death) to hand down newly free chunks to the ChunkManager for safekeeping. ChunkManager will put them into the freelist. Before doing this, it will attempt to merge the chunks Buddy-Allocator style with its neighbors to arrive at larger chunks.
+    Callers call this (typically a `MetaspaceArena` before its death) to hand down newly free chunks to the ChunkManager for safekeeping. ChunkManager will put them into the freelist. Before doing this, it will attempt to merge the chunks Buddy-Allocator style with its neighbors to arrive at larger chunks.
 
     If, after merging with neighbors, the resulting free chunk surpasses a certain threshold, its memory is uncommitted.
 
@@ -328,7 +328,7 @@ It sits atop of the Virtual Memory Subsystem. If needed, it will request new roo
 
 Classes
 - ClassLoaderMetaspace
-- SpaceManager
+- MetaspaceArena
 - Metachunk
 - ArenaGrowthPolicy
 
@@ -374,7 +374,7 @@ Metachunk has a state:
 - _"free"_: A free chunk is not owned by anyone, but awaits re-use in the chunk manager freelist. Its memory
 - _"dead"_: A "dead" chunk is just an unused header, without payload.
 
-Metachunk always lives in a linked list - live chunks live in the in-use list of their SpaceManager, free chunks in the freelists of the ChunkManager, dead chunk headers live in the ChunkHeaderPool. Therefore `Metachunk` has a prev/next member.
+Metachunk always lives in a linked list - live chunks live in the in-use list of their MetaspaceArena, free chunks in the freelists of the ChunkManager, dead chunk headers live in the ChunkHeaderPool. Therefore `Metachunk` has a prev/next member.
 
 In order to easily do buddy style operations to a chunk (split and merge) it is needed to easily access the neighboring chunks in memory. Therefore `Metachunk` has also references to its lower and upper neighbors.
 
@@ -420,17 +420,17 @@ Note that a chunk knows nothing about granules beyond their size, as an alignmen
 
 `Metachunk::allocate()` is the central access to pointer bump allocation from a chunk. It takes care of on demand committing the underlying memory and moves the top pointer up.
 
-#### 2.3.2.2. class SpaceManager
+#### 2.3.2.2. class MetaspaceArena
 
-`SpaceManager` manages the in-use chunk list for a class loader.
+`MetaspaceArena` manages the in-use chunk list for a class loader.
 
-It has a current chunk, which is used to satisfy ongoing Metadata allocations. It also has a list of "retired" chunks, which are chunks which are completely or almost completely filled with Metadata. It safekeeps the chunks until the class loader dies and the `SpaceManager` is destroyed, to return them to the ChunkManager for reuse.
+It has a current chunk, which is used to satisfy ongoing Metadata allocations. It also has a list of "retired" chunks, which are chunks which are completely or almost completely filled with Metadata. It safekeeps the chunks until the class loader dies and the `MetaspaceArena` is destroyed, to return them to the ChunkManager for reuse.
 
 It also has a `FreeBlocks` object, which takes care about deallocated blocks - see _Deallocation Subsystem_ below for details.
 
-##### 2.3.2.2.1. SpaceManager::allocate()
+##### 2.3.2.2.1. MetaspaceArena::allocate()
 
-`SpaceManager::allocate()` is the central access point to allocate a piece of Metadata for a class loader. 
+`MetaspaceArena::allocate()` is the central access point to allocate a piece of Metadata for a class loader. 
 
 It will first attempt to take memory from the `FreeBlocks` structure (see below).
 
@@ -440,13 +440,13 @@ Failing that, it will employ various strategies to get more memory: it may try t
 
 ##### 2.3.2.2.2. Retiring chunks
 
-When the `SpaceManager` gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will acquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
+When the `MetaspaceArena` gets an allocation request and is unable to fulfill it from the current chunk, because the space left in the current chunk is too small, it will acquire a new chunk. However, we do not want to loose the remainder space in the current chunk.
 
 The remainder space is added to the `FreeBlocks` structure and managed the same way as space deallocated from the outside would - getting reused for later allocations as soon as possible.
 
 #### 2.3.2.3. class ClassLoaderMetaspace
 
-`ClassLoaderMetaspace` is just the connection between a CLD and one or two instances of SpaceManger - normally just one, but if `-XX:+UseCompressedClassPointers`, we need two SpaceManagers, one for class space allocations (to put Klass* structures), one for the rest.
+`ClassLoaderMetaspace` is just the connection between a CLD and one or two instances of SpaceManger - normally just one, but if `-XX:+UseCompressedClassPointers`, we need two MetaspaceArenas, one for class space allocations (to put Klass* structures), one for the rest.
 
 It also takes care of increasing the GC threshold when necessary.
 
@@ -456,13 +456,13 @@ Beyond that, it does not have a lot of own logic.
 
 `ArenaGrowthPolicy` encapsulates the logic of "how big a chunk do I give this class loader?".
 
-When a class loader allocates memory, we give it (via SpaceManager) a chunk to gnaw on, which should be fine for this requested allocation as well as a number of future allocations. The open question is how large that chunk should be. This is basically a guess toward the future loading behavior of this class loader.
+When a class loader allocates memory, we give it (via MetaspaceArena) a chunk to gnaw on, which should be fine for this requested allocation as well as a number of future allocations. The open question is how large that chunk should be. This is basically a guess toward the future loading behavior of this class loader.
 
-If we know the class loader will only load one or very few classes (e.g. Lambdas, Reflection glue code etc), it makes sense to give the `SpaceManager` a small chunk. If we know the loader may load a lot of classes (e.g. the Boot Class loader), we may want to give it a larger chunk.
+If we know the class loader will only load one or very few classes (e.g. Lambdas, Reflection glue code etc), it makes sense to give the `MetaspaceArena` a small chunk. If we know the loader may load a lot of classes (e.g. the Boot Class loader), we may want to give it a larger chunk.
 
 There is also the notion involved that a class loader "has to prove itself": a standard class loader which we know nothing else about will first be given a few small chunks until we give it larger chunks. How much sense this makes is questionable but as a strategy this seems to work reasonably well.
 
-This logic existed in old Metaspace too, in a somewhat convoluted fashion, see  `SpaceManager::get_initial_chunk_size()` and `SpaceManager::calc_chunk_size()`.
+This logic existed in old Metaspace too, in a somewhat convoluted fashion, see  `MetaspaceArena::get_initial_chunk_size()` and `MetaspaceArena::calc_chunk_size()`.
 
 In Elastic Metaspace, this logic lives in `ArenaGrowthPolicy`. This is basically just a fancy hard-coded array of chunk sizes marking the handout progression depending on how many chunks the loader already got. One of these arrays exist per use case.
 
@@ -490,7 +490,7 @@ Another example is when classes are redefined and the memory holding the old byt
 
 In all these cases we have to deal with premature deallocation. These are uncommon, usually rare cases (if they were not we would not use arenas). The caller returns the memory to the Metaspace via `Metaspace::deallocate()`.
 
-Metaspace will attempt to reuse these returned blocks. However, since the blocks are embedded into Metachunks which are in use by a live class loader, these blocks can only be reused by that class loader. Therefore, each class loader (as part of its SpaceManager) keeps a structure (`FreeBlocks`) to managed returned blocks. Normally this structure does not see much action, therefore it is only allocated on demand.
+Metaspace will attempt to reuse these returned blocks. However, since the blocks are embedded into Metachunks which are in use by a live class loader, these blocks can only be reused by that class loader. Therefore, each class loader (as part of its MetaspaceArena) keeps a structure (`FreeBlocks`) to managed returned blocks. Normally this structure does not see much action, therefore it is only allocated on demand.
 
 Note that this mechanism is also used to manage remainder space from almost-used-up blocks.
 
@@ -551,9 +551,9 @@ These classes live in counter.hpp:
 This is an optional feature controlled by `-XX:+MetaspaceGuardAllocations`. Normally off, if switched on it will add a fence after every Metaspace allocation, and test these fences in regular intervals (e.g. when a GC purges the Metaspace). This can be used to capture memory overwriters.
 
 
-## 2.6. Locking and concurrency
+## 3. Locking and concurrency
 
-Locking in Elastic Metaspace is simple, a two-step mechanism which is unchanged from the old Metaspace.
+Locking in Elastic Metaspace is a simple a two-step mechanism which is unchanged from the old Metaspace.
 
 There is locking at class loader level (`ClassLoaderData::_metaspace_lock`) which guards access to the `ClassLoaderMetaspace`. Ideally the brunt of Metaspace allocations should only need this lock. It guards the access to the current chunk and the pointer bump allocation done with it.
 
