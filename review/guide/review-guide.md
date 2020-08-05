@@ -2,7 +2,7 @@
 
 - [1. Preface](#1-preface)
     - [1.1. Suggested reading](#11-suggested-reading)
-    - [1.2. Metaspace in three paragraphs or less](#12-metaspace-in-three-paragraphs-or-less)
+    - [1.2. High Level Overview](#12-high-level-overview)
     - [1.3. Core Concepts](#13-core-concepts)
         - [1.3.1. Commit Granules](#131-commit-granules)
         - [1.3.2. The Buddy Style Allocator](#132-the-buddy-style-allocator)
@@ -60,11 +60,26 @@ This document is both a review guide and an architectural description of the new
 
 - A series of articles with a bit more depth describing the current Metaspace implementation: https://stuefe.de/posts/metaspace/what-is-metaspace .
 
-## 1.2. Metaspace in three paragraphs or less
+## 1.2. High Level Overview
 
 Metaspace is used to manage memory for Metadata. 
 
 It is in its core an [arena-based allocator](https://en.wikipedia.org/wiki/Region-based_memory_management): Metadata lifetime is typically scoped to that of the loading classloaders of their classes. Unloading a class loader will make all classes collectible, which will in turn release all their Metadata in one go. Hence we have a burst free scenario which lends itself nicely to an arena based allocation scheme.
+
+At a very high level:
+
+Each CLD which ever allocated Metaspace owns a **MetaspaceArena**. From that Arena it allocates via pointer bump (cheap). When the CLD goes away (its loader got collected), the arena gets deleted and its memory returned to the allocator.
+
+Each MetaspaceArena references a global **MetaspaceContext**. A MetaspaceContext manages the underlying memory: reserving and committing memory range(s), carving it into chunks and handing out chunks. It also takes care of managing free chunks from deceiced arenas.
+
+All this is true if compressed class pointers are disabled and we have no compressed class space:
+
+![High Level Overview, compressed class space disabled](./highlevel-overview-no-ccs.svg "High Level Overview, compressed class space disabled")
+
+If compressed class pointers are enabled, we have a compressed class space, and now need two global MetaspaceContext's: one holding allocations of Klass structures (the "compressed class space"), one holding everything else (the "non-class" metaspace). Each CLD also has two arenas to manages these different memory allocations:
+
+![High Level Overview, compressed class space enabled](./highlevel-overview-ccs.svg "High Level Overview, compressed class space enabled")
+
 
 ## 1.3. Core Concepts
 
@@ -364,6 +379,16 @@ It offers fine granular allocation to the caller. A caller needing 240 bytes for
 
 Metachunk wraps one chunk - be it a root chunk of 4M or a small chunk of 1K.
 
+It has a used portion, an unused-but-committed portion and an unused-uncommitted portion:
+
+![Large Metachunk](./metachunk-large.svg "Large Metachunk")
+
+... unless it is smaller or equal to a commit granule, in which case it can only be wholly committed or wholly uncommitted:
+
+![Small Metachunk](./metachunk-small.svg "Small Metachunk")
+
+
+
 MetaChunk and its payload area are disjunct. In the old Metaspace, `Metachunk` was a header, followed by the chunk payload. Elastic Metaspace separates those two, removing the headers from the payload and from Metaspace altogether. For details, see `class ChunkPoolHeader` below.
 
 Metachunk knows its chunk memory area (base address and size aka level). It also knows the underlying`VirtualSpaceNode`whose address range the payload resides in. This is needed since it takes care of committing portions of itself on demand.
@@ -407,6 +432,7 @@ base                           used_words          committed_words    end.
 ```
 
 So, space below committed_words is guaranteed to be committed; beyond that `Metachunk` has to make sure by bothering `VirtualSpaceNode`.
+
 
 -------------
 
