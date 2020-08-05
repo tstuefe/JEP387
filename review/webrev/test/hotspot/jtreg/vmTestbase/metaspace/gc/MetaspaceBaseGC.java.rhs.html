@@ -1,0 +1,479 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60448">60448</a> : imported patch jep387-all.patch</pre><hr></hr>
+<pre>
+   1 /*
+   2  * Copyright (c) 2013, 2018, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  */
+  23 
+  24 package metaspace.gc;
+  25 
+  26 import java.io.IOException;
+  27 import java.lang.management.ManagementFactory;
+  28 import java.lang.management.MemoryPoolMXBean;
+  29 import java.lang.management.MemoryUsage;
+  30 import java.lang.reflect.Field;
+  31 import java.lang.reflect.InvocationHandler;
+  32 import java.lang.reflect.Method;
+  33 import java.lang.reflect.Proxy;
+  34 import java.net.URL;
+  35 import java.net.URLClassLoader;
+  36 import java.nio.file.Files;
+  37 import java.nio.file.Paths;
+  38 import java.util.HashMap;
+  39 import java.util.HashSet;
+  40 import java.util.List;
+  41 import java.util.Map;
+  42 import java.util.Set;
+  43 import jdk.internal.misc.Unsafe;
+  44 
+  45 /**
+  46  * Test that checks how GC works with Metaspace and "Compared Class Space".
+  47  *
+  48  * It comprises 3 test cases:
+  49  * &lt;ul&gt;
+  50  * &lt;li&gt;testcase1 - checks that used/committed memory doesn't grow
+  51  * when gc is invoked&lt;/li&gt;
+  52  * &lt;li&gt;testcase2 - checks that gc is invoked when the class metadata  u
+  53  * sage reaches MetaspaceSize&lt;/li&gt;
+  54  * &lt;li&gt;testcase3 - checks used/committed grow, inspite of gc is invoked&lt;/li&gt;
+  55  * &lt;/ul&gt;
+  56  *
+  57  * It's supposed that this class will be executed with various setting of VM
+  58  * flags. Via execute args it's possible to say which test cases to run and
+  59  * what space to test: Metaspace or Compared Class Space.
+  60  */
+  61 public abstract class MetaspaceBaseGC {
+  62 
+  63     // storage of loaded classes
+  64     private final Map&lt;String, MetaspaceBaseGC.Foo&gt; loadedClasses = new HashMap&lt;&gt;();
+  65     private static int counter = 0;
+  66 
+  67     // pool to test
+  68     protected MemoryPoolMXBean pool = null;
+  69 
+  70     // memory page size
+  71     protected static final long PAGE_SIZE = detectPageSize();
+  72 
+  73     // true when PAGE_SIZE is large and
+  74     protected boolean useLargepages = false;
+  75 
+  76     // where the log will be saved
+  77     protected String gclogFileName = null;
+  78 
+  79     protected final Set&lt;String&gt; vmArgs = new HashSet&lt;&gt;();
+  80 
+  81     protected abstract void parseArgs(String args[]);
+  82     protected abstract String getPoolName();
+  83     protected abstract void doCheck();
+  84 
+  85     public final void run(String args[]) {
+  86         configure(args);
+  87         if (pool == null) {
+  88             System.out.println("%%% Cannot pull the pool, most likely 32-bits only");
+  89             return;
+  90         }
+  91         System.out.println("%%% Working with " + getPoolName());
+  92         for (String vmA: vmArgs) {
+  93             if (vmA.contains("Metaspace") || vmA.contains("Compressed")) {
+  94                 System.out.println("%  " + vmA);
+  95             }
+  96         }
+  97         doCheck();
+  98         System.out.println("% Test passed.");
+  99     }
+ 100 
+ 101 
+ 102     protected void configure(String args[]) {
+ 103         vmArgs.addAll(ManagementFactory.getRuntimeMXBean().getInputArguments());
+<a name="1" id="anc1"></a>
+ 104 
+ 105         System.out.println(vmArgs);
+ 106 
+ 107         pool = getMemoryPool(getPoolName());
+ 108         if (pool == null) {
+ 109             return; // nothing to check
+ 110         }
+ 111         for (String arg: vmArgs) {
+ 112             if (arg.startsWith("-Xlog:gc") &amp;&amp; arg.length() &gt; 8) {
+ 113                gclogFileName = arg.substring(arg.lastIndexOf(':') + 1);
+ 114             }
+ 115         }
+ 116         parseArgs(args);
+ 117     }
+ 118 
+ 119 
+ 120     /**
+ 121      * Imitates class loading.
+ 122      * Each invocation of this method causes a new class loader object is created
+ 123      * and a new class is loaded by this class loader.
+ 124      * Method throws OOM when run out of memory.
+ 125      *
+ 126      * @param times how many classes to load
+ 127      * @param keepRefs true, if references to created classes should be stored
+ 128      */
+ 129     protected void loadNewClasses(int times, boolean keepRefs) {
+ 130         for (int i = 0; i &lt; times; i++) {
+ 131             try {
+ 132                 String jarUrl = "file:" + counter + ".jar";
+ 133                 counter++;
+ 134                 URL[] urls = new URL[]{new URL(jarUrl)};
+ 135                 URLClassLoader cl = new URLClassLoader(urls);
+ 136                 MetaspaceBaseGC.Foo foo = (MetaspaceBaseGC.Foo) Proxy.newProxyInstance(cl,
+ 137                         new Class[]{MetaspaceBaseGC.Foo.class},
+ 138                         new MetaspaceBaseGC.FooInvocationHandler(new MetaspaceBaseGC.FooBar()));
+ 139                 if (keepRefs) {
+ 140                     loadedClasses.put(jarUrl, foo);
+ 141                 }
+ 142             } catch (java.net.MalformedURLException badThing) {
+ 143                 // should never occur
+ 144                 System.err.println("Unexpeted error: " + badThing);
+ 145                 throw new RuntimeException(badThing);
+ 146             }
+ 147         }
+ 148 
+ 149     }
+ 150 
+ 151     /**
+ 152      * Cleans references to loaded classes.
+ 153      */
+ 154     protected void cleanLoadedClasses() {
+ 155         loadedClasses.clear();
+ 156     }
+ 157 
+ 158     /**
+ 159      * Invokes System.gc() and sleeps a little.
+ 160      */
+ 161     protected void gc() {
+ 162         System.gc();
+ 163         try {
+ 164             Thread.currentThread().sleep(500);
+ 165         } catch (Exception whatever) {
+ 166         }
+ 167     }
+ 168 
+ 169     /**
+ 170      * Reads gc.log file and returns it as a list of lines.
+ 171      * It's supposed that the test is executed with -Xlog:gc:gc.log option.
+ 172      *
+ 173      * @return List of strings the gc.log file is comprised.
+ 174      * @throws IOException if problem occurred while reading.
+ 175      */
+ 176     protected List&lt;String&gt; readGCLog() throws IOException {
+ 177         return Files.readAllLines(Paths.get(".", gclogFileName));
+ 178     }
+ 179 
+ 180     /**
+ 181      * Reads gc.log file and counts GC induced by metaspace.
+ 182      * @return how many times GC induced by metaspace has occurred.
+ 183      */
+ 184     protected int getMetaspaceGCCount() {
+ 185         int count = 0;
+ 186         try {
+ 187             for (String line: readGCLog()) {
+ 188                 if (line.indexOf("Metadata GC ") &gt; 0) {
+ 189                     count++;
+ 190                 }
+ 191             }
+ 192             return count;
+ 193         } catch (Throwable t) {
+ 194             t.printStackTrace(System.err);
+ 195             return -1;
+ 196         }
+ 197     }
+ 198 
+ 199     protected String lastGCLogLine() {
+ 200         if (gclogFileName == null) {
+ 201             return "";
+ 202         }
+ 203         try {
+ 204             List&lt;String&gt; list = Files.readAllLines(Paths.get(".", gclogFileName));
+ 205             return list.get(list.size() - 1);
+ 206         } catch (IOException e) {
+ 207             return "File not found";
+ 208         }
+ 209     }
+ 210 
+ 211     /**
+ 212      * Does it best to checks if the last GC was caused by metaspace.
+ 213      *
+ 214      * This method looks into gc.log file (if -Xloggc:file is given) and returns
+ 215      * true if the last line in the log contains the "Metadata" word.
+ 216      * It's not very reliable way to check, log might not be flushed yet.
+ 217      *
+ 218      * @return
+ 219      */
+ 220     protected boolean isMetaspaceGC() {
+ 221         return lastGCLogLine().contains("Metadata");
+ 222     }
+ 223 
+ 224     /**
+ 225      * Prints amounts of used and committed metaspace preceeded by the message
+ 226      * @param mesg a message to printed prior usages
+ 227      */
+ 228     protected void printMemoryUsage(String mesg) {
+ 229         MemoryUsage mu = pool.getUsage();
+ 230         printMemoryUsage(mesg, mu.getUsed(), mu.getCommitted());
+ 231     }
+ 232     protected void printMemoryUsage(String mesg, long v1, long v2) {
+ 233         System.out.println(mesg + ": " + bytes2k(v1) + "   :   " + bytes2k(v2));
+ 234     }
+ 235     protected String bytes2k(long v) {
+ 236         return (v / 1024) + "k";
+ 237     }
+ 238 
+ 239 
+ 240 
+ 241     /**
+ 242      * @return amount of used memory
+ 243      */
+ 244     public long getUsed() {
+ 245         return pool.getUsage().getUsed();
+ 246     }
+ 247 
+ 248     /**
+ 249      * @return amount of committed memory
+ 250      */
+ 251     public long getCommitted() {
+ 252         return pool.getUsage().getCommitted();
+ 253     }
+ 254 
+ 255     private static MemoryPoolMXBean getMemoryPool(String name) {
+ 256         List&lt;MemoryPoolMXBean&gt; pools = ManagementFactory.getMemoryPoolMXBeans();
+ 257         for (MemoryPoolMXBean pool : pools) {
+ 258             if (pool.getName().equals(name)) {
+ 259                 return pool;
+ 260             }
+ 261         }
+ 262         return null;
+ 263     }
+ 264 
+ 265     private static long detectPageSize() {
+ 266         try {
+ 267             Unsafe unsafe = Unsafe.getUnsafe();
+ 268 
+ 269             int pageSize = unsafe.pageSize();
+ 270             System.out.println("Page size: " + pageSize);
+ 271             return pageSize;
+ 272         } catch (Exception e) {
+ 273             throw new Fault("Cannot detect page size");
+ 274         }
+ 275     }
+ 276 
+ 277 
+ 278     long parseValue(String s) {
+ 279         s = s.toLowerCase();
+ 280         int multiplier = 1;
+ 281         switch (s.charAt(s.length() - 1)) {
+ 282             case 'g': multiplier = 1024*1024*1024; break;
+ 283             case 'm': multiplier = 1024*1024; break;
+ 284             case 'k': multiplier = 1024; break;
+ 285         }
+ 286         if (multiplier == 1) {
+ 287             return Long.parseLong(s);
+ 288         } else {
+ 289             return Long.parseLong(s.substring(0, s.length() - 1)) * multiplier;
+ 290         }
+ 291     }
+ 292 
+ 293     public static interface Foo {
+ 294     }
+ 295 
+ 296     public static class FooBar implements Foo {
+ 297     }
+ 298 
+ 299     class FooInvocationHandler implements InvocationHandler {
+ 300         private final Foo foo;
+ 301 
+ 302         FooInvocationHandler(MetaspaceBaseGC.Foo foo) {
+ 303             this.foo = foo;
+ 304         }
+ 305 
+ 306         @Override
+ 307         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+ 308             return method.invoke(foo, args);
+ 309         }
+ 310     }
+ 311 
+ 312 }
+<a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="2" type="hidden" /></form></body></html>

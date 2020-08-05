@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Udiff src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp</title>
+
+<style type="text/css" media="screen">
+span.new {
+    color: blue;
+    font-weight: normal;
+}
+</style>
+
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceCommon.hpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp.udiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60448">60448</a> : imported patch jep387-all.patch</pre>
+        <pre>
+</pre><hr /><pre>
+<span class="newmarker">@@ -1,8 +1,8 @@</span>
+ /*
+<span class="removed">- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="removed">- * Copyright (c) 2018, SAP and/or its affiliates.</span>
+<span class="new">+ * Copyright (c) 2018, 2019 SAP and/or its affiliates.</span>
+<span class="new">+ * Copyright (c) 2018, 2019 Oracle and/or its affiliates. All rights reserved.</span>
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+  * under the terms of the GNU General Public License version 2 only, as
+  * published by the Free Software Foundation.
+</pre><hr /><pre>
+<span class="newmarker">@@ -21,11 +21,11 @@</span>
+  * or visit www.oracle.com if you need additional information or have any
+  * questions.
+  *
+  */
+ #include "precompiled.hpp"
+<span class="removed">-#include "memory/metaspace.hpp"</span>
+<span class="new">+#include "memory/metaspace/metaspaceReport.hpp"</span>
+ #include "memory/metaspace/metaspaceDCmd.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "services/diagnosticCommand.hpp"
+ #include "services/nmtCommon.hpp"
+ 
+</pre><hr /><pre>
+<span class="newmarker">@@ -36,11 +36,10 @@</span>
+   , _basic("basic", "Prints a basic summary (does not need a safepoint).", "BOOLEAN", false, "false")
+   , _show_loaders("show-loaders", "Shows usage by class loader.", "BOOLEAN", false, "false")
+   , _by_spacetype("by-spacetype", "Break down numbers by loader type.", "BOOLEAN", false, "false")
+   , _by_chunktype("by-chunktype", "Break down numbers by chunk type.", "BOOLEAN", false, "false")
+   , _show_vslist("vslist", "Shows details about the underlying virtual space.", "BOOLEAN", false, "false")
+<span class="removed">-  , _show_vsmap("vsmap", "Shows chunk composition of the underlying virtual spaces", "BOOLEAN", false, "false")</span>
+   , _scale("scale", "Memory usage in which to scale. Valid values are: 1, KB, MB or GB (fixed scale) "
+            "or \"dynamic\" for a dynamically choosen scale.",
+            "STRING", false, "dynamic")
+   , _show_classes("show-classes", "If show-loaders is set, shows loaded classes for each loader.", "BOOLEAN", false, "false")
+ {
+</pre><hr /><pre>
+<span class="newmarker">@@ -48,11 +47,10 @@</span>
+   _dcmdparser.add_dcmd_option(&amp;_show_loaders);
+   _dcmdparser.add_dcmd_option(&amp;_show_classes);
+   _dcmdparser.add_dcmd_option(&amp;_by_chunktype);
+   _dcmdparser.add_dcmd_option(&amp;_by_spacetype);
+   _dcmdparser.add_dcmd_option(&amp;_show_vslist);
+<span class="removed">-  _dcmdparser.add_dcmd_option(&amp;_show_vsmap);</span>
+   _dcmdparser.add_dcmd_option(&amp;_scale);
+ }
+ 
+ int MetaspaceDCmd::num_arguments() {
+   ResourceMark rm;
+</pre><hr /><pre>
+<span class="newmarker">@@ -79,24 +77,23 @@</span>
+       }
+     }
+   }
+   if (_basic.value() == true) {
+     if (_show_loaders.value() || _by_chunktype.value() || _by_spacetype.value() ||
+<span class="removed">-        _show_vslist.value() || _show_vsmap.value()) {</span>
+<span class="new">+        _show_vslist.value()) {</span>
+       // Basic mode. Just print essentials. Does not need to be at a safepoint.
+       output()-&gt;print_cr("In basic mode, additional arguments are ignored.");
+     }
+     MetaspaceUtils::print_basic_report(output(), scale);
+   } else {
+     // Full mode. Requires safepoint.
+     int flags = 0;
+<span class="removed">-    if (_show_loaders.value())         flags |= MetaspaceUtils::rf_show_loaders;</span>
+<span class="removed">-    if (_show_classes.value())         flags |= MetaspaceUtils::rf_show_classes;</span>
+<span class="removed">-    if (_by_chunktype.value())         flags |= MetaspaceUtils::rf_break_down_by_chunktype;</span>
+<span class="removed">-    if (_by_spacetype.value())         flags |= MetaspaceUtils::rf_break_down_by_spacetype;</span>
+<span class="removed">-    if (_show_vslist.value())          flags |= MetaspaceUtils::rf_show_vslist;</span>
+<span class="removed">-    if (_show_vsmap.value())           flags |= MetaspaceUtils::rf_show_vsmap;</span>
+<span class="new">+    if (_show_loaders.value())         flags |= MetaspaceReporter::rf_show_loaders;</span>
+<span class="new">+    if (_show_classes.value())         flags |= MetaspaceReporter::rf_show_classes;</span>
+<span class="new">+    if (_by_chunktype.value())         flags |= MetaspaceReporter::rf_break_down_by_chunktype;</span>
+<span class="new">+    if (_by_spacetype.value())         flags |= MetaspaceReporter::rf_break_down_by_spacetype;</span>
+<span class="new">+    if (_show_vslist.value())          flags |= MetaspaceReporter::rf_show_vslist;</span>
+     VM_PrintMetadata op(output(), scale, flags);
+     VMThread::execute(&amp;op);
+   }
+ }
+ 
+</pre>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceCommon.hpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp.udiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

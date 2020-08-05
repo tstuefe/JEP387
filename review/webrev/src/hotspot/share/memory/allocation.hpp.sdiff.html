@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/jvmci/jvmciCompilerToVM.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/filemap.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/allocation.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60448">60448</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+ 125   f(mtGC,             "GC")                                                          \
+ 126   f(mtCompiler,       "Compiler")                                                    \
+ 127   f(mtJVMCI,          "JVMCI")                                                       \
+ 128   f(mtInternal,       "Internal")    /* memory used by VM, but does not belong to */ \
+ 129                                      /* any of above categories, and not used by  */ \
+ 130                                      /* NMT                                       */ \
+ 131   f(mtOther,          "Other")       /* memory not used by VM                     */ \
+ 132   f(mtSymbol,         "Symbol")                                                      \
+ 133   f(mtNMT,            "Native Memory Tracking")  /* memory used by NMT            */ \
+ 134   f(mtClassShared,    "Shared class space")      /* class data sharing            */ \
+ 135   f(mtChunk,          "Arena Chunk") /* chunk that holds content of arenas        */ \
+ 136   f(mtTest,           "Test")        /* Test type for verifying NMT               */ \
+ 137   f(mtTracing,        "Tracing")                                                     \
+ 138   f(mtLogging,        "Logging")                                                     \
+ 139   f(mtStatistics,     "Statistics")                                                  \
+ 140   f(mtArguments,      "Arguments")                                                   \
+ 141   f(mtModule,         "Module")                                                      \
+ 142   f(mtSafepoint,      "Safepoint")                                                   \
+ 143   f(mtSynchronizer,   "Synchronization")                                             \
+ 144   f(mtServiceability, "Serviceability")                                              \
+
+ 145   f(mtNone,           "Unknown")                                                     \
+ 146   //end
+ 147 
+ 148 #define MEMORY_TYPE_DECLARE_ENUM(type, human_readable) \
+ 149   type,
+ 150 
+ 151 /*
+ 152  * Memory types
+ 153  */
+ 154 enum MemoryType {
+ 155   MEMORY_TYPES_DO(MEMORY_TYPE_DECLARE_ENUM)
+ 156   mt_number_of_types   // number of memory types (mtDontTrack
+ 157                        // is not included as validate type)
+ 158 };
+ 159 
+ 160 typedef MemoryType MEMFLAGS;
+ 161 
+ 162 
+ 163 #if INCLUDE_NMT
+ 164 
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+ 125   f(mtGC,             "GC")                                                          \
+ 126   f(mtCompiler,       "Compiler")                                                    \
+ 127   f(mtJVMCI,          "JVMCI")                                                       \
+ 128   f(mtInternal,       "Internal")    /* memory used by VM, but does not belong to */ \
+ 129                                      /* any of above categories, and not used by  */ \
+ 130                                      /* NMT                                       */ \
+ 131   f(mtOther,          "Other")       /* memory not used by VM                     */ \
+ 132   f(mtSymbol,         "Symbol")                                                      \
+ 133   f(mtNMT,            "Native Memory Tracking")  /* memory used by NMT            */ \
+ 134   f(mtClassShared,    "Shared class space")      /* class data sharing            */ \
+ 135   f(mtChunk,          "Arena Chunk") /* chunk that holds content of arenas        */ \
+ 136   f(mtTest,           "Test")        /* Test type for verifying NMT               */ \
+ 137   f(mtTracing,        "Tracing")                                                     \
+ 138   f(mtLogging,        "Logging")                                                     \
+ 139   f(mtStatistics,     "Statistics")                                                  \
+ 140   f(mtArguments,      "Arguments")                                                   \
+ 141   f(mtModule,         "Module")                                                      \
+ 142   f(mtSafepoint,      "Safepoint")                                                   \
+ 143   f(mtSynchronizer,   "Synchronization")                                             \
+ 144   f(mtServiceability, "Serviceability")                                              \
+<span class="new"> 145   f(mtMetaspace,      "Metaspace")                                                   \</span>
+ 146   f(mtNone,           "Unknown")                                                     \
+ 147   //end
+ 148 
+ 149 #define MEMORY_TYPE_DECLARE_ENUM(type, human_readable) \
+ 150   type,
+ 151 
+ 152 /*
+ 153  * Memory types
+ 154  */
+ 155 enum MemoryType {
+ 156   MEMORY_TYPES_DO(MEMORY_TYPE_DECLARE_ENUM)
+ 157   mt_number_of_types   // number of memory types (mtDontTrack
+ 158                        // is not included as validate type)
+ 159 };
+ 160 
+ 161 typedef MemoryType MEMFLAGS;
+ 162 
+ 163 
+ 164 #if INCLUDE_NMT
+ 165 
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/jvmci/jvmciCompilerToVM.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/filemap.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

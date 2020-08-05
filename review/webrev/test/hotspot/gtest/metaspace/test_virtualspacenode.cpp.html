@@ -1,0 +1,672 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/test_virtualspacenode.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  */
+  24 
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28  #define LOG_PLEASE
+  29 
+  30 #include "metaspace/metaspaceTestsCommon.hpp"
+  31 #include "metaspace/metaspace_rangehelpers.hpp"
+  32 
+  33 static int test_node_id = 100000; // start high to make it stick out in logs.
+  34 
+  35 
+  36 
+  37 class VirtualSpaceNodeTest {
+  38 
+  39   // These counters are updated by the Node.
+  40   SizeCounter _counter_reserved_words;
+  41   SizeCounter _counter_committed_words;
+  42   CommitLimiter _commit_limiter;
+  43   VirtualSpaceNode* _node;
+  44 
+  45   // These are my checks and counters.
+  46   const size_t _vs_word_size;
+  47   const size_t _commit_limit;
+  48 
+  49   MetachunkList _root_chunks;
+  50 
+  51   void verify() const {
+  52 
+  53     ASSERT_EQ(_root_chunks.count() * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+  54               _node-&gt;used_words());
+  55 
+  56     ASSERT_GE(_commit_limit,                      _counter_committed_words.get());
+  57     ASSERT_EQ(_commit_limiter.committed_words(),  _counter_committed_words.get());
+  58 
+  59     // Since we know _counter_committed_words serves our single node alone, the counter has to
+  60     // match the number of bits in the node internal commit mask.
+  61     ASSERT_EQ(_counter_committed_words.get(), _node-&gt;committed_words());
+  62 
+  63     ASSERT_EQ(_counter_reserved_words.get(), _vs_word_size);
+  64     ASSERT_EQ(_counter_reserved_words.get(), _node-&gt;word_size());
+  65 
+  66   }
+  67 
+  68   void lock_and_verify_node() {
+  69 #ifdef ASSERT
+  70     MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+  71     _node-&gt;verify_locked(true);
+  72 #endif
+  73   }
+  74 
+  75   Metachunk* alloc_root_chunk() {
+  76 
+  77     verify();
+  78 
+  79     const bool node_is_full = _node-&gt;used_words() == _node-&gt;word_size();
+  80     bool may_hit_commit_limit = _commit_limiter.possible_expansion_words() &lt; MAX_CHUNK_WORD_SIZE;
+  81     Metachunk* c = NULL;
+  82     {
+  83       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+  84       c = _node-&gt;allocate_root_chunk();
+  85     }
+  86 
+  87     lock_and_verify_node();
+  88 
+  89     if (node_is_full) {
+  90 
+  91       EXPECT_NULL(c);
+  92 
+  93     } else {
+  94 
+  95       DEBUG_ONLY(c-&gt;verify(true);)
+  96       EXPECT_NOT_NULL(c);
+  97       EXPECT_TRUE(c-&gt;is_root_chunk());
+  98       EXPECT_TRUE(c-&gt;is_free());
+  99       EXPECT_EQ(c-&gt;word_size(), metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+ 100 
+ 101       if (!may_hit_commit_limit) {
+ 102         if (Settings::newborn_root_chunks_are_fully_committed()) {
+ 103           EXPECT_TRUE(c-&gt;is_fully_committed());
+ 104         } else {
+ 105           EXPECT_TRUE(c-&gt;is_fully_uncommitted());
+ 106         }
+ 107       }
+ 108 
+ 109       EXPECT_TRUE(_node-&gt;contains(c-&gt;base()));
+ 110 
+ 111       _root_chunks.add(c);
+ 112 
+ 113     }
+ 114 
+ 115     verify();
+ 116 
+ 117     return c;
+ 118 
+ 119   }
+ 120 
+ 121   bool commit_root_chunk(Metachunk* c, size_t request_commit_words) {
+ 122 
+ 123     verify();
+ 124 
+ 125     const size_t committed_words_before = _counter_committed_words.get();
+ 126 
+ 127     bool rc = c-&gt;ensure_committed(request_commit_words);
+ 128 
+ 129     verify();
+ 130     DEBUG_ONLY(c-&gt;verify(true);)
+ 131 
+ 132     lock_and_verify_node();
+ 133 
+ 134     if (rc == false) {
+ 135 
+ 136       // We must have hit the commit limit.
+ 137       EXPECT_GE(committed_words_before + request_commit_words, _commit_limit);
+ 138 
+ 139     } else {
+ 140 
+ 141       // We should not have hit the commit limit.
+ 142       EXPECT_LE(_counter_committed_words.get(), _commit_limit);
+ 143 
+ 144       // We do not know how much we really committed - maybe nothing if the
+ 145       // chunk had been committed before - but we know the numbers should have
+ 146       // risen or at least stayed equal.
+ 147       EXPECT_GE(_counter_committed_words.get(), committed_words_before);
+ 148 
+ 149       // The chunk should be as far committed as was requested
+ 150       EXPECT_GE(c-&gt;committed_words(), request_commit_words);
+ 151 
+ 152       // Zap committed portion.
+ 153       DEBUG_ONLY(zap_range(c-&gt;base(), c-&gt;committed_words());)
+ 154 
+ 155     }
+ 156 
+ 157     verify();
+ 158 
+ 159     return rc;
+ 160 
+ 161   } // commit_root_chunk
+ 162 
+ 163   void uncommit_chunk(Metachunk* c) {
+ 164 
+ 165     verify();
+ 166 
+ 167     const size_t committed_words_before = _counter_committed_words.get();
+ 168     const size_t available_words_before = _commit_limiter.possible_expansion_words();
+ 169 
+ 170     c-&gt;uncommit();
+ 171 
+ 172     DEBUG_ONLY(c-&gt;verify(true);)
+ 173 
+ 174     lock_and_verify_node();
+ 175 
+ 176     EXPECT_EQ(c-&gt;committed_words(), (size_t)0);
+ 177 
+ 178     // Commit counter should have gone down (by exactly the size of the chunk) if chunk
+ 179     // is larger than a commit granule.
+ 180     // For smaller chunks, we do not know, but at least we know the commit size should not
+ 181     // have gone up.
+ 182     if (c-&gt;word_size() &gt;= Settings::commit_granule_words()) {
+ 183 
+ 184       EXPECT_EQ(_counter_committed_words.get(), committed_words_before - c-&gt;word_size());
+ 185 
+ 186       // also, commit number in commit limiter should have gone down, so we have more space
+ 187       EXPECT_EQ(_commit_limiter.possible_expansion_words(),
+ 188                 available_words_before + c-&gt;word_size());
+ 189 
+ 190     } else {
+ 191 
+ 192       EXPECT_LE(_counter_committed_words.get(), committed_words_before);
+ 193 
+ 194     }
+ 195 
+ 196     verify();
+ 197 
+ 198   } // uncommit_chunk
+ 199 
+ 200   Metachunk* split_chunk_with_checks(Metachunk* c, chunklevel_t target_level, FreeChunkListVector* freelist) {
+ 201 
+ 202     DEBUG_ONLY(c-&gt;verify(true);)
+ 203 
+ 204     const chunklevel_t orig_level = c-&gt;level();
+ 205     assert(orig_level &lt; target_level, "Sanity");
+ 206     DEBUG_ONLY(metaspace::chunklevel::check_valid_level(target_level);)
+ 207 
+ 208     const int total_num_chunks_in_freelist_before = freelist-&gt;num_chunks();
+ 209     const size_t total_word_size_in_freelist_before = freelist-&gt;word_size();
+ 210 
+ 211    // freelist-&gt;print_on(tty);
+ 212 
+ 213     // Split...
+ 214     {
+ 215       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 216       _node-&gt;split(target_level, c, freelist);
+ 217     }
+ 218 
+ 219     // freelist-&gt;print_on(tty);
+ 220 
+ 221     EXPECT_NOT_NULL(c);
+ 222     EXPECT_EQ(c-&gt;level(), target_level);
+ 223     EXPECT_TRUE(c-&gt;is_free());
+ 224 
+ 225     // ... check that we get the proper amount of splinters. For every chunk split we expect one
+ 226     // buddy chunk to appear of level + 1 (aka, half size).
+ 227     size_t expected_wordsize_increase = 0;
+ 228     int expected_num_chunks_increase = 0;
+ 229     for (chunklevel_t l = orig_level + 1; l &lt;= target_level; l ++) {
+ 230       expected_wordsize_increase += metaspace::chunklevel::word_size_for_level(l);
+ 231       expected_num_chunks_increase ++;
+ 232     }
+ 233 
+ 234     const int total_num_chunks_in_freelist_after = freelist-&gt;num_chunks();
+ 235     const size_t total_word_size_in_freelist_after = freelist-&gt;word_size();
+ 236 
+ 237     EXPECT_EQ(total_num_chunks_in_freelist_after, total_num_chunks_in_freelist_before + expected_num_chunks_increase);
+ 238     EXPECT_EQ(total_word_size_in_freelist_after, total_word_size_in_freelist_before + expected_wordsize_increase);
+ 239 
+ 240     return c;
+ 241 
+ 242   } // end: split_chunk_with_checks
+ 243 
+ 244 
+ 245   Metachunk* merge_chunk_with_checks(Metachunk* c, chunklevel_t expected_target_level, FreeChunkListVector* freelist) {
+ 246 
+ 247     const chunklevel_t orig_level = c-&gt;level();
+ 248     assert(expected_target_level &lt; orig_level, "Sanity");
+ 249 
+ 250     const int total_num_chunks_in_freelist_before = freelist-&gt;num_chunks();
+ 251     const size_t total_word_size_in_freelist_before = freelist-&gt;word_size();
+ 252 
+ 253     //freelist-&gt;print_on(tty);
+ 254 
+ 255     Metachunk* result = NULL;
+ 256     {
+ 257       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 258       result = _node-&gt;merge(c, freelist);
+ 259     }
+ 260     EXPECT_NOT_NULL(result);
+ 261     EXPECT_TRUE(result-&gt;level() == expected_target_level);
+ 262 
+ 263     //freelist-&gt;print_on(tty);
+ 264 
+ 265     // ... check that we merged in the proper amount of chunks. For every decreased level
+ 266     // of the original chunk (each size doubling) we should see one buddy chunk swallowed up.
+ 267     size_t expected_wordsize_decrease = 0;
+ 268     int expected_num_chunks_decrease = 0;
+ 269     for (chunklevel_t l = orig_level; l &gt; expected_target_level; l --) {
+ 270       expected_wordsize_decrease += metaspace::chunklevel::word_size_for_level(l);
+ 271       expected_num_chunks_decrease ++;
+ 272     }
+ 273 
+ 274     const int total_num_chunks_in_freelist_after = freelist-&gt;num_chunks();
+ 275     const size_t total_word_size_in_freelist_after = freelist-&gt;word_size();
+ 276 
+ 277     EXPECT_EQ(total_num_chunks_in_freelist_after, total_num_chunks_in_freelist_before - expected_num_chunks_decrease);
+ 278     EXPECT_EQ(total_word_size_in_freelist_after, total_word_size_in_freelist_before - expected_wordsize_decrease);
+ 279 
+ 280     return result;
+ 281 
+ 282   } // end: merge_chunk_with_checks
+ 283 
+ 284 public:
+ 285 
+ 286   VirtualSpaceNodeTest(size_t vs_word_size, size_t commit_limit)
+ 287     : _counter_reserved_words(), _counter_committed_words(), _commit_limiter(commit_limit),
+ 288       _node(NULL), _vs_word_size(vs_word_size), _commit_limit(commit_limit)
+ 289   {
+ 290     {
+ 291       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 292       _node = VirtualSpaceNode::create_node(vs_word_size, &amp;_commit_limiter,
+ 293                                             &amp;_counter_reserved_words, &amp;_counter_committed_words);
+ 294     }
+ 295     EXPECT_TRUE(_commit_limiter.possible_expansion_words() == _commit_limit);
+ 296     verify();
+ 297   }
+ 298 
+ 299   ~VirtualSpaceNodeTest() {
+ 300     {
+ 301       MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 302       delete _node;
+ 303     }
+ 304     // After the node is deleted, counters should be back to zero
+ 305     // (we cannot use ASSERT/EXPECT here in the destructor)
+ 306     assert(_counter_reserved_words.get() == 0, "Sanity");
+ 307     assert(_counter_committed_words.get() == 0, "Sanity");
+ 308     assert(_commit_limiter.committed_words() == 0, "Sanity");
+ 309   }
+ 310 
+ 311   void test_simple() {
+ 312     Metachunk* c = alloc_root_chunk();
+ 313     commit_root_chunk(c, Settings::commit_granule_words());
+ 314     commit_root_chunk(c, c-&gt;word_size());
+ 315     uncommit_chunk(c);
+ 316   }
+ 317 
+ 318   void test_exhaust_node() {
+ 319     Metachunk* c = NULL;
+ 320     bool rc = true;
+ 321     do {
+ 322       c = alloc_root_chunk();
+ 323       if (c != NULL) {
+ 324         rc = commit_root_chunk(c, c-&gt;word_size());
+ 325       }
+ 326     } while (c != NULL &amp;&amp; rc);
+ 327   }
+ 328 
+ 329   void test_arbitrary_commits() {
+ 330 
+ 331     assert(_commit_limit &gt;= _vs_word_size, "For this test no commit limit.");
+ 332 
+ 333     // Get a root chunk to have a committable region
+ 334     Metachunk* c = alloc_root_chunk();
+ 335     ASSERT_NOT_NULL(c);
+ 336 
+ 337     if (c-&gt;committed_words() &gt; 0) {
+ 338       c-&gt;uncommit();
+ 339     }
+ 340 
+ 341     ASSERT_EQ(_node-&gt;committed_words(), (size_t)0);
+ 342     ASSERT_EQ(_counter_committed_words.get(), (size_t)0);
+ 343 
+ 344     TestMap testmap(c-&gt;word_size());
+ 345     assert(testmap.get_num_set() == 0, "Sanity");
+ 346 
+ 347     for (int run = 0; run &lt; 1000; run ++) {
+ 348 
+ 349       const size_t committed_words_before = testmap.get_num_set();
+ 350       ASSERT_EQ(_commit_limiter.committed_words(), committed_words_before);
+ 351       ASSERT_EQ(_counter_committed_words.get(), committed_words_before);
+ 352 
+ 353       // A random range
+ 354       SizeRange r = SizeRange(c-&gt;word_size()).random_aligned_subrange(Settings::commit_granule_words());
+ 355 
+ 356       const size_t committed_words_in_range_before =
+ 357                    testmap.get_num_set(r.start(), r.end());
+ 358 
+ 359       const bool do_commit = IntRange(100).random_value() &gt;= 50;
+ 360       if (do_commit) {
+ 361 
+ 362         //LOG("c " SIZE_FORMAT "," SIZE_FORMAT, r.start(), r.end());
+ 363 
+ 364         bool rc = false;
+ 365         {
+ 366           MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 367           rc = _node-&gt;ensure_range_is_committed(c-&gt;base() + r.start(), r.size());
+ 368         }
+ 369 
+ 370         // Test-zap
+ 371         zap_range(c-&gt;base() + r.start(), r.size());
+ 372 
+ 373         // We should never reach commit limit since it is as large as the whole area.
+ 374         ASSERT_TRUE(rc);
+ 375 
+ 376         testmap.set_range(r.start(), r.end());
+ 377 
+ 378       } else {
+ 379 
+ 380         //LOG("u " SIZE_FORMAT "," SIZE_FORMAT, r.start(), r.end());
+ 381 
+ 382         {
+ 383           MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 384           _node-&gt;uncommit_range(c-&gt;base() + r.start(), r.size());
+ 385         }
+ 386 
+ 387         testmap.clear_range(r.start(), r.end());
+ 388 
+ 389       }
+ 390 
+ 391       const size_t committed_words_after = testmap.get_num_set();
+ 392 
+ 393       ASSERT_EQ(_commit_limiter.committed_words(), committed_words_after);
+ 394       ASSERT_EQ(_counter_committed_words.get(), committed_words_after);
+ 395 
+ 396       verify();
+ 397     }
+ 398   }
+ 399 
+ 400   // Helper function for test_splitting_chunks_1
+ 401   static void check_chunk_is_committed_at_least_up_to(const Metachunk* c, size_t&amp; word_size) {
+ 402     if (word_size &gt;= c-&gt;word_size()) {
+ 403       EXPECT_TRUE(c-&gt;is_fully_committed());
+ 404       word_size -= c-&gt;word_size();
+ 405     } else {
+ 406       EXPECT_EQ(c-&gt;committed_words(), word_size);
+ 407       word_size = 0; // clear remaining size if there is.
+ 408     }
+ 409   }
+ 410 
+ 411   void test_split_and_merge_chunks() {
+ 412 
+ 413     assert(_commit_limit &gt;= _vs_word_size, "No commit limit here pls");
+ 414 
+ 415     // Allocate a root chunk and commit a random part of it. Then repeatedly split
+ 416     // it and merge it back together; observe the committed regions of the split chunks.
+ 417 
+ 418     Metachunk* c = alloc_root_chunk();
+ 419 
+ 420     if (c-&gt;committed_words() &gt; 0) {
+ 421       c-&gt;uncommit();
+ 422     }
+ 423 
+ 424     // To capture split-off chunks. Note: it is okay to use this here as a temp object.
+ 425     FreeChunkListVector freelist;
+ 426 
+ 427     const int granules_per_root_chunk = (int)(c-&gt;word_size() / Settings::commit_granule_words());
+ 428 
+ 429     for (int granules_to_commit = 0; granules_to_commit &lt; granules_per_root_chunk; granules_to_commit ++) {
+ 430 
+ 431       const size_t words_to_commit = Settings::commit_granule_words() * granules_to_commit;
+ 432 
+ 433       c-&gt;ensure_committed(words_to_commit);
+ 434 
+ 435       ASSERT_EQ(c-&gt;committed_words(), words_to_commit);
+ 436       ASSERT_EQ(_counter_committed_words.get(), words_to_commit);
+ 437       ASSERT_EQ(_commit_limiter.committed_words(), words_to_commit);
+ 438 
+ 439       const size_t committed_words_before = c-&gt;committed_words();
+ 440 
+ 441       verify();
+ 442 
+ 443       for (chunklevel_t target_level = LOWEST_CHUNK_LEVEL + 1;
+ 444            target_level &lt;= HIGHEST_CHUNK_LEVEL; target_level ++) {
+ 445 
+ 446         // Split:
+ 447         Metachunk* c2 = split_chunk_with_checks(c, target_level, &amp;freelist);
+ 448         c2-&gt;set_in_use();
+ 449 
+ 450         // Split smallest leftover chunk.
+ 451         if (c2-&gt;level() &lt; HIGHEST_CHUNK_LEVEL) {
+ 452 
+ 453           Metachunk* c3 = freelist.remove_first(c2-&gt;level());
+ 454           ASSERT_NOT_NULL(c3); // Must exist since c2 must have a splinter buddy now.
+ 455 
+ 456           Metachunk* c4 = split_chunk_with_checks(c3, HIGHEST_CHUNK_LEVEL, &amp;freelist);
+ 457           c4-&gt;set_in_use();
+ 458 
+ 459           // Merge it back. We expect this to merge up to c2's level, since c2 is in use.
+ 460           c4-&gt;set_free();
+ 461           Metachunk* c5 = merge_chunk_with_checks(c4, c2-&gt;level(), &amp;freelist);
+ 462           ASSERT_NOT_NULL(c5);
+ 463           freelist.add(c5);
+ 464 
+ 465         }
+ 466 
+ 467         // Merge c2 back.
+ 468         c2-&gt;set_free();
+ 469         merge_chunk_with_checks(c2, LOWEST_CHUNK_LEVEL, &amp;freelist);
+ 470 
+ 471         // After all this splitting and combining committed size should not have changed.
+ 472         ASSERT_EQ(c2-&gt;committed_words(), committed_words_before);
+ 473 
+ 474       }
+ 475 
+ 476     }
+ 477 
+ 478   } // end: test_splitting_chunks
+ 479 
+ 480 
+ 481 
+ 482 
+ 483 };
+ 484 
+ 485 
+ 486 
+ 487 TEST_VM(metaspace, virtual_space_node_test_basics) {
+ 488 
+ 489   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 490 
+ 491   const size_t word_size = metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 10;
+ 492 
+ 493   SizeCounter scomm;
+ 494   SizeCounter sres;
+ 495   CommitLimiter cl (word_size * 2); // basically, no commit limiter.
+ 496 
+ 497   VirtualSpaceNode* node = VirtualSpaceNode::create_node(word_size, &amp;cl, &amp;sres, &amp;scomm);
+ 498   ASSERT_NOT_NULL(node);
+ 499   ASSERT_EQ(node-&gt;committed_words(), (size_t)0);
+ 500   ASSERT_EQ(node-&gt;committed_words(), scomm.get());
+ 501   DEBUG_ONLY(node-&gt;verify_locked(true);)
+ 502 
+ 503   bool b = node-&gt;ensure_range_is_committed(node-&gt;base(), node-&gt;word_size());
+ 504   ASSERT_TRUE(b);
+ 505   ASSERT_EQ(node-&gt;committed_words(), word_size);
+ 506   ASSERT_EQ(node-&gt;committed_words(), scomm.get());
+ 507   DEBUG_ONLY(node-&gt;verify_locked(true);)
+ 508   zap_range(node-&gt;base(), node-&gt;word_size());
+ 509 
+ 510   node-&gt;uncommit_range(node-&gt;base(), node-&gt;word_size());
+ 511   ASSERT_EQ(node-&gt;committed_words(), (size_t)0);
+ 512   ASSERT_EQ(node-&gt;committed_words(), scomm.get());
+ 513   DEBUG_ONLY(node-&gt;verify_locked(true);)
+ 514 
+ 515   const int num_granules = (int)(word_size / Settings::commit_granule_words());
+ 516   for (int i = 1; i &lt; num_granules; i += 4) {
+ 517     b = node-&gt;ensure_range_is_committed(node-&gt;base(), i * Settings::commit_granule_words());
+ 518     ASSERT_TRUE(b);
+ 519     ASSERT_EQ(node-&gt;committed_words(), i * Settings::commit_granule_words());
+ 520     ASSERT_EQ(node-&gt;committed_words(), scomm.get());
+ 521     DEBUG_ONLY(node-&gt;verify_locked(true);)
+ 522     zap_range(node-&gt;base(), i * Settings::commit_granule_words());
+ 523   }
+ 524 
+ 525   node-&gt;uncommit_range(node-&gt;base(), node-&gt;word_size());
+ 526   ASSERT_EQ(node-&gt;committed_words(), (size_t)0);
+ 527   ASSERT_EQ(node-&gt;committed_words(), scomm.get());
+ 528   DEBUG_ONLY(node-&gt;verify_locked(true);)
+ 529 
+ 530 }
+ 531 
+ 532 
+ 533 // Note: we unfortunately need TEST_VM even though the system tested
+ 534 // should be pretty independent since we need things like os::vm_page_size()
+ 535 // which in turn need OS layer initialization.
+ 536 TEST_VM(metaspace, virtual_space_node_test_1) {
+ 537   VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+ 538       metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+ 539   test.test_simple();
+ 540 }
+ 541 
+ 542 TEST_VM(metaspace, virtual_space_node_test_2) {
+ 543   // Should not hit commit limit
+ 544   VirtualSpaceNodeTest test(3 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+ 545       3 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+ 546   test.test_simple();
+ 547   test.test_exhaust_node();
+ 548 }
+ 549 
+ 550 TEST_VM(metaspace, virtual_space_node_test_3) {
+ 551   double d = os::elapsedTime();
+ 552   // Test committing uncommitting arbitrary ranges
+ 553   for (int run = 0; run &lt; 100; run ++) {
+ 554     VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+ 555         metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+ 556     test.test_split_and_merge_chunks();
+ 557   }
+ 558   double d2 = os::elapsedTime();
+ 559   LOG("%f", (d2-d));
+ 560 }
+ 561 
+ 562 TEST_VM(metaspace, virtual_space_node_test_4) {
+ 563   // Should hit commit limit
+ 564   VirtualSpaceNodeTest test(10 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+ 565       3 * metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+ 566   test.test_exhaust_node();
+ 567 }
+ 568 
+ 569 TEST_VM(metaspace, virtual_space_node_test_5) {
+ 570   // Test committing uncommitting arbitrary ranges
+ 571   VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+ 572       metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+ 573   test.test_arbitrary_commits();
+ 574 }
+ 575 
+ 576 TEST_VM(metaspace, virtual_space_node_test_7) {
+ 577   // Test large allocation and freeing.
+ 578   {
+ 579     VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100,
+ 580         metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100);
+ 581     test.test_exhaust_node();
+ 582   }
+ 583   {
+ 584     VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100,
+ 585         metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 100);
+ 586     test.test_exhaust_node();
+ 587   }
+ 588 
+ 589 }
+</pre></body></html>

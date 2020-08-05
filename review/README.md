@@ -2,12 +2,14 @@
 
 Contains:
 
-- jep387-all.patch : Current patch
+- jep387-all.patch : Current patch for jdk/jdk
 
-  As of 2020-07-25, this applies without errors in jdk/jdk atop of:
-  227cd01f15fa, "8250519: [REDO] Move mirror oops from Universe into OopStorage"
+  As of 2020-08-05, this patch applies cleanly atop of jdk/jdk:
 
-- webrev : Webrev of current patch, for reviewer convenience
+  changeset:   60447:50795536daca
+  summary:     8250920: Increase @jls usage in core reflection
+
+- webrev : Webrev of current patch
 
 - guide : Review guide 
 

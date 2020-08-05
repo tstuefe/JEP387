@@ -1,0 +1,287 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/metaspaceCommon.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "memory/metaspace/allocationGuard.hpp"
+  29 #include "memory/metaspace/freeBlocks.hpp"
+  30 #include "memory/metaspace/metaspaceCommon.hpp"
+  31 #include "memory/metaspace/virtualSpaceNode.hpp"
+  32 
+  33 #include "utilities/align.hpp"
+  34 #include "utilities/debug.hpp"
+  35 #include "utilities/globalDefinitions.hpp"
+  36 #include "utilities/ostream.hpp"
+  37 
+  38 namespace metaspace {
+  39 
+  40 
+  41 // Print a size, in words, scaled.
+  42 void print_scaled_words(outputStream* st, size_t word_size, size_t scale, int width) {
+  43   print_human_readable_size(st, word_size * sizeof(MetaWord), scale, width);
+  44 }
+  45 
+  46 // Convenience helper: prints a size value and a percentage.
+  47 void print_scaled_words_and_percentage(outputStream* st, size_t word_size, size_t compare_word_size, size_t scale, int width) {
+  48   print_scaled_words(st, word_size, scale, width);
+  49   st-&gt;print(" (");
+  50   print_percentage(st, compare_word_size, word_size);
+  51   st-&gt;print(")");
+  52 }
+  53 
+  54 static const char* display_unit_for_scale(size_t scale) {
+  55   const char* s = NULL;
+  56   switch(scale) {
+  57     case 1: s = "bytes"; break;
+  58     case BytesPerWord: s = "words"; break;
+  59     case K: s = "KB"; break;
+  60     case M: s = "MB"; break;
+  61     case G: s = "GB"; break;
+  62     default:
+  63       ShouldNotReachHere();
+  64   }
+  65   return s;
+  66 }
+  67 
+  68 // Print a human readable size.
+  69 // byte_size: size, in bytes, to be printed.
+  70 // scale: one of 1 (byte-wise printing), sizeof(word) (word-size printing), K, M, G (scaled by KB, MB, GB respectively,
+  71 //         or 0, which means the best scale is choosen dynamically.
+  72 // width: printing width.
+  73 void print_human_readable_size(outputStream* st, size_t byte_size, size_t scale, int width)  {
+  74   if (scale == 0) {
+  75     // Dynamic mode. Choose scale for this value.
+  76     if (byte_size == 0) {
+  77       // Zero values are printed as bytes.
+  78       scale = 1;
+  79     } else {
+  80       if (byte_size &gt;= G) {
+  81         scale = G;
+  82       } else if (byte_size &gt;= M) {
+  83         scale = M;
+  84       } else if (byte_size &gt;= K) {
+  85         scale = K;
+  86       } else {
+  87         scale = 1;
+  88       }
+  89     }
+  90     return print_human_readable_size(st, byte_size, scale, width);
+  91   }
+  92 
+  93 #ifdef ASSERT
+  94   assert(scale == 1 || scale == BytesPerWord ||
+  95          scale == K || scale == M || scale == G, "Invalid scale");
+  96   // Special case: printing wordsize should only be done with word-sized values
+  97   if (scale == BytesPerWord) {
+  98     assert(byte_size % BytesPerWord == 0, "not word sized");
+  99   }
+ 100 #endif
+ 101 
+ 102   if (width == -1) {
+ 103     if (scale == 1) {
+ 104       st-&gt;print(SIZE_FORMAT " bytes", byte_size);
+ 105     } else if (scale == BytesPerWord) {
+ 106       st-&gt;print(SIZE_FORMAT " words", byte_size / BytesPerWord);
+ 107     } else {
+ 108       const char* display_unit = display_unit_for_scale(scale);
+ 109       float display_value = (float) byte_size / scale;
+ 110       // Prevent very small but non-null values showing up as 0.00.
+ 111       if (byte_size &gt; 0 &amp;&amp; display_value &lt; 0.01f) {
+ 112         st-&gt;print("&lt;0.01 %s", display_unit);
+ 113       } else {
+ 114         st-&gt;print("%.2f %s", display_value, display_unit);
+ 115       }
+ 116     }
+ 117   } else {
+ 118     if (scale == 1) {
+ 119       st-&gt;print("%*" PRIuPTR " bytes", width, byte_size);
+ 120     } else if (scale == BytesPerWord) {
+ 121       st-&gt;print("%*" PRIuPTR " words", width, byte_size / BytesPerWord);
+ 122     } else {
+ 123       const char* display_unit = display_unit_for_scale(scale);
+ 124       float display_value = (float) byte_size / scale;
+ 125       // Since we use width to display a number with two trailing digits, increase it a bit.
+ 126       width += 3;
+ 127       // Prevent very small but non-null values showing up as 0.00.
+ 128       if (byte_size &gt; 0 &amp;&amp; display_value &lt; 0.01f) {
+ 129         st-&gt;print("%*s %s", width, "&lt;0.01", display_unit);
+ 130       } else {
+ 131         st-&gt;print("%*.2f %s", width, display_value, display_unit);
+ 132       }
+ 133     }
+ 134   }
+ 135 }
+ 136 
+ 137 // Prints a percentage value. Values smaller than 1% but not 0 are displayed as "&lt;1%", values
+ 138 // larger than 99% but not 100% are displayed as "&gt;100%".
+ 139 void print_percentage(outputStream* st, size_t total, size_t part) {
+ 140   if (total == 0) {
+ 141     st-&gt;print("  ?%%");
+ 142   } else if (part == 0) {
+ 143     st-&gt;print("  0%%");
+ 144   } else if (part == total) {
+ 145     st-&gt;print("100%%");
+ 146   } else {
+ 147     // Note: clearly print very-small-but-not-0% and very-large-but-not-100% percentages.
+ 148     float p = ((float)part / total) * 100.0f;
+ 149     if (p &lt; 1.0f) {
+ 150       st-&gt;print(" &lt;1%%");
+ 151     } else if (p &gt; 99.0f){
+ 152       st-&gt;print("&gt;99%%");
+ 153     } else {
+ 154       st-&gt;print("%3.0f%%", p);
+ 155     }
+ 156   }
+ 157 }
+ 158 
+ 159 const char* loaders_plural(uintx num) {
+ 160   return num == 1 ? "loader" : "loaders";
+ 161 }
+ 162 
+ 163 const char* classes_plural(uintx num) {
+ 164   return num == 1 ? "class" : "classes";
+ 165 }
+ 166 
+ 167 void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared) {
+ 168   out-&gt;print(UINTX_FORMAT " %s", classes, classes_plural(classes));
+ 169   if (classes_shared &gt; 0) {
+ 170     out-&gt;print(" (" UINTX_FORMAT " shared)", classes_shared);
+ 171   }
+ 172 }
+ 173 
+ 174 // Given a net allocation word size, return the raw word size we actually allocate.
+ 175 // Note: externally visible for gtests.
+ 176 //static
+ 177 size_t get_raw_word_size_for_requested_word_size(size_t word_size) {
+ 178 
+ 179   size_t byte_size = word_size * BytesPerWord;
+ 180 
+ 181   // Deallocated metablocks are kept in a binlist which limits their minimal
+ 182   //  size to at least the size of a binlist item (2 words).
+ 183   byte_size = MAX2(byte_size, FreeBlocks::minimal_word_size * BytesPerWord);
+ 184 
+ 185   // Metaspace allocations are aligned to word size.
+ 186   byte_size = align_up(byte_size, allocation_alignment_bytes);
+ 187 
+ 188   // If we guard allocations, we need additional space for a prefix.
+ 189 #ifdef ASSERT
+ 190   if (Settings::use_allocation_guard()) {
+ 191     byte_size += align_up(prefix_size(), allocation_alignment_bytes);
+ 192   }
+ 193 #endif
+ 194 
+ 195   size_t raw_word_size = byte_size / BytesPerWord;
+ 196 
+ 197   assert(raw_word_size * BytesPerWord == byte_size, "Sanity");
+ 198 
+ 199   return raw_word_size;
+ 200 
+ 201 }
+ 202 
+ 203 } // namespace metaspace
+ 204 
+</pre></body></html>

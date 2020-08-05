@@ -1,0 +1,388 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60448">60448</a> : imported patch jep387-all.patch</pre><hr></hr>
+<pre>
+   1 /*
+<a name="1" id="anc1"></a>
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+  26 #define SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+  27 
+<a name="2" id="anc2"></a>
+  28 #include "utilities/align.hpp"
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 
+  32 class outputStream;
+  33 
+  34 namespace metaspace {
+  35 
+<a name="3" id="anc3"></a><span class="changed">  36 enum ChunkSizes {    // in words.</span>
+<span class="changed">  37   ClassSpecializedChunk = 128,</span>
+<span class="changed">  38   SpecializedChunk = 128,</span>
+<span class="changed">  39   ClassSmallChunk = 256,</span>
+<span class="changed">  40   SmallChunk = 512,</span>
+<span class="changed">  41   ClassMediumChunk = 4 * K,</span>
+<span class="changed">  42   MediumChunk = 8 * K</span>
+<span class="changed">  43 };</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  44 
+  45 // Print a size, in words, scaled.
+  46 void print_scaled_words(outputStream* st, size_t word_size, size_t scale = 0, int width = -1);
+  47 
+  48 // Convenience helper: prints a size value and a percentage.
+  49 void print_scaled_words_and_percentage(outputStream* st, size_t word_size, size_t compare_word_size, size_t scale = 0, int width = -1);
+  50 
+  51 // Print a human readable size.
+  52 // byte_size: size, in bytes, to be printed.
+  53 // scale: one of 1 (byte-wise printing), sizeof(word) (word-size printing), K, M, G (scaled by KB, MB, GB respectively,
+  54 //         or 0, which means the best scale is choosen dynamically.
+  55 // width: printing width.
+  56 void print_human_readable_size(outputStream* st, size_t byte_size, size_t scale = 0, int width = -1);
+  57 
+  58 // Prints a percentage value. Values smaller than 1% but not 0 are displayed as "&lt;1%", values
+  59 // larger than 99% but not 100% are displayed as "&gt;100%".
+  60 void print_percentage(outputStream* st, size_t total, size_t part);
+  61 
+  62 
+<a name="4" id="anc4"></a>
+  63 #define assert_is_aligned(value, alignment)                  \
+  64   assert(is_aligned((value), (alignment)),                   \
+  65          SIZE_FORMAT_HEX " is not aligned to "               \
+  66          SIZE_FORMAT, (size_t)(uintptr_t)value, (alignment))
+<a name="5" id="anc5"></a><span class="changed">  67 </span>
+<span class="changed">  68 // Internal statistics.</span>
+<span class="changed">  69 #ifdef ASSERT</span>
+<span class="changed">  70 struct  internal_statistics_t {</span>
+<span class="changed">  71   // Number of allocations.</span>
+<span class="changed">  72   uintx num_allocs;</span>
+<span class="changed">  73   // Number of times a ClassLoaderMetaspace was born...</span>
+<span class="changed">  74   uintx num_metaspace_births;</span>
+<span class="changed">  75   // ... and died.</span>
+<span class="changed">  76   uintx num_metaspace_deaths;</span>
+<span class="changed">  77   // Number of times VirtualSpaceListNodes were created...</span>
+<span class="changed">  78   uintx num_vsnodes_created;</span>
+<span class="changed">  79   // ... and purged.</span>
+<span class="changed">  80   uintx num_vsnodes_purged;</span>
+<span class="changed">  81   // Number of times we expanded the committed section of the space.</span>
+<span class="changed">  82   uintx num_committed_space_expanded;</span>
+<span class="changed">  83   // Number of deallocations</span>
+<span class="changed">  84   uintx num_deallocs;</span>
+<span class="changed">  85   // Number of deallocations triggered from outside ("real" deallocations).</span>
+<span class="changed">  86   uintx num_external_deallocs;</span>
+<span class="changed">  87   // Number of times an allocation was satisfied from deallocated blocks.</span>
+<span class="changed">  88   uintx num_allocs_from_deallocated_blocks;</span>
+<span class="changed">  89   // Number of times a chunk was added to the freelist</span>
+<span class="changed">  90   uintx num_chunks_added_to_freelist;</span>
+<span class="changed">  91   // Number of times a chunk was removed from the freelist</span>
+<span class="changed">  92   uintx num_chunks_removed_from_freelist;</span>
+<span class="changed">  93   // Number of chunk merges</span>
+<span class="changed">  94   uintx num_chunk_merges;</span>
+<span class="changed">  95   // Number of chunk splits</span>
+<span class="changed">  96   uintx num_chunk_splits;</span>
+<span class="changed">  97 };</span>
+<span class="changed">  98 extern internal_statistics_t g_internal_statistics;</span>
+  99 #endif
+ 100 
+<a name="6" id="anc6"></a><span class="removed"> 101 // ChunkIndex defines the type of chunk.</span>
+<span class="removed"> 102 // Chunk types differ by size: specialized &lt; small &lt; medium, chunks</span>
+<span class="removed"> 103 // larger than medium are humongous chunks of varying size.</span>
+<span class="removed"> 104 enum ChunkIndex {</span>
+<span class="removed"> 105   ZeroIndex = 0,</span>
+<span class="removed"> 106   SpecializedIndex = ZeroIndex,</span>
+<span class="removed"> 107   SmallIndex = SpecializedIndex + 1,</span>
+<span class="removed"> 108   MediumIndex = SmallIndex + 1,</span>
+<span class="removed"> 109   HumongousIndex = MediumIndex + 1,</span>
+<span class="removed"> 110   NumberOfFreeLists = 3,</span>
+<span class="removed"> 111   NumberOfInUseLists = 4</span>
+<span class="removed"> 112 };</span>
+<span class="removed"> 113 </span>
+<span class="removed"> 114 // Utility functions.</span>
+<span class="removed"> 115 size_t get_size_for_nonhumongous_chunktype(ChunkIndex chunk_type, bool is_class);</span>
+<span class="removed"> 116 ChunkIndex get_chunk_type_by_size(size_t size, bool is_class);</span>
+<span class="removed"> 117 </span>
+<span class="removed"> 118 ChunkIndex next_chunk_index(ChunkIndex i);</span>
+<span class="removed"> 119 ChunkIndex prev_chunk_index(ChunkIndex i);</span>
+<span class="removed"> 120 // Returns a descriptive name for a chunk type.</span>
+<span class="removed"> 121 const char* chunk_size_name(ChunkIndex index);</span>
+<span class="removed"> 122 </span>
+<span class="removed"> 123 // Verify chunk sizes.</span>
+<span class="removed"> 124 inline bool is_valid_chunksize(bool is_class, size_t size) {</span>
+<span class="removed"> 125   const size_t reasonable_maximum_humongous_chunk_size = 1 * G;</span>
+<span class="removed"> 126   return is_aligned(size, sizeof(MetaWord)) &amp;&amp;</span>
+<span class="removed"> 127          size &lt; reasonable_maximum_humongous_chunk_size &amp;&amp;</span>
+<span class="removed"> 128          is_class ?</span>
+<span class="removed"> 129              (size == ClassSpecializedChunk || size == ClassSmallChunk || size &gt;= ClassMediumChunk) :</span>
+<span class="removed"> 130              (size == SpecializedChunk || size == SmallChunk || size &gt;= MediumChunk);</span>
+<span class="removed"> 131 }</span>
+<span class="removed"> 132 </span>
+<span class="removed"> 133 // Verify chunk type.</span>
+<span class="removed"> 134 inline bool is_valid_chunktype(ChunkIndex index) {</span>
+<span class="removed"> 135   return index == SpecializedIndex || index == SmallIndex ||</span>
+<span class="removed"> 136          index == MediumIndex || index == HumongousIndex;</span>
+<span class="removed"> 137 }</span>
+<span class="removed"> 138 </span>
+<span class="removed"> 139 inline bool is_valid_nonhumongous_chunktype(ChunkIndex index) {</span>
+<span class="removed"> 140   return is_valid_chunktype(index) &amp;&amp; index != HumongousIndex;</span>
+<span class="removed"> 141 }</span>
+ 142 
+ 143 // Pretty printing helpers
+ 144 const char* classes_plural(uintx num);
+ 145 const char* loaders_plural(uintx num);
+ 146 void print_number_of_classes(outputStream* out, uintx classes, uintx classes_shared);
+<a name="7" id="anc7"></a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 147 
+ 148 } // namespace metaspace
+ 149 
+ 150 #endif // SHARE_MEMORY_METASPACE_METASPACECOMMON_HPP
+<a name="8" id="anc8"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="8" type="hidden" /></form></body></html>

@@ -1,0 +1,717 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/lib/sun/hotspot/WhiteBox.java</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  */
+  23 
+  24 package sun.hotspot;
+  25 
+  26 import java.lang.management.MemoryUsage;
+  27 import java.lang.reflect.Executable;
+  28 import java.util.Arrays;
+  29 import java.util.List;
+  30 import java.util.function.BiFunction;
+  31 import java.util.function.Function;
+  32 import java.security.BasicPermission;
+  33 import java.util.Objects;
+  34 
+  35 import sun.hotspot.parser.DiagnosticCommand;
+  36 
+  37 public class WhiteBox {
+  38   @SuppressWarnings("serial")
+  39   public static class WhiteBoxPermission extends BasicPermission {
+  40     public WhiteBoxPermission(String s) {
+  41       super(s);
+  42     }
+  43   }
+  44 
+  45   private WhiteBox() {}
+  46   private static final WhiteBox instance = new WhiteBox();
+  47   private static native void registerNatives();
+  48 
+  49   /**
+  50    * Returns the singleton WhiteBox instance.
+  51    *
+  52    * The returned WhiteBox object should be carefully guarded
+  53    * by the caller, since it can be used to read and write data
+  54    * at arbitrary memory addresses. It must never be passed to
+  55    * untrusted code.
+  56    */
+  57   public synchronized static WhiteBox getWhiteBox() {
+  58     SecurityManager sm = System.getSecurityManager();
+  59     if (sm != null) {
+  60       sm.checkPermission(new WhiteBoxPermission("getInstance"));
+  61     }
+  62     return instance;
+  63   }
+  64 
+  65   static {
+  66     registerNatives();
+  67   }
+  68 
+  69   // Get the maximum heap size supporting COOPs
+  70   public native long getCompressedOopsMaxHeapSize();
+  71   // Arguments
+  72   public native void printHeapSizes();
+  73 
+  74   // Memory
+  75   private native long getObjectAddress0(Object o);
+  76   public           long getObjectAddress(Object o) {
+  77     Objects.requireNonNull(o);
+  78     return getObjectAddress0(o);
+  79   }
+  80 
+  81   public native int  getHeapOopSize();
+  82   public native int  getVMPageSize();
+  83   public native long getVMAllocationGranularity();
+  84   public native long getVMLargePageSize();
+  85   public native long getHeapSpaceAlignment();
+  86   public native long getHeapAlignment();
+  87 
+  88   private native boolean isObjectInOldGen0(Object o);
+  89   public         boolean isObjectInOldGen(Object o) {
+  90     Objects.requireNonNull(o);
+  91     return isObjectInOldGen0(o);
+  92   }
+  93 
+  94   private native long getObjectSize0(Object o);
+  95   public         long getObjectSize(Object o) {
+  96     Objects.requireNonNull(o);
+  97     return getObjectSize0(o);
+  98   }
+  99 
+ 100   // Runtime
+ 101   // Make sure class name is in the correct format
+ 102   public int countAliveClasses(String name) {
+ 103     return countAliveClasses0(name.replace('.', '/'));
+ 104   }
+ 105   private native int countAliveClasses0(String name);
+ 106 
+ 107   public boolean isClassAlive(String name) {
+ 108     return countAliveClasses(name) != 0;
+ 109   }
+ 110 
+ 111   public  native int getSymbolRefcount(String name);
+ 112 
+ 113   public native boolean deflateIdleMonitors();
+ 114 
+ 115   private native boolean isMonitorInflated0(Object obj);
+ 116   public         boolean isMonitorInflated(Object obj) {
+ 117     Objects.requireNonNull(obj);
+ 118     return isMonitorInflated0(obj);
+ 119   }
+ 120 
+ 121   public native void forceSafepoint();
+ 122 
+ 123   private native long getConstantPool0(Class&lt;?&gt; aClass);
+ 124   public         long getConstantPool(Class&lt;?&gt; aClass) {
+ 125     Objects.requireNonNull(aClass);
+ 126     return getConstantPool0(aClass);
+ 127   }
+ 128 
+ 129   private native int getConstantPoolCacheIndexTag0();
+ 130   public         int getConstantPoolCacheIndexTag() {
+ 131     return getConstantPoolCacheIndexTag0();
+ 132   }
+ 133 
+ 134   private native int getConstantPoolCacheLength0(Class&lt;?&gt; aClass);
+ 135   public         int getConstantPoolCacheLength(Class&lt;?&gt; aClass) {
+ 136     Objects.requireNonNull(aClass);
+ 137     return getConstantPoolCacheLength0(aClass);
+ 138   }
+ 139 
+ 140   private native int remapInstructionOperandFromCPCache0(Class&lt;?&gt; aClass, int index);
+ 141   public         int remapInstructionOperandFromCPCache(Class&lt;?&gt; aClass, int index) {
+ 142     Objects.requireNonNull(aClass);
+ 143     return remapInstructionOperandFromCPCache0(aClass, index);
+ 144   }
+ 145 
+ 146   private native int encodeConstantPoolIndyIndex0(int index);
+ 147   public         int encodeConstantPoolIndyIndex(int index) {
+ 148     return encodeConstantPoolIndyIndex0(index);
+ 149   }
+ 150 
+ 151   // JVMTI
+ 152   private native void addToBootstrapClassLoaderSearch0(String segment);
+ 153   public         void addToBootstrapClassLoaderSearch(String segment){
+ 154     Objects.requireNonNull(segment);
+ 155     addToBootstrapClassLoaderSearch0(segment);
+ 156   }
+ 157 
+ 158   private native void addToSystemClassLoaderSearch0(String segment);
+ 159   public         void addToSystemClassLoaderSearch(String segment) {
+ 160     Objects.requireNonNull(segment);
+ 161     addToSystemClassLoaderSearch0(segment);
+ 162   }
+ 163 
+ 164   // G1
+ 165   public native boolean g1InConcurrentMark();
+ 166   private native boolean g1IsHumongous0(Object o);
+ 167   public         boolean g1IsHumongous(Object o) {
+ 168     Objects.requireNonNull(o);
+ 169     return g1IsHumongous0(o);
+ 170   }
+ 171 
+ 172   private native boolean g1BelongsToHumongousRegion0(long adr);
+ 173   public         boolean g1BelongsToHumongousRegion(long adr) {
+ 174     if (adr == 0) {
+ 175       throw new IllegalArgumentException("adr argument should not be null");
+ 176     }
+ 177     return g1BelongsToHumongousRegion0(adr);
+ 178   }
+ 179 
+ 180 
+ 181   private native boolean g1BelongsToFreeRegion0(long adr);
+ 182   public         boolean g1BelongsToFreeRegion(long adr) {
+ 183     if (adr == 0) {
+ 184       throw new IllegalArgumentException("adr argument should not be null");
+ 185     }
+ 186     return g1BelongsToFreeRegion0(adr);
+ 187   }
+ 188 
+ 189   public native long    g1NumMaxRegions();
+ 190   public native long    g1NumFreeRegions();
+ 191   public native int     g1RegionSize();
+ 192   public native long    dramReservedStart();
+ 193   public native long    dramReservedEnd();
+ 194   public native long    nvdimmReservedStart();
+ 195   public native long    nvdimmReservedEnd();
+ 196   public native MemoryUsage g1AuxiliaryMemoryUsage();
+ 197   private  native Object[]    parseCommandLine0(String commandline, char delim, DiagnosticCommand[] args);
+ 198   public          Object[]    parseCommandLine(String commandline, char delim, DiagnosticCommand[] args) {
+ 199     Objects.requireNonNull(args);
+ 200     return parseCommandLine0(commandline, delim, args);
+ 201   }
+ 202 
+ 203   public native int g1ActiveMemoryNodeCount();
+ 204   public native int[] g1MemoryNodeIds();
+ 205 
+ 206   // Parallel GC
+ 207   public native long psVirtualSpaceAlignment();
+ 208   public native long psHeapGenerationAlignment();
+ 209 
+ 210   /**
+ 211    * Enumerates old regions with liveness less than specified and produces some statistics
+ 212    * @param liveness percent of region's liveness (live_objects / total_region_size * 100).
+ 213    * @return long[3] array where long[0] - total count of old regions
+ 214    *                             long[1] - total memory of old regions
+ 215    *                             long[2] - lowest estimation of total memory of old regions to be freed (non-full
+ 216    *                             regions are not included)
+ 217    */
+ 218   public native long[] g1GetMixedGCInfo(int liveness);
+ 219 
+ 220   // NMT
+ 221   public native long NMTMalloc(long size);
+ 222   public native void NMTFree(long mem);
+ 223   public native long NMTReserveMemory(long size);
+ 224   public native long NMTAttemptReserveMemoryAt(long addr, long size);
+ 225   public native void NMTCommitMemory(long addr, long size);
+ 226   public native void NMTUncommitMemory(long addr, long size);
+ 227   public native void NMTReleaseMemory(long addr, long size);
+ 228   public native long NMTMallocWithPseudoStack(long size, int index);
+ 229   public native long NMTMallocWithPseudoStackAndType(long size, int index, int type);
+ 230   public native boolean NMTChangeTrackingLevel();
+ 231   public native int NMTGetHashSize();
+ 232   public native long NMTNewArena(long initSize);
+ 233   public native void NMTFreeArena(long arena);
+ 234   public native void NMTArenaMalloc(long arena, long size);
+ 235 
+ 236   // Compiler
+ 237   public native boolean isC2OrJVMCIIncludedInVmBuild();
+ 238 
+ 239   public native int     matchesMethod(Executable method, String pattern);
+ 240   public native int     matchesInline(Executable method, String pattern);
+ 241   public native boolean shouldPrintAssembly(Executable method, int comp_level);
+ 242   public native int     deoptimizeFrames(boolean makeNotEntrant);
+ 243   public native void    deoptimizeAll();
+ 244 
+ 245   public        boolean isMethodCompiled(Executable method) {
+ 246     return isMethodCompiled(method, false /*not osr*/);
+ 247   }
+ 248   private native boolean isMethodCompiled0(Executable method, boolean isOsr);
+ 249   public         boolean isMethodCompiled(Executable method, boolean isOsr){
+ 250     Objects.requireNonNull(method);
+ 251     return isMethodCompiled0(method, isOsr);
+ 252   }
+ 253   public        boolean isMethodCompilable(Executable method) {
+ 254     return isMethodCompilable(method, -2 /*any*/);
+ 255   }
+ 256   public        boolean isMethodCompilable(Executable method, int compLevel) {
+ 257     return isMethodCompilable(method, compLevel, false /*not osr*/);
+ 258   }
+ 259   private native boolean isMethodCompilable0(Executable method, int compLevel, boolean isOsr);
+ 260   public         boolean isMethodCompilable(Executable method, int compLevel, boolean isOsr) {
+ 261     Objects.requireNonNull(method);
+ 262     return isMethodCompilable0(method, compLevel, isOsr);
+ 263   }
+ 264   private native boolean isMethodQueuedForCompilation0(Executable method);
+ 265   public         boolean isMethodQueuedForCompilation(Executable method) {
+ 266     Objects.requireNonNull(method);
+ 267     return isMethodQueuedForCompilation0(method);
+ 268   }
+ 269   // Determine if the compiler corresponding to the compilation level 'compLevel'
+ 270   // and to the compilation context 'compilation_context' provides an intrinsic
+ 271   // for the method 'method'. An intrinsic is available for method 'method' if:
+ 272   //  - the intrinsic is enabled (by using the appropriate command-line flag) and
+ 273   //  - the platform on which the VM is running provides the instructions necessary
+ 274   //    for the compiler to generate the intrinsic code.
+ 275   //
+ 276   // The compilation context is related to using the DisableIntrinsic flag on a
+ 277   // per-method level, see hotspot/src/share/vm/compiler/abstractCompiler.hpp
+ 278   // for more details.
+ 279   public boolean isIntrinsicAvailable(Executable method,
+ 280                                       Executable compilationContext,
+ 281                                       int compLevel) {
+ 282       Objects.requireNonNull(method);
+ 283       return isIntrinsicAvailable0(method, compilationContext, compLevel);
+ 284   }
+ 285   // If usage of the DisableIntrinsic flag is not expected (or the usage can be ignored),
+ 286   // use the below method that does not require the compilation context as argument.
+ 287   public boolean isIntrinsicAvailable(Executable method, int compLevel) {
+ 288       return isIntrinsicAvailable(method, null, compLevel);
+ 289   }
+ 290   private native boolean isIntrinsicAvailable0(Executable method,
+ 291                                                Executable compilationContext,
+ 292                                                int compLevel);
+ 293   public        int     deoptimizeMethod(Executable method) {
+ 294     return deoptimizeMethod(method, false /*not osr*/);
+ 295   }
+ 296   private native int     deoptimizeMethod0(Executable method, boolean isOsr);
+ 297   public         int     deoptimizeMethod(Executable method, boolean isOsr) {
+ 298     Objects.requireNonNull(method);
+ 299     return deoptimizeMethod0(method, isOsr);
+ 300   }
+ 301   public        void    makeMethodNotCompilable(Executable method) {
+ 302     makeMethodNotCompilable(method, -2 /*any*/);
+ 303   }
+ 304   public        void    makeMethodNotCompilable(Executable method, int compLevel) {
+ 305     makeMethodNotCompilable(method, compLevel, false /*not osr*/);
+ 306   }
+ 307   private native void    makeMethodNotCompilable0(Executable method, int compLevel, boolean isOsr);
+ 308   public         void    makeMethodNotCompilable(Executable method, int compLevel, boolean isOsr) {
+ 309     Objects.requireNonNull(method);
+ 310     makeMethodNotCompilable0(method, compLevel, isOsr);
+ 311   }
+ 312   public        int     getMethodCompilationLevel(Executable method) {
+ 313     return getMethodCompilationLevel(method, false /*not ost*/);
+ 314   }
+ 315   private native int     getMethodCompilationLevel0(Executable method, boolean isOsr);
+ 316   public         int     getMethodCompilationLevel(Executable method, boolean isOsr) {
+ 317     Objects.requireNonNull(method);
+ 318     return getMethodCompilationLevel0(method, isOsr);
+ 319   }
+ 320   private native boolean testSetDontInlineMethod0(Executable method, boolean value);
+ 321   public         boolean testSetDontInlineMethod(Executable method, boolean value) {
+ 322     Objects.requireNonNull(method);
+ 323     return testSetDontInlineMethod0(method, value);
+ 324   }
+ 325   public        int     getCompileQueuesSize() {
+ 326     return getCompileQueueSize(-2 /*any*/);
+ 327   }
+ 328   public native int     getCompileQueueSize(int compLevel);
+ 329   private native boolean testSetForceInlineMethod0(Executable method, boolean value);
+ 330   public         boolean testSetForceInlineMethod(Executable method, boolean value) {
+ 331     Objects.requireNonNull(method);
+ 332     return testSetForceInlineMethod0(method, value);
+ 333   }
+ 334   public        boolean enqueueMethodForCompilation(Executable method, int compLevel) {
+ 335     return enqueueMethodForCompilation(method, compLevel, -1 /*InvocationEntryBci*/);
+ 336   }
+ 337   private native boolean enqueueMethodForCompilation0(Executable method, int compLevel, int entry_bci);
+ 338   public  boolean enqueueMethodForCompilation(Executable method, int compLevel, int entry_bci) {
+ 339     Objects.requireNonNull(method);
+ 340     return enqueueMethodForCompilation0(method, compLevel, entry_bci);
+ 341   }
+ 342   private native boolean enqueueInitializerForCompilation0(Class&lt;?&gt; aClass, int compLevel);
+ 343   public  boolean enqueueInitializerForCompilation(Class&lt;?&gt; aClass, int compLevel) {
+ 344     Objects.requireNonNull(aClass);
+ 345     return enqueueInitializerForCompilation0(aClass, compLevel);
+ 346   }
+ 347   private native void    clearMethodState0(Executable method);
+ 348   public  native void    markMethodProfiled(Executable method);
+ 349   public         void    clearMethodState(Executable method) {
+ 350     Objects.requireNonNull(method);
+ 351     clearMethodState0(method);
+ 352   }
+ 353   public native void    lockCompilation();
+ 354   public native void    unlockCompilation();
+ 355   private native int     getMethodEntryBci0(Executable method);
+ 356   public         int     getMethodEntryBci(Executable method) {
+ 357     Objects.requireNonNull(method);
+ 358     return getMethodEntryBci0(method);
+ 359   }
+ 360   private native Object[] getNMethod0(Executable method, boolean isOsr);
+ 361   public         Object[] getNMethod(Executable method, boolean isOsr) {
+ 362     Objects.requireNonNull(method);
+ 363     return getNMethod0(method, isOsr);
+ 364   }
+ 365   public native long    allocateCodeBlob(int size, int type);
+ 366   public        long    allocateCodeBlob(long size, int type) {
+ 367       int intSize = (int) size;
+ 368       if ((long) intSize != size || size &lt; 0) {
+ 369           throw new IllegalArgumentException(
+ 370                 "size argument has illegal value " + size);
+ 371       }
+ 372       return allocateCodeBlob( intSize, type);
+ 373   }
+ 374   public native void    freeCodeBlob(long addr);
+ 375   public native void    forceNMethodSweep();
+ 376   public native Object[] getCodeHeapEntries(int type);
+ 377   public native int     getCompilationActivityMode();
+ 378   private native long getMethodData0(Executable method);
+ 379   public         long getMethodData(Executable method) {
+ 380     Objects.requireNonNull(method);
+ 381     return getMethodData0(method);
+ 382   }
+ 383   public native Object[] getCodeBlob(long addr);
+ 384 
+ 385   private native void clearInlineCaches0(boolean preserve_static_stubs);
+ 386   public void clearInlineCaches() {
+ 387     clearInlineCaches0(false);
+ 388   }
+ 389   public void clearInlineCaches(boolean preserve_static_stubs) {
+ 390     clearInlineCaches0(preserve_static_stubs);
+ 391   }
+ 392 
+ 393   // Intered strings
+ 394   public native boolean isInStringTable(String str);
+ 395 
+ 396   // Memory
+ 397   public native void readReservedMemory();
+ 398   public native long allocateMetaspace(ClassLoader classLoader, long size);
+ 399   public native long incMetaspaceCapacityUntilGC(long increment);
+ 400   public native long metaspaceCapacityUntilGC();
+ 401   public native long metaspaceReserveAlignment();
+ 402 
+ 403   // Metaspace Arena Tests
+ 404   public native long createMetaspaceTestContext(long commit_limit, long reserve_limit);
+ 405   public native void destroyMetaspaceTestContext(long context);
+ 406   public native void purgeMetaspaceTestContext(long context);
+ 407   public native void printMetaspaceTestContext(long context);
+ 408   public native long getTotalCommittedWordsInMetaspaceTestContext(long context);
+ 409   public native long getTotalUsedWordsInMetaspaceTestContext(long context);
+ 410   public native long createArenaInTestContext(long context, boolean is_micro);
+ 411   public native void destroyMetaspaceTestArena(long arena);
+ 412   public native long allocateFromMetaspaceTestArena(long arena, long word_size);
+ 413   public native void deallocateToMetaspaceTestArena(long arena, long p, long word_size);
+ 414 
+ 415   public native long maxMetaspaceAllocationSize();
+ 416 
+ 417   // Don't use these methods directly
+ 418   // Use sun.hotspot.gc.GC class instead.
+ 419   public native boolean isGCSupported(int name);
+ 420   public native boolean isGCSelected(int name);
+ 421   public native boolean isGCSelectedErgonomically();
+ 422 
+ 423   // Force Young GC
+ 424   public native void youngGC();
+ 425 
+ 426   // Force Full GC
+ 427   public native void fullGC();
+ 428 
+ 429   // Returns true if the current GC supports concurrent collection control.
+ 430   public native boolean supportsConcurrentGCBreakpoints();
+ 431 
+ 432   private void checkConcurrentGCBreakpointsSupported() {
+ 433     if (!supportsConcurrentGCBreakpoints()) {
+ 434       throw new UnsupportedOperationException("Concurrent GC breakpoints not supported");
+ 435     }
+ 436   }
+ 437 
+ 438   private native void concurrentGCAcquireControl0();
+ 439   private native void concurrentGCReleaseControl0();
+ 440   private native void concurrentGCRunToIdle0();
+ 441   private native boolean concurrentGCRunTo0(String breakpoint);
+ 442 
+ 443   private static boolean concurrentGCIsControlled = false;
+ 444   private void checkConcurrentGCIsControlled() {
+ 445     if (!concurrentGCIsControlled) {
+ 446       throw new IllegalStateException("Not controlling concurrent GC");
+ 447     }
+ 448   }
+ 449 
+ 450   // All collectors supporting concurrent GC breakpoints are expected
+ 451   // to provide at least the following breakpoints.
+ 452   public final String AFTER_MARKING_STARTED = "AFTER MARKING STARTED";
+ 453   public final String BEFORE_MARKING_COMPLETED = "BEFORE MARKING COMPLETED";
+ 454 
+ 455   public void concurrentGCAcquireControl() {
+ 456     checkConcurrentGCBreakpointsSupported();
+ 457     if (concurrentGCIsControlled) {
+ 458       throw new IllegalStateException("Already controlling concurrent GC");
+ 459     }
+ 460     concurrentGCAcquireControl0();
+ 461     concurrentGCIsControlled = true;
+ 462   }
+ 463 
+ 464   public void concurrentGCReleaseControl() {
+ 465     checkConcurrentGCBreakpointsSupported();
+ 466     concurrentGCReleaseControl0();
+ 467     concurrentGCIsControlled = false;
+ 468   }
+ 469 
+ 470   // Keep concurrent GC idle.  Release from breakpoint.
+ 471   public void concurrentGCRunToIdle() {
+ 472     checkConcurrentGCBreakpointsSupported();
+ 473     checkConcurrentGCIsControlled();
+ 474     concurrentGCRunToIdle0();
+ 475   }
+ 476 
+ 477   // Allow concurrent GC to run to breakpoint.
+ 478   // Throws IllegalStateException if reached end of cycle first.
+ 479   public void concurrentGCRunTo(String breakpoint) {
+ 480     concurrentGCRunTo(breakpoint, true);
+ 481   }
+ 482 
+ 483   // Allow concurrent GC to run to breakpoint.
+ 484   // Returns true if reached breakpoint.  If reached end of cycle first,
+ 485   // then throws IllegalStateException if errorIfFail is true, returning
+ 486   // false otherwise.
+ 487   public boolean concurrentGCRunTo(String breakpoint, boolean errorIfFail) {
+ 488     checkConcurrentGCBreakpointsSupported();
+ 489     checkConcurrentGCIsControlled();
+ 490     if (breakpoint == null) {
+ 491       throw new NullPointerException("null breakpoint");
+ 492     } else if (concurrentGCRunTo0(breakpoint)) {
+ 493       return true;
+ 494     } else if (errorIfFail) {
+ 495       throw new IllegalStateException("Missed requested breakpoint \"" + breakpoint + "\"");
+ 496     } else {
+ 497       return false;
+ 498     }
+ 499   }
+ 500 
+ 501   // Method tries to start concurrent mark cycle.
+ 502   // It returns false if CM Thread is always in concurrent cycle.
+ 503   public native boolean g1StartConcMarkCycle();
+ 504 
+ 505   // Tests on ReservedSpace/VirtualSpace classes
+ 506   public native int stressVirtualSpaceResize(long reservedSpaceSize, long magnitude, long iterations);
+ 507   public native void runMemoryUnitTests();
+ 508   public native void readFromNoaccessArea();
+ 509   public native long getThreadStackSize();
+ 510   public native long getThreadRemainingStackSize();
+ 511 
+ 512   // CPU features
+ 513   public native String getCPUFeatures();
+ 514 
+ 515   // VM flags
+ 516   public native boolean isConstantVMFlag(String name);
+ 517   public native boolean isLockedVMFlag(String name);
+ 518   public native void    setBooleanVMFlag(String name, boolean value);
+ 519   public native void    setIntVMFlag(String name, long value);
+ 520   public native void    setUintVMFlag(String name, long value);
+ 521   public native void    setIntxVMFlag(String name, long value);
+ 522   public native void    setUintxVMFlag(String name, long value);
+ 523   public native void    setUint64VMFlag(String name, long value);
+ 524   public native void    setSizeTVMFlag(String name, long value);
+ 525   public native void    setStringVMFlag(String name, String value);
+ 526   public native void    setDoubleVMFlag(String name, double value);
+ 527   public native Boolean getBooleanVMFlag(String name);
+ 528   public native Long    getIntVMFlag(String name);
+ 529   public native Long    getUintVMFlag(String name);
+ 530   public native Long    getIntxVMFlag(String name);
+ 531   public native Long    getUintxVMFlag(String name);
+ 532   public native Long    getUint64VMFlag(String name);
+ 533   public native Long    getSizeTVMFlag(String name);
+ 534   public native String  getStringVMFlag(String name);
+ 535   public native Double  getDoubleVMFlag(String name);
+ 536   private final List&lt;Function&lt;String,Object&gt;&gt; flagsGetters = Arrays.asList(
+ 537     this::getBooleanVMFlag, this::getIntVMFlag, this::getUintVMFlag,
+ 538     this::getIntxVMFlag, this::getUintxVMFlag, this::getUint64VMFlag,
+ 539     this::getSizeTVMFlag, this::getStringVMFlag, this::getDoubleVMFlag);
+ 540 
+ 541   public Object getVMFlag(String name) {
+ 542     return flagsGetters.stream()
+ 543                        .map(f -&gt; f.apply(name))
+ 544                        .filter(x -&gt; x != null)
+ 545                        .findAny()
+ 546                        .orElse(null);
+ 547   }
+ 548 
+ 549   // Jigsaw
+ 550   public native void DefineModule(Object module, boolean is_open, String version,
+ 551                                   String location, Object[] packages);
+ 552   public native void AddModuleExports(Object from_module, String pkg, Object to_module);
+ 553   public native void AddReadsModule(Object from_module, Object source_module);
+ 554   public native void AddModuleExportsToAllUnnamed(Object module, String pkg);
+ 555   public native void AddModuleExportsToAll(Object module, String pkg);
+ 556 
+ 557   public native int getOffsetForName0(String name);
+ 558   public int getOffsetForName(String name) throws Exception {
+ 559     int offset = getOffsetForName0(name);
+ 560     if (offset == -1) {
+ 561       throw new RuntimeException(name + " not found");
+ 562     }
+ 563     return offset;
+ 564   }
+ 565   public native Boolean getMethodBooleanOption(Executable method, String name);
+ 566   public native Long    getMethodIntxOption(Executable method, String name);
+ 567   public native Long    getMethodUintxOption(Executable method, String name);
+ 568   public native Double  getMethodDoubleOption(Executable method, String name);
+ 569   public native String  getMethodStringOption(Executable method, String name);
+ 570   private final List&lt;BiFunction&lt;Executable,String,Object&gt;&gt; methodOptionGetters
+ 571       = Arrays.asList(this::getMethodBooleanOption, this::getMethodIntxOption,
+ 572           this::getMethodUintxOption, this::getMethodDoubleOption,
+ 573           this::getMethodStringOption);
+ 574 
+ 575   public Object getMethodOption(Executable method, String name) {
+ 576     return methodOptionGetters.stream()
+ 577                               .map(f -&gt; f.apply(method, name))
+ 578                               .filter(x -&gt; x != null)
+ 579                               .findAny()
+ 580                               .orElse(null);
+ 581   }
+ 582 
+ 583   // Safepoint Checking
+ 584   public native void assertMatchingSafepointCalls(boolean mutexSafepointValue, boolean attemptedNoSafepointValue);
+ 585   public native void assertSpecialLock(boolean allowVMBlock, boolean safepointCheck);
+ 586 
+ 587   // Sharing &amp; archiving
+ 588   public native String  getDefaultArchivePath();
+ 589   public native boolean cdsMemoryMappingFailed();
+ 590   public native boolean isSharingEnabled();
+ 591   public native boolean isShared(Object o);
+ 592   public native boolean isSharedClass(Class&lt;?&gt; c);
+ 593   public native boolean areSharedStringsIgnored();
+ 594   public native boolean isCDSIncludedInVmBuild();
+ 595   public native boolean isJFRIncludedInVmBuild();
+ 596   public native boolean isJavaHeapArchiveSupported();
+ 597   public native Object  getResolvedReferences(Class&lt;?&gt; c);
+ 598   public native void    linkClass(Class&lt;?&gt; c);
+ 599   public native boolean areOpenArchiveHeapObjectsMapped();
+ 600 
+ 601   // Compiler Directive
+ 602   public native int addCompilerDirective(String compDirect);
+ 603   public native void removeCompilerDirective(int count);
+ 604 
+ 605   // Handshakes
+ 606   public native int handshakeWalkStack(Thread t, boolean all_threads);
+ 607 
+ 608   // Returns true on linux if library has the noexecstack flag set.
+ 609   public native boolean checkLibSpecifiesNoexecstack(String libfilename);
+ 610 
+ 611   // Container testing
+ 612   public native boolean isContainerized();
+ 613   public native int validateCgroup(String procCgroups,
+ 614                                    String procSelfCgroup,
+ 615                                    String procSelfMountinfo);
+ 616   public native void printOsInfo();
+ 617 
+ 618   // Decoder
+ 619   public native void disableElfSectionCache();
+ 620 
+ 621   // Resolved Method Table
+ 622   public native long resolvedMethodItemsCount();
+ 623 
+ 624   // Protection Domain Table
+ 625   public native int protectionDomainRemovedCount();
+ 626 
+ 627   // Number of loaded AOT libraries
+ 628   public native int aotLibrariesCount();
+ 629 
+ 630   public native int getKlassMetadataSize(Class&lt;?&gt; c);
+ 631 
+ 632   // ThreadSMR GC safety check for threadObj
+ 633   public native void checkThreadObjOfTerminatingThread(Thread target);
+ 634 }
+</pre></body></html>

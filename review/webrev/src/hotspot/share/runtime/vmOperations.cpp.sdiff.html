@@ -1,0 +1,269 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/runtime </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/runtime/os.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/runtime/vmOperations.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60448">60448</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "classfile/symbolTable.hpp"
+  27 #include "classfile/vmSymbols.hpp"
+  28 #include "code/codeCache.hpp"
+  29 #include "compiler/compileBroker.hpp"
+  30 #include "gc/shared/collectedHeap.hpp"
+  31 #include "gc/shared/isGCActiveMark.hpp"
+  32 #include "logging/log.hpp"
+  33 #include "logging/logStream.hpp"
+  34 #include "logging/logConfiguration.hpp"
+  35 #include "memory/heapInspection.hpp"
+
+  36 #include "memory/resourceArea.hpp"
+  37 #include "memory/universe.hpp"
+  38 #include "oops/symbol.hpp"
+  39 #include "runtime/arguments.hpp"
+  40 #include "runtime/deoptimization.hpp"
+  41 #include "runtime/frame.inline.hpp"
+  42 #include "runtime/interfaceSupport.inline.hpp"
+  43 #include "runtime/sweeper.hpp"
+  44 #include "runtime/synchronizer.hpp"
+  45 #include "runtime/thread.inline.hpp"
+  46 #include "runtime/threadSMR.inline.hpp"
+  47 #include "runtime/vmOperations.hpp"
+  48 #include "services/threadService.hpp"
+  49 
+  50 #define VM_OP_NAME_INITIALIZE(name) #name,
+  51 
+  52 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
+  53   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
+  54 
+  55 void VM_Operation::set_calling_thread(Thread* thread) {
+
+</pre><hr></hr><pre>
+ 166   }
+ 167   return true;
+ 168 }
+ 169 
+ 170 void VM_PrintThreads::doit() {
+ 171   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
+ 172 }
+ 173 
+ 174 void VM_PrintThreads::doit_epilogue() {
+ 175   if (_print_concurrent_locks) {
+ 176     // Release Heap_lock
+ 177     Heap_lock-&gt;unlock();
+ 178   }
+ 179 }
+ 180 
+ 181 void VM_PrintJNI::doit() {
+ 182   JNIHandles::print_on(_out);
+ 183 }
+ 184 
+ 185 void VM_PrintMetadata::doit() {
+<span class="changed"> 186   MetaspaceUtils::print_report(_out, _scale, _flags);</span>
+ 187 }
+ 188 
+ 189 VM_FindDeadlocks::~VM_FindDeadlocks() {
+ 190   if (_deadlocks != NULL) {
+ 191     DeadlockCycle* cycle = _deadlocks;
+ 192     while (cycle != NULL) {
+ 193       DeadlockCycle* d = cycle;
+ 194       cycle = cycle-&gt;next();
+ 195       delete d;
+ 196     }
+ 197   }
+ 198 }
+ 199 
+ 200 void VM_FindDeadlocks::doit() {
+ 201   // Update the hazard ptr in the originating thread to the current
+ 202   // list of threads. This VM operation needs the current list of
+ 203   // threads for proper deadlock detection and those are the
+ 204   // JavaThreads we need to be protected when we return info to the
+ 205   // originating thread.
+ 206   _setter.set();
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "classfile/symbolTable.hpp"
+  27 #include "classfile/vmSymbols.hpp"
+  28 #include "code/codeCache.hpp"
+  29 #include "compiler/compileBroker.hpp"
+  30 #include "gc/shared/collectedHeap.hpp"
+  31 #include "gc/shared/isGCActiveMark.hpp"
+  32 #include "logging/log.hpp"
+  33 #include "logging/logStream.hpp"
+  34 #include "logging/logConfiguration.hpp"
+  35 #include "memory/heapInspection.hpp"
+<span class="new">  36 #include "memory/metaspace/metaspaceReport.hpp"</span>
+  37 #include "memory/resourceArea.hpp"
+  38 #include "memory/universe.hpp"
+  39 #include "oops/symbol.hpp"
+  40 #include "runtime/arguments.hpp"
+  41 #include "runtime/deoptimization.hpp"
+  42 #include "runtime/frame.inline.hpp"
+  43 #include "runtime/interfaceSupport.inline.hpp"
+  44 #include "runtime/sweeper.hpp"
+  45 #include "runtime/synchronizer.hpp"
+  46 #include "runtime/thread.inline.hpp"
+  47 #include "runtime/threadSMR.inline.hpp"
+  48 #include "runtime/vmOperations.hpp"
+  49 #include "services/threadService.hpp"
+  50 
+  51 #define VM_OP_NAME_INITIALIZE(name) #name,
+  52 
+  53 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
+  54   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
+  55 
+  56 void VM_Operation::set_calling_thread(Thread* thread) {
+
+</pre><hr></hr><pre>
+ 167   }
+ 168   return true;
+ 169 }
+ 170 
+ 171 void VM_PrintThreads::doit() {
+ 172   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
+ 173 }
+ 174 
+ 175 void VM_PrintThreads::doit_epilogue() {
+ 176   if (_print_concurrent_locks) {
+ 177     // Release Heap_lock
+ 178     Heap_lock-&gt;unlock();
+ 179   }
+ 180 }
+ 181 
+ 182 void VM_PrintJNI::doit() {
+ 183   JNIHandles::print_on(_out);
+ 184 }
+ 185 
+ 186 void VM_PrintMetadata::doit() {
+<span class="changed"> 187   metaspace::MetaspaceReporter::print_report(_out, _scale, _flags);</span>
+ 188 }
+ 189 
+ 190 VM_FindDeadlocks::~VM_FindDeadlocks() {
+ 191   if (_deadlocks != NULL) {
+ 192     DeadlockCycle* cycle = _deadlocks;
+ 193     while (cycle != NULL) {
+ 194       DeadlockCycle* d = cycle;
+ 195       cycle = cycle-&gt;next();
+ 196       delete d;
+ 197     }
+ 198   }
+ 199 }
+ 200 
+ 201 void VM_FindDeadlocks::doit() {
+ 202   // Update the hazard ptr in the originating thread to the current
+ 203   // list of threads. This VM operation needs the current list of
+ 204   // threads for proper deadlock detection and those are the
+ 205   // JavaThreads we need to be protected when we return info to the
+ 206   // originating thread.
+ 207   _setter.set();
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/runtime/os.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

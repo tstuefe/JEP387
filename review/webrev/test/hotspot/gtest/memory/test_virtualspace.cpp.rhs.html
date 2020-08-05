@@ -1,0 +1,509 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60448">60448</a> : imported patch jep387-all.patch</pre><hr></hr>
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  */
+  23 
+  24 #include "precompiled.hpp"
+  25 #include "memory/virtualspace.hpp"
+  26 #include "runtime/os.hpp"
+  27 #include "oops/oop.hpp"
+  28 #include "utilities/align.hpp"
+  29 #include "unittest.hpp"
+  30 
+<a name="1" id="anc1"></a><span class="new">  31 </span>
+  32 namespace {
+  33   class MemoryReleaser {
+  34     ReservedSpace* const _rs;
+  35    public:
+  36     MemoryReleaser(ReservedSpace* rs) : _rs(rs) { }
+  37     ~MemoryReleaser() {
+  38       if (_rs-&gt;special()) {
+  39         EXPECT_TRUE(os::release_memory_special(_rs-&gt;base(), _rs-&gt;size()));
+  40       } else {
+  41         EXPECT_TRUE(os::release_memory(_rs-&gt;base(), _rs-&gt;size()));
+  42       }
+  43     }
+  44   };
+  45 
+  46   static void small_page_write(void* addr, size_t size) {
+  47     size_t page_size = os::vm_page_size();
+  48 
+  49     char* end = (char*) addr + size;
+  50     for (char* p = (char*) addr; p &lt; end; p += page_size) {
+  51       *p = 1;
+  52     }
+  53   }
+  54 
+  55   // have to use these functions, as gtest's _PRED macros don't like is_aligned
+  56   // nor (is_aligned&lt;size_t, size_t&gt;)
+  57   static bool is_size_aligned(size_t size, size_t alignment) {
+  58     return is_aligned(size, alignment);
+  59   }
+  60   static bool is_ptr_aligned(void* ptr, size_t alignment) {
+  61     return is_aligned(ptr, alignment);
+  62   }
+  63 
+  64   static void test_reserved_size(size_t size) {
+  65     ASSERT_PRED2(is_size_aligned, size, os::vm_allocation_granularity());
+  66 
+  67     ReservedSpace rs(size);
+  68     MemoryReleaser releaser(&amp;rs);
+  69 
+  70     EXPECT_TRUE(rs.base() != NULL) &lt;&lt; "rs.special: " &lt;&lt; rs.special();
+  71     EXPECT_EQ(size, rs.size()) &lt;&lt; "rs.special: " &lt;&lt; rs.special();
+  72 
+  73     if (rs.special()) {
+  74       small_page_write(rs.base(), size);
+  75     }
+  76   }
+  77 
+  78   static void test_reserved_size_alignment(size_t size, size_t alignment) {
+  79     ASSERT_PRED2(is_size_aligned, size, alignment) &lt;&lt; "Incorrect input parameters";
+  80 
+  81     ReservedSpace rs(size, alignment, UseLargePages, (char *) NULL);
+  82 
+  83     ASSERT_TRUE(rs.base() != NULL) &lt;&lt; "rs.special = " &lt;&lt; rs.special();
+  84     ASSERT_EQ(size, rs.size()) &lt;&lt; "rs.special = " &lt;&lt; rs.special();
+  85 
+  86     EXPECT_PRED2(is_ptr_aligned, rs.base(), alignment)
+  87             &lt;&lt; "aligned sizes should always give aligned addresses";
+  88     EXPECT_PRED2(is_ptr_aligned, (void*) rs.size(), alignment)
+  89             &lt;&lt; "aligned sizes should always give aligned addresses";
+  90 
+  91     if (rs.special()) {
+  92       small_page_write(rs.base(), size);
+  93     }
+  94   }
+  95 
+  96   static void test_reserved_size_alignment_page_type(size_t size, size_t alignment, bool maybe_large) {
+  97     if (size &lt; alignment) {
+  98       // Tests might set -XX:LargePageSizeInBytes=&lt;small pages&gt; and cause unexpected input arguments for this test.
+  99       ASSERT_EQ((size_t) os::vm_page_size(), os::large_page_size()) &lt;&lt; "Test needs further refinement";
+ 100       return;
+ 101     }
+ 102 
+ 103     ASSERT_PRED2(is_size_aligned, size, os::vm_allocation_granularity()) &lt;&lt; "Must be at least AG aligned";
+ 104     ASSERT_PRED2(is_size_aligned, size, alignment) &lt;&lt; "Must be at least AG aligned";
+ 105 
+ 106     bool large = maybe_large &amp;&amp; UseLargePages &amp;&amp; size &gt;= os::large_page_size();
+ 107 
+ 108     ReservedSpace rs(size, alignment, large);
+ 109     MemoryReleaser releaser(&amp;rs);
+ 110 
+ 111     EXPECT_TRUE(rs.base() != NULL) &lt;&lt; "rs.special: " &lt;&lt; rs.special();
+ 112     EXPECT_EQ(size, rs.size()) &lt;&lt; "rs.special: " &lt;&lt; rs.special();
+ 113 
+ 114     if (rs.special()) {
+ 115       small_page_write(rs.base(), size);
+ 116     }
+ 117   }
+ 118 }
+ 119 
+ 120 TEST_VM(ReservedSpace, size_alignment) {
+ 121   size_t size = 2 * 1024 * 1024;
+ 122   size_t ag   = os::vm_allocation_granularity();
+ 123 
+ 124   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment(size,      ag));
+ 125   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment(size * 2,  ag));
+ 126   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment(size * 10, ag));
+ 127 }
+ 128 
+ 129 TEST_VM(ReservedSpace, size) {
+ 130   size_t size = 2 * 1024 * 1024;
+ 131   size_t ag = os::vm_allocation_granularity();
+ 132 
+ 133   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 1));
+ 134   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 2));
+ 135   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 10));
+ 136   EXPECT_NO_FATAL_FAILURE(test_reserved_size(ag));
+ 137   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size - ag));
+ 138   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size));
+ 139   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size + ag));
+ 140   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 2));
+ 141   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 2 - ag));
+ 142   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 2 + ag));
+ 143   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 3));
+ 144   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 3 - ag));
+ 145   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 3 + ag));
+ 146   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 10));
+ 147   EXPECT_NO_FATAL_FAILURE(test_reserved_size(size * 10 + size / 2));
+ 148 }
+ 149 
+ 150 TEST_VM(ReservedSpace, size_alignment_page_type) {
+ 151   size_t ag = os::vm_allocation_granularity();
+ 152 
+ 153   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag,      ag    , false));
+ 154   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 2,  ag    , false));
+ 155   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 3,  ag    , false));
+ 156   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 2,  ag * 2, false));
+ 157   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 4,  ag * 2, false));
+ 158   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 8,  ag * 2, false));
+ 159   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 4,  ag * 4, false));
+ 160   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 8,  ag * 4, false));
+ 161   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(ag * 16, ag * 4, false));
+ 162 }
+ 163 
+ 164 TEST_VM(ReservedSpace, size_alignment_page_type_large_page) {
+ 165   if (!UseLargePages) {
+ 166     return;
+ 167   }
+ 168 
+ 169   size_t ag = os::vm_allocation_granularity();
+ 170   size_t lp = os::large_page_size();
+ 171 
+ 172   // Without large pages
+ 173   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp,     ag * 4, false));
+ 174   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 2, ag * 4, false));
+ 175   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 4, ag * 4, false));
+ 176   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp,     lp    , false));
+ 177   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 2, lp    , false));
+ 178   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 3, lp    , false));
+ 179   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 2, lp * 2, false));
+ 180   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 4, lp * 2, false));
+ 181   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 8, lp * 2, false));
+ 182 
+ 183   // With large pages
+ 184   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp, ag * 4    , true));
+ 185   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 2, ag * 4, true));
+ 186   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 4, ag * 4, true));
+ 187   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp, lp        , true));
+ 188   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 2, lp    , true));
+ 189   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 3, lp    , true));
+ 190   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 2, lp * 2, true));
+ 191   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 4, lp * 2, true));
+ 192   EXPECT_NO_FATAL_FAILURE(test_reserved_size_alignment_page_type(lp * 8, lp * 2, true));
+ 193 }
+ 194 
+ 195 namespace {
+ 196   enum TestLargePages {
+ 197     Default,
+ 198     Disable,
+ 199     Reserve,
+ 200     Commit
+ 201   };
+ 202 
+ 203   class ReservedSpaceReleaser {
+ 204     ReservedSpace* const _rs;
+ 205    public:
+ 206     ReservedSpaceReleaser(ReservedSpace* rs) : _rs(rs) { }
+ 207     ~ReservedSpaceReleaser() {
+ 208       _rs-&gt;release();
+ 209     }
+ 210   };
+ 211 
+ 212   ReservedSpace reserve_memory(size_t reserve_size_aligned, TestLargePages mode) {
+ 213     switch(mode) {
+ 214       default:
+ 215       case Default:
+ 216       case Reserve:
+ 217         return ReservedSpace(reserve_size_aligned);
+ 218       case Disable:
+ 219       case Commit:
+ 220         return ReservedSpace(reserve_size_aligned,
+ 221                              os::vm_allocation_granularity(),
+ 222                              /* large */ false);
+ 223     }
+ 224   }
+ 225 
+ 226   bool initialize_virtual_space(VirtualSpace&amp; vs, ReservedSpace rs, TestLargePages mode) {
+ 227     switch(mode) {
+ 228       default:
+ 229       case Default:
+ 230       case Reserve:
+ 231         return vs.initialize(rs, 0);
+ 232       case Disable:
+ 233         return vs.initialize_with_granularity(rs, 0, os::vm_page_size());
+ 234       case Commit:
+ 235         return vs.initialize_with_granularity(rs, 0, os::page_size_for_region_unaligned(rs.size(), 1));
+ 236     }
+ 237   }
+ 238 
+ 239  void test_virtual_space_actual_committed_space(size_t reserve_size, size_t commit_size,
+ 240                                                 TestLargePages mode = Default) {
+ 241     size_t granularity = os::vm_allocation_granularity();
+ 242     size_t reserve_size_aligned = align_up(reserve_size, granularity);
+ 243 
+ 244     ReservedSpace reserved = reserve_memory(reserve_size_aligned, mode);
+ 245     ReservedSpaceReleaser releaser(&amp;reserved);
+ 246 
+ 247     ASSERT_TRUE(reserved.is_reserved());
+ 248 
+ 249     VirtualSpace vs;
+ 250     ASSERT_TRUE(initialize_virtual_space(vs, reserved, mode)) &lt;&lt; "Failed to initialize VirtualSpace";
+ 251     vs.expand_by(commit_size, false);
+ 252 
+ 253     if (vs.special()) {
+ 254       EXPECT_EQ(reserve_size_aligned, vs.actual_committed_size());
+ 255     } else {
+ 256       EXPECT_GE(vs.actual_committed_size(), commit_size);
+ 257       // Approximate the commit granularity.
+ 258       // Make sure that we don't commit using large pages
+ 259       // if large pages has been disabled for this VirtualSpace.
+ 260       size_t commit_granularity = (mode == Disable || !UseLargePages) ?
+ 261                                    os::vm_page_size() : os::large_page_size();
+ 262       EXPECT_LT(vs.actual_committed_size(), commit_size + commit_granularity);
+ 263     }
+ 264   }
+ 265 }
+ 266 
+ 267 TEST_VM(VirtualSpace, actual_committed_space) {
+ 268   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(4 * K,  0));
+ 269   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(4 * K,  4 * K));
+ 270   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(8 * K,  0));
+ 271   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(8 * K,  4 * K));
+ 272   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(8 * K,  8 * K));
+ 273   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(12 * K, 0));
+ 274   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(12 * K, 4 * K));
+ 275   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(12 * K, 8 * K));
+ 276   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(12 * K, 12 * K));
+ 277   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(64 * K, 0));
+ 278   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(64 * K, 32 * K));
+ 279   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(64 * K, 64 * K));
+ 280   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(2 * M,  0));
+ 281   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(2 * M,  4 * K));
+ 282   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(2 * M,  64 * K));
+ 283   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(2 * M,  1 * M));
+ 284   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(2 * M,  2 * M));
+ 285   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 0));
+ 286   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 4 * K));
+ 287   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 8 * K));
+ 288   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 1 * M));
+ 289   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 2 * M));
+ 290   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 5 * M));
+ 291   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 10 * M));
+ 292 }
+ 293 
+ 294 TEST_VM(VirtualSpace, actual_committed_space_one_large_page) {
+ 295   if (!UseLargePages) {
+ 296     return;
+ 297   }
+ 298 
+ 299   size_t large_page_size = os::large_page_size();
+ 300 
+ 301   ReservedSpace reserved(large_page_size, large_page_size, true);
+ 302   ReservedSpaceReleaser releaser(&amp;reserved);
+ 303   ASSERT_TRUE(reserved.is_reserved());
+ 304 
+ 305   VirtualSpace vs;
+ 306   ASSERT_TRUE(vs.initialize(reserved, 0)) &lt;&lt; "Failed to initialize VirtualSpace";
+ 307   vs.expand_by(large_page_size, false);
+ 308 
+ 309   EXPECT_EQ(large_page_size, vs.actual_committed_size());
+ 310 }
+ 311 
+ 312 TEST_VM(VirtualSpace, disable_large_pages) {
+ 313   if (!UseLargePages) {
+ 314     return;
+ 315   }
+ 316   // These test cases verify that if we force VirtualSpace to disable large pages
+ 317   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 0,      Disable));
+ 318   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 4 * K,  Disable));
+ 319   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 8 * K,  Disable));
+ 320   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 1 * M,  Disable));
+ 321   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 2 * M,  Disable));
+ 322   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 5 * M,  Disable));
+ 323   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 10 * M, Disable));
+ 324 
+ 325   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 0,      Reserve));
+ 326   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 4 * K,  Reserve));
+ 327   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 8 * K,  Reserve));
+ 328   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 1 * M,  Reserve));
+ 329   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 2 * M,  Reserve));
+ 330   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 5 * M,  Reserve));
+ 331   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 10 * M, Reserve));
+ 332 
+ 333   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 0,      Commit));
+ 334   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 4 * K,  Commit));
+ 335   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 8 * K,  Commit));
+ 336   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 1 * M,  Commit));
+ 337   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 2 * M,  Commit));
+ 338   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 5 * M,  Commit));
+ 339   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 10 * M, Commit));
+ 340 }
+<a name="2" id="anc2"></a><span class="new"> 341 </span>
+<span class="new"> 342 </span>
+<span class="new"> 343 </span>
+<a name="3" id="anc3"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="3" type="hidden" /></form></body></html>

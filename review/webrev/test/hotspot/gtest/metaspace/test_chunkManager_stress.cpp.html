@@ -1,0 +1,375 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2019, SAP SE. All rights reserved.
+   3  * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 
+  27 //#define LOG_PLEASE
+  28 
+  29 #include "metaspace/metaspace_sparsearray.hpp"
+  30 #include "metaspace/metaspace_testhelper.hpp"
+  31 #include "metaspace/metaspaceTestsCommon.hpp"
+  32 
+  33 
+  34 class ChunkManagerRandomChunkAllocTest {
+  35 
+  36   static const size_t max_footprint_words = 8 * M;
+  37 
+  38   MetaspaceTestHelper _helper;
+  39 
+  40   // All allocated live chunks
+  41   typedef SparseArray&lt;Metachunk*&gt; SparseArrayOfChunks;
+  42   SparseArrayOfChunks _chunks;
+  43 
+  44   const ChunkLevelRange _chunklevel_range;
+  45   const float _commit_factor;
+  46 
+  47   // Depending on a probability pattern, come up with a reasonable limit to number of live chunks
+  48   static int max_num_live_chunks(ChunkLevelRange r, float commit_factor) {
+  49     // Assuming we allocate only the largest type of chunk, committed to the fullest commit factor,
+  50     // how many chunks can we accomodate before hitting max_footprint_words?
+  51     const size_t largest_chunk_size = word_size_for_level(r.lowest());
+  52     int max_chunks = (max_footprint_words * commit_factor) / largest_chunk_size;
+  53     // .. but cap at (min) 50 and (max) 1000
+  54     max_chunks = MIN2(1000, max_chunks);
+  55     max_chunks = MAX2(50, max_chunks);
+  56     return max_chunks;
+  57   }
+  58 
+  59   // Return true if, after an allocation error happened, a reserve error seems likely.
+  60   bool could_be_reserve_error() {
+  61     return _helper.vslist().is_full();
+  62   }
+  63 
+  64   // Return true if, after an allocation error happened, a commit error seems likely.
+  65   bool could_be_commit_error(size_t additional_word_size) {
+  66 
+  67     // could it be commit limit hit?
+  68 
+  69     if (Settings::newborn_root_chunks_are_fully_committed()) {
+  70       // For all we know we may have just failed to fully-commit a new root chunk.
+  71       additional_word_size = MAX_CHUNK_WORD_SIZE;
+  72     }
+  73 
+  74     // Note that this is difficult to verify precisely, since there are
+  75     // several layers of truth:
+  76     // a) at the lowest layer (RootChunkArea) we have a bitmap of committed granules;
+  77     // b) at the vslist layer, we keep running counters of committed/reserved words;
+  78     // c) at the chunk layer, we keep a commit watermark (committed_words).
+  79     //
+  80     // (a) should mirror reality.
+  81     // (a) and (b) should be precisely in sync. This is tested by
+  82     // VirtualSpaceList::verify().
+  83     // (c) can be, by design, imprecise (too low).
+  84     //
+  85     // Here, I check (b) and trust it to be correct. We also call vslist::verify().
+  86     DEBUG_ONLY(_helper.verify();)
+  87 
+  88     const size_t commit_add = align_up(additional_word_size, Settings::commit_granule_words());
+  89     if (_helper.commit_limit() &lt;= (commit_add + _helper.vslist().committed_words())) {
+  90       return true;
+  91     }
+  92 
+  93     return false;
+  94 
+  95   }
+  96 
+  97   // Given a chunk level and a factor, return a random commit size.
+  98   static size_t random_committed_words(chunklevel_t lvl, float commit_factor) {
+  99     const size_t sz = word_size_for_level(lvl) * commit_factor;
+ 100     if (sz &lt; 2) {
+ 101       return 0;
+ 102     }
+ 103     return MIN2(SizeRange(sz).random_value(), sz);
+ 104   }
+ 105 
+ 106 
+ 107   //// Chunk allocation ////
+ 108 
+ 109   // Given an slot index, allocate a random chunk and set it into that slot. Slot must be empty.
+ 110   // Returns false if allocation fails.
+ 111   bool allocate_random_chunk_at(int slot) {
+ 112 
+ 113     DEBUG_ONLY(_chunks.check_slot_is_null(slot);)
+ 114 
+ 115     const ChunkLevelRange r = _chunklevel_range.random_subrange();
+ 116     const chunklevel_t pref_level = r.lowest();
+ 117     const chunklevel_t max_level = r.highest();
+ 118     const size_t min_committed = random_committed_words(max_level, _commit_factor);
+ 119 
+ 120     Metachunk* c = NULL;
+ 121     _helper.alloc_chunk(&amp;c, r.lowest(), r.highest(), min_committed);
+ 122     if (c == NULL) {
+ 123       EXPECT_TRUE(could_be_reserve_error() ||
+ 124                   could_be_commit_error(min_committed));
+ 125       LOG("Alloc chunk at %d failed.", slot);
+ 126       return false;
+ 127     }
+ 128 
+ 129     _chunks.set_at(slot, c);
+ 130 
+ 131     LOG("Allocated chunk at %d: " METACHUNK_FORMAT ".", slot, METACHUNK_FORMAT_ARGS(c));
+ 132 
+ 133     return true;
+ 134 
+ 135   }
+ 136 
+ 137   // Allocates a random number of random chunks
+ 138   bool allocate_random_chunks() {
+ 139     int to_alloc = 1 + IntRange(MAX2(1, _chunks.size() / 8)).random_value();
+ 140     bool success = true;
+ 141     int slot = _chunks.first_null_slot();
+ 142     while (to_alloc &gt; 0 &amp;&amp; slot != -1 &amp;&amp; success) {
+ 143       success = allocate_random_chunk_at(slot);
+ 144       slot = _chunks.next_null_slot(slot);
+ 145       to_alloc --;
+ 146     }
+ 147     return success &amp;&amp; to_alloc == 0;
+ 148   }
+ 149 
+ 150   bool fill_all_slots_with_random_chunks() {
+ 151     bool success = true;
+ 152     for (int slot = _chunks.first_null_slot();
+ 153          slot != -1 &amp;&amp; success; slot = _chunks.next_null_slot(slot)) {
+ 154       success = allocate_random_chunk_at(slot);
+ 155     }
+ 156     return success;
+ 157   }
+ 158 
+ 159   //// Chunk return ////
+ 160 
+ 161   // Given an slot index, return the chunk in that slot to the chunk manager.
+ 162   void return_chunk_at(int slot) {
+ 163     Metachunk* c = _chunks.at(slot);
+ 164     LOG("Returning chunk at %d: " METACHUNK_FORMAT ".", slot, METACHUNK_FORMAT_ARGS(c));
+ 165     _helper.return_chunk(c);
+ 166     _chunks.set_at(slot, NULL);
+ 167   }
+ 168 
+ 169   // return a random number of chunks (at most a quarter of the full slot range)
+ 170   void return_random_chunks() {
+ 171     int to_free = 1 + IntRange(MAX2(1, _chunks.size() / 8)).random_value();
+ 172     int index = _chunks.first_non_null_slot();
+ 173     while (to_free &gt; 0 &amp;&amp; index != -1) {
+ 174       return_chunk_at(index);
+ 175       index = _chunks.next_non_null_slot(index);
+ 176       to_free --;
+ 177     }
+ 178   }
+ 179 
+ 180   void return_all_chunks() {
+ 181     for (int slot = _chunks.first_non_null_slot();
+ 182          slot != -1; slot = _chunks.next_non_null_slot(slot)) {
+ 183       return_chunk_at(slot);
+ 184     }
+ 185   }
+ 186 
+ 187   // adjust test if we change levels
+ 188   STATIC_ASSERT(HIGHEST_CHUNK_LEVEL == CHUNK_LEVEL_1K);
+ 189   STATIC_ASSERT(LOWEST_CHUNK_LEVEL == CHUNK_LEVEL_4M);
+ 190 
+ 191   void one_test() {
+ 192 
+ 193     fill_all_slots_with_random_chunks();
+ 194     _chunks.shuffle();
+ 195 
+ 196     IntRange rand(100);
+ 197 
+ 198     for (int j = 0; j &lt; 1000; j ++) {
+ 199 
+ 200       bool force_alloc = false;
+ 201       bool force_free = true;
+ 202 
+ 203       bool do_alloc =
+ 204           force_alloc ? true :
+ 205               (force_free ? false : rand.random_value() &gt;= 50);
+ 206       force_alloc = force_free = false;
+ 207 
+ 208       if (do_alloc) {
+ 209         if (!allocate_random_chunks()) {
+ 210           force_free = true;
+ 211         }
+ 212       } else {
+ 213         return_random_chunks();
+ 214       }
+ 215 
+ 216       _chunks.shuffle();
+ 217 
+ 218     }
+ 219 
+ 220     return_all_chunks();
+ 221 
+ 222   }
+ 223 
+ 224 
+ 225 public:
+ 226 
+ 227   // A test with no limits
+ 228   ChunkManagerRandomChunkAllocTest(ChunkLevelRange r, float commit_factor)
+ 229     : _helper(),
+ 230       _chunks(max_num_live_chunks(r, commit_factor)),
+ 231       _chunklevel_range(r),
+ 232       _commit_factor(commit_factor)
+ 233   {}
+ 234 
+ 235   // A test with no reserve limit but commit limit
+ 236   ChunkManagerRandomChunkAllocTest(size_t commit_limit,
+ 237                                    ChunkLevelRange r, float commit_factor)
+ 238     : _helper(commit_limit),
+ 239       _chunks(max_num_live_chunks(r, commit_factor)),
+ 240       _chunklevel_range(r),
+ 241       _commit_factor(commit_factor)
+ 242   {}
+ 243 
+ 244   // A test with both reserve and commit limit
+ 245   // ChunkManagerRandomChunkAllocTest(size_t commit_limit, size_t reserve_limit,
+ 246   //                                  ChunkLevelRange r, float commit_factor)
+ 247   // : _helper(commit_limit, reserve_limit),
+ 248   // _chunks(max_num_live_chunks(r, commit_factor)),
+ 249   // _chunklevel_range(r),
+ 250   // _commit_factor(commit_factor)
+ 251   // {}
+ 252 
+ 253 
+ 254   void do_tests() {
+ 255     const int num_runs = 5;
+ 256     for (int n = 0; n &lt; num_runs; n ++) {
+ 257       one_test();
+ 258     }
+ 259   }
+ 260 
+ 261 };
+ 262 
+ 263 #define DEFINE_TEST(name, range, commit_factor) \
+ 264 TEST_VM(metaspace, chunkmanager_random_alloc_##name) { \
+ 265         ChunkManagerRandomChunkAllocTest test(range, commit_factor); \
+ 266         test.do_tests(); \
+ 267 }
+ 268 
+ 269 DEFINE_TEST(test_nolimit_1, ChunkLevelRanges::small_chunks(), 0.0f)
+ 270 DEFINE_TEST(test_nolimit_2, ChunkLevelRanges::small_chunks(), 0.5f)
+ 271 DEFINE_TEST(test_nolimit_3, ChunkLevelRanges::small_chunks(), 1.0f)
+ 272 
+ 273 DEFINE_TEST(test_nolimit_4, ChunkLevelRanges::all_chunks(), 0.0f)
+ 274 DEFINE_TEST(test_nolimit_5, ChunkLevelRanges::all_chunks(), 0.5f)
+ 275 DEFINE_TEST(test_nolimit_6, ChunkLevelRanges::all_chunks(), 1.0f)
+ 276 
+ 277 #define DEFINE_TEST_2(name, range, commit_factor) \
+ 278 TEST_VM(metaspace, chunkmanager_random_alloc_##name) { \
+ 279   const size_t commit_limit = 256 * K; \
+ 280   ChunkManagerRandomChunkAllocTest test(commit_limit, range, commit_factor); \
+ 281   test.do_tests(); \
+ 282 }
+ 283 
+ 284 DEFINE_TEST_2(test_with_limit_1, ChunkLevelRanges::small_chunks(), 0.0f)
+ 285 DEFINE_TEST_2(test_with_limit_2, ChunkLevelRanges::small_chunks(), 0.5f)
+ 286 DEFINE_TEST_2(test_with_limit_3, ChunkLevelRanges::small_chunks(), 1.0f)
+ 287 
+ 288 DEFINE_TEST_2(test_with_limit_4, ChunkLevelRanges::all_chunks(), 0.0f)
+ 289 DEFINE_TEST_2(test_with_limit_5, ChunkLevelRanges::all_chunks(), 0.5f)
+ 290 DEFINE_TEST_2(test_with_limit_6, ChunkLevelRanges::all_chunks(), 1.0f)
+ 291 
+ 292 
+</pre></body></html>

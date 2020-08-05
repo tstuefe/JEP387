@@ -1,0 +1,170 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/jtreg/runtime/Metaspace/elastic/RandomAllocator.java</title>
+<body id="SUNWwebrev">
+<pre>
+   1 
+   2 import java.util.ArrayList;
+   3 import java.util.Random;
+   4 
+   5 /**
+   6  * RandomAllocator sits atop an arena and allocates from it.
+   7  *
+   8  * It will, according to an allocation profile, allocate random blocks in a certain size range and, from time to time,
+   9  * deallocate old blocks.
+  10  *
+  11  * At some point it will reach a limit: either the commit/reserve limit of the underlying MetaspaceTestContext,
+  12  * or the allocation ceiling imposed by the test. From that point on allocations will start failing. We can (and do)
+  13  * deallocate a bit more, but since that will only exercise the Arena's internal free block list and nothing much else,
+  14  * this is unexciting in terms of stressing Metaspace. So, the caller may decide to kill the arena and create a new one.
+  15  *
+  16  */
+  17 public class RandomAllocator {
+  18 
+  19     final MetaspaceTestArena arena;
+  20     final AllocationProfile profile;
+  21 
+  22     ArrayList&lt;Allocation&gt; to_dealloc = new ArrayList&lt;&gt;();
+  23 
+  24     long ticks = 0;
+  25     boolean allocationError = false;
+  26 
+  27     Random localRandom;
+  28 
+  29     // Roll dice and return true if probability was hit
+  30     private boolean rollDice(double probability) {
+  31         return ((double)localRandom.nextInt(100) &gt; (100.0 * (1.0 - probability))) ? true : false;
+  32     }
+  33 
+  34     // Allocate a random amount from the arena. If dice hits right, add this to the deallocation list.
+  35     void allocateRandomly() {
+  36         allocationError = false;
+  37         long word_size = profile.randomAllocationSize();
+  38         Allocation a = arena.allocate(word_size);
+  39         if (a != null) {
+  40             if (to_dealloc.size() &lt; 10000) {
+  41                 to_dealloc.add(a);
+  42             }
+  43         } else {
+  44             allocationError = true;
+  45         }
+  46     }
+  47 
+  48     // Randomly choose one of the allocated in the deallocation list and deallocate it
+  49     void deallocateRandomly() {
+  50         if (to_dealloc.size() == 0) {
+  51             return;
+  52         }
+  53         int n = localRandom.nextInt(to_dealloc.size());
+  54         Allocation a = to_dealloc.remove(n);
+  55         arena.deallocate(a);
+  56     }
+  57 
+  58     public void tick() {
+  59 
+  60         if (!allocationError) {
+  61             allocateRandomly();
+  62             if(rollDice(profile.randomDeallocProbability)) {
+  63                deallocateRandomly();
+  64             }
+  65         } else {
+  66             deallocateRandomly();
+  67             allocationError = false;
+  68         }
+  69 
+  70         ticks ++;
+  71 
+  72     }
+  73 
+  74     public RandomAllocator(MetaspaceTestArena arena) {
+  75         this.arena = arena;
+  76         this.profile = AllocationProfile.randomProfile();
+  77         // reproducable randoms (we assume each allocator is only used from within one thread, and gets created from the main thread).
+  78         this.localRandom = new Random(RandomHelper.random().nextInt());
+  79     }
+  80 
+  81 
+  82     @Override
+  83     public String toString() {
+  84         return  arena.toString() + ", ticks=" + ticks;
+  85     }
+  86 
+  87 }
+</pre></body></html>

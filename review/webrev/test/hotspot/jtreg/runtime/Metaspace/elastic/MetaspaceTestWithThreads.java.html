@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestWithThreads.java</title>
+<body id="SUNWwebrev">
+<pre>
+   1 import java.util.Set;
+   2 
+   3 public class MetaspaceTestWithThreads {
+   4 
+   5     // The context to use.
+   6     final MetaspaceTestContext context;
+   7 
+   8     // Total *word* size we allow for the test to allocation. The test may overshoot this a bit, but should not by much.
+   9     final long testAllocationCeiling;
+  10 
+  11     // Number of parallel allocators
+  12     final int numThreads;
+  13 
+  14     // Number of seconds for each test
+  15     final int seconds;
+  16 
+  17     RandomAllocatorThread threads[];
+  18 
+  19     public MetaspaceTestWithThreads(MetaspaceTestContext context, long testAllocationCeiling, int numThreads, int seconds) {
+  20         this.context = context;
+  21         this.testAllocationCeiling = testAllocationCeiling;
+  22         this.numThreads = numThreads;
+  23         this.seconds = seconds;
+  24         this.threads = new RandomAllocatorThread[numThreads];
+  25     }
+  26 
+  27     protected void stopAllThreads() throws InterruptedException {
+  28         // Stop all threads.
+  29         for (Thread t: threads) {
+  30             t.interrupt();
+  31             t.join();
+  32         }
+  33     }
+  34 
+  35     void destroyArenasAndPurgeSpace() {
+  36 
+  37         for (RandomAllocatorThread t: threads) {
+  38             if (t.allocator.arena.isLive()) {
+  39                 context.destroyArena(t.allocator.arena);
+  40             }
+  41         }
+  42 
+  43         context.checkStatistics();
+  44 
+  45         // After deleting all arenas, we should have no committed space left: all arena chunks have been returned to
+  46         // the freelist amd should have been maximally merged to a bunch of root chunks, which should be uncommitted
+  47         // in one go.
+  48         // Exception: if reclamation policy is none.
+  49         if (Settings.settings().doesReclaim()) {
+  50             if (context.committedWords() &gt; 0) {
+  51                 throw new RuntimeException("Expected no committed words after purging empty metaspace context (was: " + context.committedWords() + ")");
+  52             }
+  53         }
+  54 
+  55         context.purge();
+  56 
+  57         context.checkStatistics();
+  58 
+  59         // After purging - if all arenas had been deleted before - we should have no committed space left even in
+  60         //   recmalation=none mode:
+  61         // purging deletes all nodes with only free chunks, and in this case no node should still house in-use chunks,
+  62         //  so all nodes would have been unmapped.
+  63         // This is independent on reclamation policy. Only one exception: if the area was created with a reserve limit
+  64         // (mimicking compressed class space), the underlying virtual space list cannot be purged.
+  65         if (context.reserveLimit == 0) {
+  66             if (context.committedWords() &gt; 0) {
+  67                 throw new RuntimeException("Expected no committed words after purging empty metaspace context (was: " + context.committedWords() + ")");
+  68             }
+  69         }
+  70 
+  71     }
+  72 
+  73     @Override
+  74     public String toString() {
+  75         return "commitLimit=" + context.commitLimit +
+  76                 ", reserveLimit=" + context.reserveLimit +
+  77                 ", testAllocationCeiling=" + testAllocationCeiling +
+  78                 ", num_allocators=" + numThreads +
+  79                 ", seconds=" + seconds;
+  80     }
+  81 
+  82 
+  83 }
+</pre></body></html>
