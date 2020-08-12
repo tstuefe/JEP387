@@ -1,0 +1,238 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Udiff src/hotspot/share/services/memReporter.cpp</title>
+
+<style type="text/css" media="screen">
+span.new {
+    color: blue;
+    font-weight: normal;
+}
+</style>
+
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/services/virtualMemoryTracker.cpp.udiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/services/memReporter.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+        <pre>
+</pre><hr /><pre>
+<span class="newmarker">@@ -21,11 +21,14 @@</span>
+  * questions.
+  *
+  */
+ #include "precompiled.hpp"
+ 
+<span class="new">+</span>
+ #include "memory/allocation.hpp"
+<span class="new">+#include "memory/metaspace.hpp"</span>
+<span class="new">+#include "memory/metaspace/metaspaceEnums.hpp"</span>
+ #include "services/mallocTracker.hpp"
+ #include "services/memReporter.hpp"
+ #include "services/threadStackTracker.hpp"
+ #include "services/virtualMemoryTracker.hpp"
+ #include "utilities/globalDefinitions.hpp"
+</pre><hr /><pre>
+<span class="newmarker">@@ -207,30 +210,30 @@</span>
+     }
+     out-&gt;print_cr(" ");
+   }
+ }
+ 
+<span class="removed">-void MemSummaryReporter::report_metadata(Metaspace::MetadataType type) const {</span>
+<span class="removed">-  assert(type == Metaspace::NonClassType || type == Metaspace::ClassType,</span>
+<span class="removed">-    "Invalid metadata type");</span>
+<span class="removed">-  const char* name = (type == Metaspace::NonClassType) ?</span>
+<span class="removed">-    "Metadata:   " : "Class space:";</span>
+<span class="new">+void MemSummaryReporter::report_metadata(Metaspace::MetadataType mdType) const {</span>
+<span class="new">+  DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));</span>
+<span class="new">+  const char* const name = metaspace::describe_mdtype(mdType);</span>
+ 
+   outputStream* out = output();
+   const char* scale = current_scale();
+<span class="removed">-  size_t committed   = MetaspaceUtils::committed_bytes(type);</span>
+<span class="removed">-  size_t used = MetaspaceUtils::used_bytes(type);</span>
+<span class="removed">-  size_t free = (MetaspaceUtils::capacity_bytes(type) - used)</span>
+<span class="removed">-              + MetaspaceUtils::free_chunks_total_bytes(type)</span>
+<span class="removed">-              + MetaspaceUtils::free_in_vs_bytes(type);</span>
+<span class="new">+  size_t committed   = MetaspaceUtils::committed_bytes(mdType);</span>
+<span class="new">+  size_t used = MetaspaceUtils::used_bytes(mdType);</span>
+<span class="new">+  size_t free = 0; //</span>
+<span class="new">+      // TODO think this thru. What is free in this context?</span>
+<span class="new">+      // (MetaspaceUtils::capacity_bytes(type) - used)</span>
+<span class="new">+  //         + MetaspaceUtils::free_chunks_total_bytes(type)</span>
+<span class="new">+  //          + MetaspaceUtils::free_in_vs_bytes(type);</span>
+ 
+   assert(committed &gt;= used + free, "Sanity");
+   size_t waste = committed - (used + free);
+ 
+   out-&gt;print_cr("%27s (  %s)", " ", name);
+   out-&gt;print("%27s (    ", " ");
+<span class="removed">-  print_total(MetaspaceUtils::reserved_bytes(type), committed);</span>
+<span class="new">+  print_total(MetaspaceUtils::reserved_bytes(mdType), committed);</span>
+   out-&gt;print_cr(")");
+   out-&gt;print_cr("%27s (    used=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(used), scale);
+   out-&gt;print_cr("%27s (    free=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(free), scale);
+   out-&gt;print_cr("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%)", " ", amount_in_current_scale(waste),
+     scale, ((float)waste * 100)/committed);
+</pre><hr /><pre>
+<span class="newmarker">@@ -597,59 +600,59 @@</span>
+   if (Metaspace::using_class_space()) {
+     print_metaspace_diff(Metaspace::ClassType, current_ms, early_ms);
+   }
+ }
+ 
+<span class="removed">-void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType type,</span>
+<span class="new">+void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType mdType,</span>
+                                                   const MetaspaceSnapshot* current_ms,
+                                                   const MetaspaceSnapshot* early_ms) const {
+<span class="removed">-  const char* name = (type == Metaspace::NonClassType) ?</span>
+<span class="removed">-    "Metadata:   " : "Class space:";</span>
+<span class="new">+  DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));</span>
+<span class="new">+  const char* const name = metaspace::describe_mdtype(mdType);</span>
+ 
+   outputStream* out = output();
+   const char* scale = current_scale();
+ 
+   out-&gt;print_cr("%27s (  %s)", " ", name);
+   out-&gt;print("%27s (    ", " ");
+<span class="removed">-  print_virtual_memory_diff(current_ms-&gt;reserved_in_bytes(type),</span>
+<span class="removed">-                            current_ms-&gt;committed_in_bytes(type),</span>
+<span class="removed">-                            early_ms-&gt;reserved_in_bytes(type),</span>
+<span class="removed">-                            early_ms-&gt;committed_in_bytes(type));</span>
+<span class="new">+  print_virtual_memory_diff(current_ms-&gt;reserved_in_bytes(mdType),</span>
+<span class="new">+                            current_ms-&gt;committed_in_bytes(mdType),</span>
+<span class="new">+                            early_ms-&gt;reserved_in_bytes(mdType),</span>
+<span class="new">+                            early_ms-&gt;committed_in_bytes(mdType));</span>
+   out-&gt;print_cr(")");
+ 
+<span class="removed">-  long diff_used = diff_in_current_scale(current_ms-&gt;used_in_bytes(type),</span>
+<span class="removed">-                                         early_ms-&gt;used_in_bytes(type));</span>
+<span class="removed">-  long diff_free = diff_in_current_scale(current_ms-&gt;free_in_bytes(type),</span>
+<span class="removed">-                                         early_ms-&gt;free_in_bytes(type));</span>
+<span class="removed">-</span>
+<span class="removed">-  size_t current_waste = current_ms-&gt;committed_in_bytes(type)</span>
+<span class="removed">-    - (current_ms-&gt;used_in_bytes(type) + current_ms-&gt;free_in_bytes(type));</span>
+<span class="removed">-  size_t early_waste = early_ms-&gt;committed_in_bytes(type)</span>
+<span class="removed">-    - (early_ms-&gt;used_in_bytes(type) + early_ms-&gt;free_in_bytes(type));</span>
+<span class="new">+  long diff_used = diff_in_current_scale(current_ms-&gt;used_in_bytes(mdType),</span>
+<span class="new">+                                         early_ms-&gt;used_in_bytes(mdType));</span>
+<span class="new">+  long diff_free = diff_in_current_scale(current_ms-&gt;free_in_bytes(mdType),</span>
+<span class="new">+                                         early_ms-&gt;free_in_bytes(mdType));</span>
+<span class="new">+</span>
+<span class="new">+  size_t current_waste = current_ms-&gt;committed_in_bytes(mdType)</span>
+<span class="new">+    - (current_ms-&gt;used_in_bytes(mdType) + current_ms-&gt;free_in_bytes(mdType));</span>
+<span class="new">+  size_t early_waste = early_ms-&gt;committed_in_bytes(mdType)</span>
+<span class="new">+    - (early_ms-&gt;used_in_bytes(mdType) + early_ms-&gt;free_in_bytes(mdType));</span>
+   long diff_waste = diff_in_current_scale(current_waste, early_waste);
+ 
+   // Diff used
+   out-&gt;print("%27s (    used=" SIZE_FORMAT "%s", " ",
+<span class="removed">-    amount_in_current_scale(current_ms-&gt;used_in_bytes(type)), scale);</span>
+<span class="new">+    amount_in_current_scale(current_ms-&gt;used_in_bytes(mdType)), scale);</span>
+   if (diff_used != 0) {
+     out-&gt;print(" %+ld%s", diff_used, scale);
+   }
+   out-&gt;print_cr(")");
+ 
+   // Diff free
+   out-&gt;print("%27s (    free=" SIZE_FORMAT "%s", " ",
+<span class="removed">-    amount_in_current_scale(current_ms-&gt;free_in_bytes(type)), scale);</span>
+<span class="new">+    amount_in_current_scale(current_ms-&gt;free_in_bytes(mdType)), scale);</span>
+   if (diff_free != 0) {
+     out-&gt;print(" %+ld%s", diff_free, scale);
+   }
+   out-&gt;print_cr(")");
+ 
+ 
+   // Diff waste
+   out-&gt;print("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%", " ",
+     amount_in_current_scale(current_waste), scale,
+<span class="removed">-    ((float)current_waste * 100) / current_ms-&gt;committed_in_bytes(type));</span>
+<span class="new">+    ((float)current_waste * 100) / current_ms-&gt;committed_in_bytes(mdType));</span>
+   if (diff_waste != 0) {
+     out-&gt;print(" %+ld%s", diff_waste, scale);
+   }
+   out-&gt;print_cr(")");
+ }
+</pre>
+<center><a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/services/virtualMemoryTracker.cpp.udiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

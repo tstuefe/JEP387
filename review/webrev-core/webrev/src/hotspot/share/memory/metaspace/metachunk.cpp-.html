@@ -1,0 +1,255 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/metachunk.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2012, 2016, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "memory/allocation.hpp"
+  27 #include "memory/metaspace/metachunk.hpp"
+  28 #include "memory/metaspace/occupancyMap.hpp"
+  29 #include "memory/metaspace/virtualSpaceNode.hpp"
+  30 #include "utilities/align.hpp"
+  31 #include "utilities/copy.hpp"
+  32 #include "utilities/debug.hpp"
+  33 
+  34 namespace metaspace {
+  35 
+  36 size_t Metachunk::object_alignment() {
+  37   // Must align pointers and sizes to 8,
+  38   // so that 64 bit types get correctly aligned.
+  39   const size_t alignment = 8;
+  40 
+  41   // Make sure that the Klass alignment also agree.
+  42   STATIC_ASSERT(alignment == (size_t)KlassAlignmentInBytes);
+  43 
+  44   return alignment;
+  45 }
+  46 
+  47 size_t Metachunk::overhead() {
+  48   return align_up(sizeof(Metachunk), object_alignment()) / BytesPerWord;
+  49 }
+  50 
+  51 // Metachunk methods
+  52 
+  53 Metachunk::Metachunk(ChunkIndex chunktype, bool is_class, size_t word_size,
+  54                      VirtualSpaceNode* container)
+  55     : Metabase&lt;Metachunk&gt;(word_size),
+  56     _container(container),
+  57     _top(NULL),
+  58     _sentinel(CHUNK_SENTINEL),
+  59     _chunk_type(chunktype),
+  60     _is_class(is_class),
+  61     _origin(origin_normal),
+  62     _use_count(0)
+  63 {
+  64   _top = initial_top();
+  65   set_is_tagged_free(false);
+  66 #ifdef ASSERT
+  67   mangle(uninitMetaWordVal);
+  68   verify();
+  69 #endif
+  70 }
+  71 
+  72 MetaWord* Metachunk::allocate(size_t word_size) {
+  73   MetaWord* result = NULL;
+  74   // If available, bump the pointer to allocate.
+  75   if (free_word_size() &gt;= word_size) {
+  76     result = _top;
+  77     _top = _top + word_size;
+  78   }
+  79   return result;
+  80 }
+  81 
+  82 // _bottom points to the start of the chunk including the overhead.
+  83 size_t Metachunk::used_word_size() const {
+  84   return pointer_delta(_top, bottom(), sizeof(MetaWord));
+  85 }
+  86 
+  87 size_t Metachunk::free_word_size() const {
+  88   return pointer_delta(end(), _top, sizeof(MetaWord));
+  89 }
+  90 
+  91 void Metachunk::print_on(outputStream* st) const {
+  92   st-&gt;print_cr("Metachunk:"
+  93                " bottom " PTR_FORMAT " top " PTR_FORMAT
+  94                " end " PTR_FORMAT " size " SIZE_FORMAT " (%s)",
+  95                p2i(bottom()), p2i(_top), p2i(end()), word_size(),
+  96                chunk_size_name(get_chunk_type()));
+  97   if (Verbose) {
+  98     st-&gt;print_cr("    used " SIZE_FORMAT " free " SIZE_FORMAT,
+  99                  used_word_size(), free_word_size());
+ 100   }
+ 101 }
+ 102 
+ 103 #ifdef ASSERT
+ 104 void Metachunk::mangle(juint word_value) {
+ 105   // Overwrite the payload of the chunk and not the links that
+ 106   // maintain list of chunks.
+ 107   HeapWord* start = (HeapWord*)initial_top();
+ 108   size_t size = word_size() - overhead();
+ 109   Copy::fill_to_words(start, size, word_value);
+ 110 }
+ 111 
+ 112 void Metachunk::verify() const {
+ 113   assert(is_valid_sentinel(), "Chunk " PTR_FORMAT ": sentinel invalid", p2i(this));
+ 114   const ChunkIndex chunk_type = get_chunk_type();
+ 115   assert(is_valid_chunktype(chunk_type), "Chunk " PTR_FORMAT ": Invalid chunk type.", p2i(this));
+ 116   if (chunk_type != HumongousIndex) {
+ 117     assert(word_size() == get_size_for_nonhumongous_chunktype(chunk_type, is_class()),
+ 118            "Chunk " PTR_FORMAT ": wordsize " SIZE_FORMAT " does not fit chunk type %s.",
+ 119            p2i(this), word_size(), chunk_size_name(chunk_type));
+ 120   }
+ 121   assert(is_valid_chunkorigin(get_origin()), "Chunk " PTR_FORMAT ": Invalid chunk origin.", p2i(this));
+ 122   assert(bottom() &lt;= _top &amp;&amp; _top &lt;= (MetaWord*)end(),
+ 123          "Chunk " PTR_FORMAT ": Chunk top out of chunk bounds.", p2i(this));
+ 124 
+ 125   // For non-humongous chunks, starting address shall be aligned
+ 126   // to its chunk size. Humongous chunks start address is
+ 127   // aligned to specialized chunk size.
+ 128   const size_t required_alignment =
+ 129     (chunk_type != HumongousIndex ? word_size() : get_size_for_nonhumongous_chunktype(SpecializedIndex, is_class())) * sizeof(MetaWord);
+ 130   assert(is_aligned((address)this, required_alignment),
+ 131          "Chunk " PTR_FORMAT ": (size " SIZE_FORMAT ") not aligned to " SIZE_FORMAT ".",
+ 132          p2i(this), word_size() * sizeof(MetaWord), required_alignment);
+ 133 }
+ 134 
+ 135 #endif // ASSERT
+ 136 
+ 137 // Helper, returns a descriptive name for the given index.
+ 138 const char* chunk_size_name(ChunkIndex index) {
+ 139   switch (index) {
+ 140     case SpecializedIndex:
+ 141       return "specialized";
+ 142     case SmallIndex:
+ 143       return "small";
+ 144     case MediumIndex:
+ 145       return "medium";
+ 146     case HumongousIndex:
+ 147       return "humongous";
+ 148     default:
+ 149       return "Invalid index";
+ 150   }
+ 151 }
+ 152 
+ 153 #ifdef ASSERT
+ 154 void do_verify_chunk(Metachunk* chunk) {
+ 155   guarantee(chunk != NULL, "Sanity");
+ 156   // Verify chunk itself; then verify that it is consistent with the
+ 157   // occupany map of its containing node.
+ 158   chunk-&gt;verify();
+ 159   VirtualSpaceNode* const vsn = chunk-&gt;container();
+ 160   OccupancyMap* const ocmap = vsn-&gt;occupancy_map();
+ 161   ocmap-&gt;verify_for_chunk(chunk);
+ 162 }
+ 163 #endif
+ 164 
+ 165 void do_update_in_use_info_for_chunk(Metachunk* chunk, bool inuse) {
+ 166   chunk-&gt;set_is_tagged_free(!inuse);
+ 167   OccupancyMap* const ocmap = chunk-&gt;container()-&gt;occupancy_map();
+ 168   ocmap-&gt;set_region_in_use((MetaWord*)chunk, chunk-&gt;word_size(), inuse);
+ 169 }
+ 170 
+ 171 } // namespace metaspace
+ 172 
+</pre></body></html>

@@ -1,0 +1,269 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/gc/shared </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/gc/shared/gcVMOperations.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/generationSpec.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/gc/shared/genCollectedHeap.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-misc.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  42 #include "gc/shared/gcTrace.hpp"
+  43 #include "gc/shared/gcTraceTime.inline.hpp"
+  44 #include "gc/shared/genArguments.hpp"
+  45 #include "gc/shared/gcVMOperations.hpp"
+  46 #include "gc/shared/genCollectedHeap.hpp"
+  47 #include "gc/shared/genOopClosures.inline.hpp"
+  48 #include "gc/shared/generationSpec.hpp"
+  49 #include "gc/shared/gcInitLogger.hpp"
+  50 #include "gc/shared/locationPrinter.inline.hpp"
+  51 #include "gc/shared/oopStorage.inline.hpp"
+  52 #include "gc/shared/oopStorageSet.inline.hpp"
+  53 #include "gc/shared/oopStorageParState.inline.hpp"
+  54 #include "gc/shared/scavengableNMethods.hpp"
+  55 #include "gc/shared/space.hpp"
+  56 #include "gc/shared/strongRootsScope.hpp"
+  57 #include "gc/shared/weakProcessor.hpp"
+  58 #include "gc/shared/workgroup.hpp"
+  59 #include "memory/filemap.hpp"
+  60 #include "memory/iterator.hpp"
+  61 #include "memory/metaspaceCounters.hpp"
+
+  62 #include "memory/resourceArea.hpp"
+  63 #include "memory/universe.hpp"
+  64 #include "oops/oop.inline.hpp"
+  65 #include "runtime/biasedLocking.hpp"
+  66 #include "runtime/handles.hpp"
+  67 #include "runtime/handles.inline.hpp"
+  68 #include "runtime/java.hpp"
+  69 #include "runtime/vmThread.hpp"
+  70 #include "services/memoryService.hpp"
+  71 #include "utilities/autoRestore.hpp"
+  72 #include "utilities/debug.hpp"
+  73 #include "utilities/formatBuffer.hpp"
+  74 #include "utilities/macros.hpp"
+  75 #include "utilities/stack.inline.hpp"
+  76 #include "utilities/vmError.hpp"
+  77 #if INCLUDE_JVMCI
+  78 #include "jvmci/jvmci.hpp"
+  79 #endif
+  80 
+  81 GenCollectedHeap::GenCollectedHeap(Generation::Name young,
+
+</pre><hr></hr><pre>
+ 645     // is set, by calling increment_total_collections above. However, we also need to
+ 646     // account Full collections that had "complete" unset.
+ 647     if (!complete) {
+ 648       increment_total_full_collections();
+ 649     }
+ 650 
+ 651     collect_generation(_old_gen,
+ 652                        full,
+ 653                        size,
+ 654                        is_tlab,
+ 655                        run_verification &amp;&amp; VerifyGCLevel &lt;= 1,
+ 656                        do_clear_all_soft_refs,
+ 657                        true);
+ 658 
+ 659     // Adjust generation sizes.
+ 660     _old_gen-&gt;compute_new_size();
+ 661     _young_gen-&gt;compute_new_size();
+ 662 
+ 663     // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+ 664     ClassLoaderDataGraph::purge();
+<span class="changed"> 665     MetaspaceUtils::verify_metrics();</span>
+ 666     // Resize the metaspace capacity after full collections
+ 667     MetaspaceGC::compute_new_size();
+ 668     update_full_collections_completed();
+ 669 
+ 670     print_heap_change(pre_gc_values);
+ 671 
+ 672     // Track memory usage and detect low memory after GC finishes
+ 673     MemoryService::track_memory_usage();
+ 674 
+ 675     // Need to tell the epilogue code we are done with Full GC, regardless what was
+ 676     // the initial value for "complete" flag.
+ 677     gc_epilogue(true);
+ 678 
+ 679     BiasedLocking::restore_marks();
+ 680 
+ 681     print_heap_after_gc();
+ 682   }
+ 683 }
+ 684 
+ 685 bool GenCollectedHeap::should_do_full_collection(size_t size, bool full, bool is_tlab,
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  42 #include "gc/shared/gcTrace.hpp"
+  43 #include "gc/shared/gcTraceTime.inline.hpp"
+  44 #include "gc/shared/genArguments.hpp"
+  45 #include "gc/shared/gcVMOperations.hpp"
+  46 #include "gc/shared/genCollectedHeap.hpp"
+  47 #include "gc/shared/genOopClosures.inline.hpp"
+  48 #include "gc/shared/generationSpec.hpp"
+  49 #include "gc/shared/gcInitLogger.hpp"
+  50 #include "gc/shared/locationPrinter.inline.hpp"
+  51 #include "gc/shared/oopStorage.inline.hpp"
+  52 #include "gc/shared/oopStorageSet.inline.hpp"
+  53 #include "gc/shared/oopStorageParState.inline.hpp"
+  54 #include "gc/shared/scavengableNMethods.hpp"
+  55 #include "gc/shared/space.hpp"
+  56 #include "gc/shared/strongRootsScope.hpp"
+  57 #include "gc/shared/weakProcessor.hpp"
+  58 #include "gc/shared/workgroup.hpp"
+  59 #include "memory/filemap.hpp"
+  60 #include "memory/iterator.hpp"
+  61 #include "memory/metaspaceCounters.hpp"
+<span class="new">  62 #include "memory/metaspace/metaspaceSizesSnapshot.hpp"</span>
+  63 #include "memory/resourceArea.hpp"
+  64 #include "memory/universe.hpp"
+  65 #include "oops/oop.inline.hpp"
+  66 #include "runtime/biasedLocking.hpp"
+  67 #include "runtime/handles.hpp"
+  68 #include "runtime/handles.inline.hpp"
+  69 #include "runtime/java.hpp"
+  70 #include "runtime/vmThread.hpp"
+  71 #include "services/memoryService.hpp"
+  72 #include "utilities/autoRestore.hpp"
+  73 #include "utilities/debug.hpp"
+  74 #include "utilities/formatBuffer.hpp"
+  75 #include "utilities/macros.hpp"
+  76 #include "utilities/stack.inline.hpp"
+  77 #include "utilities/vmError.hpp"
+  78 #if INCLUDE_JVMCI
+  79 #include "jvmci/jvmci.hpp"
+  80 #endif
+  81 
+  82 GenCollectedHeap::GenCollectedHeap(Generation::Name young,
+
+</pre><hr></hr><pre>
+ 646     // is set, by calling increment_total_collections above. However, we also need to
+ 647     // account Full collections that had "complete" unset.
+ 648     if (!complete) {
+ 649       increment_total_full_collections();
+ 650     }
+ 651 
+ 652     collect_generation(_old_gen,
+ 653                        full,
+ 654                        size,
+ 655                        is_tlab,
+ 656                        run_verification &amp;&amp; VerifyGCLevel &lt;= 1,
+ 657                        do_clear_all_soft_refs,
+ 658                        true);
+ 659 
+ 660     // Adjust generation sizes.
+ 661     _old_gen-&gt;compute_new_size();
+ 662     _young_gen-&gt;compute_new_size();
+ 663 
+ 664     // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+ 665     ClassLoaderDataGraph::purge();
+<span class="changed"> 666     DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
+ 667     // Resize the metaspace capacity after full collections
+ 668     MetaspaceGC::compute_new_size();
+ 669     update_full_collections_completed();
+ 670 
+ 671     print_heap_change(pre_gc_values);
+ 672 
+ 673     // Track memory usage and detect low memory after GC finishes
+ 674     MemoryService::track_memory_usage();
+ 675 
+ 676     // Need to tell the epilogue code we are done with Full GC, regardless what was
+ 677     // the initial value for "complete" flag.
+ 678     gc_epilogue(true);
+ 679 
+ 680     BiasedLocking::restore_marks();
+ 681 
+ 682     print_heap_after_gc();
+ 683   }
+ 684 }
+ 685 
+ 686 bool GenCollectedHeap::should_do_full_collection(size_t size, bool full, bool is_tlab,
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/gc/shared/gcVMOperations.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/generationSpec.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

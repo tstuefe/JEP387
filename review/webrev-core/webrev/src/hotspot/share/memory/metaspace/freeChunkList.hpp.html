@@ -1,0 +1,358 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/freeChunkList.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_FREECHUNKLIST_HPP
+  27 #define SHARE_MEMORY_METASPACE_FREECHUNKLIST_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/chunkLevel.hpp"
+  31 #include "memory/metaspace/counter.hpp"
+  32 #include "memory/metaspace/metachunk.hpp"
+  33 #include "memory/metaspace/metachunkList.hpp"
+  34 
+  35 class outputStream;
+  36 
+  37 namespace metaspace {
+  38 
+  39 
+  40 // This is the free list underlying the ChunkManager.
+  41 //
+  42 // Chunks are kept in a vector of double-linked double-headed lists
+  43 //  (using Metachunk::prev/next). One list per chunk level exists.
+  44 //
+  45 // Chunks in these lists are roughly ordered: uncommitted chunks
+  46 //  are added to the back of the list, fully or partially committed
+  47 //  chunks to the front.
+  48 //
+  49 // (Small caveat: commit state of a chunk may change as a result of
+  50 //  actions on neighboring chunks, if the chunk is smaller than a commit
+  51 //  granule and therefore shares its granule with neighbors. So it may change
+  52 //  after the chunk has been added to the list.
+  53 //  It will never involuntarily uncommit: only chunks &gt;= granule size are uncommitted.
+  54 //  But it may get involuntarily committed if an in-granule neighbor is committed and
+  55 //  causes committing of the whole granule.
+  56 //  In practice this is not a big deal; it has very little consequence.)
+  57 //
+  58 // Beyond adding at either front or at back, we do not sort on insert, since the
+  59 //  insert path is used during Metaspace reclamation which may happen at GC pause.
+  60 //
+  61 // During retrieval (at class loading), we search the list for a chunk of at least
+  62 //  n committed words to satisfy the caller requested committed word size. We stop
+  63 //  searching at the first fully uncommitted chunk.
+  64 //
+  65 // Note that even though this is an O(n) search, in practice this is not a problem:
+  66 //  - in all likelihood the requested commit word size is way smaller than even a single
+  67 //    commit granule, so 99% of all searches would end at the first chunk (which is either
+  68 //    uncommitted or committed to at least one commit granule size).
+  69 //  - in all likelihood chunks, when added to this list, are either fully committed
+  70 //    or fully uncommitted (see Settings::uncommit_on_return_min_word_size()).
+  71 //
+  72 // Should we ever encounter situations where the O(n) search is a bottleneck, this
+  73 //  structure can easily be optimized (e.g. a BST). But for now lets keep this simple.
+  74 
+  75 class FreeChunkList {
+  76 
+  77   Metachunk* _first;
+  78   Metachunk* _last;
+  79 
+  80   IntCounter _num_chunks;
+  81   SizeCounter _committed_word_size;
+  82 
+  83   void add_front(Metachunk* c) {
+  84     if (_first == NULL) {
+  85       assert(_last == NULL, "Sanity");
+  86       _first = _last = c;
+  87       c-&gt;set_prev(NULL);
+  88       c-&gt;set_next(NULL);
+  89     } else {
+  90       assert(_last != NULL, "Sanity");
+  91       c-&gt;set_next(_first);
+  92       c-&gt;set_prev(NULL);
+  93       _first-&gt;set_prev(c);
+  94       _first = c;
+  95     }
+  96   }
+  97 
+  98   // Add chunk to the back of the list.
+  99   void add_back(Metachunk* c) {
+ 100     if (_last == NULL) {
+ 101       assert(_first == NULL, "Sanity");
+ 102       _last = _first = c;
+ 103       c-&gt;set_prev(NULL);
+ 104       c-&gt;set_next(NULL);
+ 105     } else {
+ 106       assert(_first != NULL, "Sanity");
+ 107       c-&gt;set_next(NULL);
+ 108       c-&gt;set_prev(_last);
+ 109       _last-&gt;set_next(c);
+ 110       _last = c;
+ 111     }
+ 112   }
+ 113 
+ 114 public:
+ 115 
+ 116   FreeChunkList() :
+ 117     _first(NULL),
+ 118     _last(NULL)
+ 119     {}
+ 120 
+ 121   // Remove given chunk from anywhere in the list.
+ 122   Metachunk* remove(Metachunk* c) {
+ 123     assert(contains(c), "Must be contained here");
+ 124     Metachunk* pred = c-&gt;prev();
+ 125     Metachunk* succ = c-&gt;next();
+ 126     if (pred) {
+ 127       pred-&gt;set_next(succ);
+ 128     }
+ 129     if (succ) {
+ 130       succ-&gt;set_prev(pred);
+ 131     }
+ 132     if (_first == c) {
+ 133       _first = succ;
+ 134     }
+ 135     if (_last == c) {
+ 136       _last = pred;
+ 137     }
+ 138     c-&gt;set_next(NULL);
+ 139     c-&gt;set_prev(NULL);
+ 140     _committed_word_size.decrement_by(c-&gt;committed_words());
+ 141     _num_chunks.decrement();
+ 142     return c;
+ 143   }
+ 144 
+ 145   void add(Metachunk* c) {
+ 146     assert(contains(c) == false, "Chunk already in freelist");
+ 147     assert(_first == NULL || _first-&gt;level() == c-&gt;level(), "wrong level");
+ 148     // Uncomitted chunks go to the back, fully or partially committed to the front.
+ 149     if (c-&gt;committed_words() == 0) {
+ 150       add_back(c);
+ 151     } else {
+ 152       add_front(c);
+ 153     }
+ 154     _committed_word_size.increment_by(c-&gt;committed_words());
+ 155     _num_chunks.increment();
+ 156   }
+ 157 
+ 158   // Removes the first chunk from the list and returns it. Returns NULL if list is empty.
+ 159   Metachunk* remove_first() {
+ 160     Metachunk* c = _first;
+ 161     if (c != NULL) {
+ 162       remove(c);
+ 163     }
+ 164     return c;
+ 165   }
+ 166 
+ 167   // Find and removes a chunk in this list which has at least min_committed_words committed words.
+ 168   // Returns NULL if not found.
+ 169   Metachunk* find_matching(size_t min_committed_words) {
+ 170     Metachunk* c = _first;
+ 171     while (c != NULL &amp;&amp; c-&gt;committed_words() &gt; 0) {
+ 172       if (c-&gt;committed_words() &lt;= min_committed_words) {
+ 173         remove(c);
+ 174         return c;
+ 175       }
+ 176       c = c-&gt;next();
+ 177     }
+ 178     return NULL;
+ 179   }
+ 180 
+ 181   // Returns reference to the first chunk in the list, or NULL
+ 182   Metachunk* first() const { return _first; }
+ 183 
+ 184 #ifdef ASSERT
+ 185   bool contains(const Metachunk* c) const;
+ 186   void verify() const;
+ 187 #endif
+ 188 
+ 189   // Returns number of chunks
+ 190   int num_chunks() const { return _num_chunks.get(); }
+ 191 
+ 192   // Returns total committed word size
+ 193   size_t committed_word_size() const { return _committed_word_size.get(); }
+ 194 
+ 195   void print_on(outputStream* st) const;
+ 196 
+ 197 };
+ 198 
+ 199 
+ 200 // A vector of free chunk lists, one per chunk level
+ 201 class FreeChunkListVector {
+ 202 
+ 203   FreeChunkList _lists[chunklevel::NUM_CHUNK_LEVELS];
+ 204 
+ 205   const FreeChunkList* list_for_level(chunklevel_t lvl) const         { DEBUG_ONLY(chunklevel::check_valid_level(lvl)); return _lists + lvl; }
+ 206   FreeChunkList* list_for_level(chunklevel_t lvl)                     { DEBUG_ONLY(chunklevel::check_valid_level(lvl)); return _lists + lvl; }
+ 207 
+ 208   const FreeChunkList* list_for_chunk(const Metachunk* c) const       { return list_for_level(c-&gt;level()); }
+ 209   FreeChunkList* list_for_chunk(const Metachunk* c)                   { return list_for_level(c-&gt;level()); }
+ 210 
+ 211 public:
+ 212 
+ 213   // Remove given chunk from its list. List must contain that chunk.
+ 214   void remove(Metachunk* c) {
+ 215     list_for_chunk(c)-&gt;remove(c);
+ 216   }
+ 217 
+ 218   // Remove first node unless empty. Returns node or NULL.
+ 219   Metachunk* remove_first(chunklevel_t lvl) {
+ 220     Metachunk* c = list_for_level(lvl)-&gt;remove_first();
+ 221     return c;
+ 222   }
+ 223 
+ 224   void add(Metachunk* c) {
+ 225     list_for_chunk(c)-&gt;add(c);
+ 226   }
+ 227 
+ 228   // Returns number of chunks for a given level.
+ 229   int num_chunks_at_level(chunklevel_t lvl) const {
+ 230     return list_for_level(lvl)-&gt;num_chunks();
+ 231   }
+ 232 
+ 233   // Returns number of chunks for a given level.
+ 234   size_t committed_word_size_at_level(chunklevel_t lvl) const {
+ 235     return list_for_level(lvl)-&gt;committed_word_size();
+ 236   }
+ 237 
+ 238   // Returns reference to first chunk at this level, or NULL if sublist is empty.
+ 239   Metachunk* first_at_level(chunklevel_t lvl) const {
+ 240     return list_for_level(lvl)-&gt;first();
+ 241   }
+ 242 
+ 243   // Look for a chunk: starting at level, up to and including max_level,
+ 244   //  return the first chunk whose committed words &gt;= min_committed_words.
+ 245   // Return NULL if no such chunk was found.
+ 246   Metachunk* search_chunk_ascending(chunklevel_t level, chunklevel_t max_level,
+ 247                                     size_t min_committed_words);
+ 248 
+ 249   // Look for a chunk: starting at level, down to (including) the root chunk level,
+ 250   // return the first chunk whose committed words &gt;= min_committed_words.
+ 251   // Return NULL if no such chunk was found.
+ 252   Metachunk* search_chunk_descending(chunklevel_t level, size_t min_committed_words);
+ 253 
+ 254   // Returns total size in all lists (regardless of commit state of underlying memory)
+ 255   size_t word_size() const;
+ 256 
+ 257   // Returns total committed size in all lists
+ 258   size_t committed_word_size() const;
+ 259 
+ 260   // Returns number of chunks in all lists
+ 261   int num_chunks() const;
+ 262 
+ 263 #ifdef ASSERT
+ 264   bool contains(const Metachunk* c) const;
+ 265   void verify() const;
+ 266 #endif
+ 267 
+ 268   void print_on(outputStream* st) const;
+ 269 
+ 270 };
+ 271 
+ 272 
+ 273 } // namespace metaspace
+ 274 
+ 275 #endif // SHARE_MEMORY_METASPACE_FREECHUNKLIST_HPP
+</pre></body></html>

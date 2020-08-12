@@ -1,0 +1,849 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory/metaspace </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metachunk.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceCommon.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/metachunk.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-core.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+   1 /*
+<span class="changed">   2  * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.</span>
+
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+
+  24 #ifndef SHARE_MEMORY_METASPACE_METACHUNK_HPP
+  25 #define SHARE_MEMORY_METASPACE_METACHUNK_HPP
+  26 
+<span class="changed">  27 #include "memory/metaspace/metabase.hpp"</span>
+<span class="changed">  28 #include "memory/metaspace/metaspaceCommon.hpp"</span>
+
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 
+<span class="changed">  32 class MetachunkTest;</span>
+
+  33 
+  34 namespace metaspace {
+  35 
+  36 class VirtualSpaceNode;
+  37 
+<span class="changed">  38 //  Metachunk - Quantum of allocation from a Virtualspace</span>
+<span class="changed">  39 //    Metachunks are reused (when freed are put on a global freelist) and</span>
+<span class="changed">  40 //    have no permanent association to a SpaceManager.</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  41 
+<span class="changed">  42 //            +--------------+ &lt;- end    --+       --+</span>
+  43 //            |              |             |         |
+<span class="removed">  44 //            |              |             | free    |</span>
+  45 //            |              |             |         |
+<span class="removed">  46 //            |              |             |         | size | capacity</span>
+  47 //            |              |             |         |
+<span class="removed">  48 //            |              | &lt;- top   -- +         |</span>
+  49 //            |              |             |         |
+<span class="removed">  50 //            |              |             | used    |</span>
+  51 //            |              |             |         |
+
+  52 //            |              |             |         |
+<span class="changed">  53 //            +--------------+ &lt;- bottom --+       --+</span>
+<span class="changed">  54 </span>
+<span class="changed">  55 enum ChunkOrigin {</span>
+<span class="changed">  56   // Chunk normally born (via take_from_committed)</span>
+<span class="changed">  57   origin_normal = 1,</span>
+<span class="changed">  58   // Chunk was born as padding chunk</span>
+<span class="changed">  59   origin_pad = 2,</span>
+<span class="changed">  60   // Chunk was born as leftover chunk in VirtualSpaceNode::retire</span>
+<span class="changed">  61   origin_leftover = 3,</span>
+<span class="changed">  62   // Chunk was born as result of a merge of smaller chunks</span>
+<span class="changed">  63   origin_merge = 4,</span>
+<span class="changed">  64   // Chunk was born as result of a split of a larger chunk</span>
+<span class="changed">  65   origin_split = 5,</span>
+<span class="changed">  66 </span>
+<span class="changed">  67   origin_minimum = origin_normal,</span>
+<span class="changed">  68   origin_maximum = origin_split,</span>
+<span class="changed">  69   origins_count = origin_maximum + 1</span>
+<span class="changed">  70 };</span>
+  71 
+<span class="changed">  72 inline bool is_valid_chunkorigin(ChunkOrigin origin) {</span>
+<span class="changed">  73   return origin == origin_normal ||</span>
+<span class="changed">  74     origin == origin_pad ||</span>
+<span class="changed">  75     origin == origin_leftover ||</span>
+<span class="changed">  76     origin == origin_merge ||</span>
+<span class="changed">  77     origin == origin_split;</span>
+<span class="changed">  78 }</span>
+<span class="changed">  79 </span>
+<span class="changed">  80 class Metachunk : public Metabase&lt;Metachunk&gt; {</span>
+<span class="changed">  81 </span>
+<span class="changed">  82   friend class ::MetachunkTest;</span>
+<span class="changed">  83 </span>
+<span class="changed">  84   // The VirtualSpaceNode containing this chunk.</span>
+<span class="changed">  85   VirtualSpaceNode* const _container;</span>
+<span class="changed">  86 </span>
+<span class="changed">  87   // Current allocation top.</span>
+<span class="changed">  88   MetaWord* _top;</span>
+<span class="changed">  89 </span>
+<span class="changed">  90   // A 32bit sentinel for debugging purposes.</span>
+<span class="changed">  91   enum { CHUNK_SENTINEL = 0x4d4554EF,  // "MET"</span>
+<span class="changed">  92          CHUNK_SENTINEL_INVALID = 0xFEEEEEEF</span>
+
+
+
+
+
+
+  93   };
+
+  94 
+<span class="changed">  95   uint32_t _sentinel;</span>
+<span class="changed">  96 </span>
+<span class="changed">  97   const ChunkIndex _chunk_type;</span>
+<span class="changed">  98   const bool _is_class;</span>
+<span class="changed">  99   // Whether the chunk is free (in freelist) or in use by some class loader.</span>
+<span class="changed"> 100   bool _is_tagged_free;</span>
+<span class="changed"> 101 </span>
+<span class="changed"> 102   ChunkOrigin _origin;</span>
+<span class="changed"> 103   int _use_count;</span>
+<span class="changed"> 104 </span>
+<span class="changed"> 105   MetaWord* initial_top() const { return (MetaWord*)this + overhead(); }</span>
+<span class="changed"> 106   MetaWord* top() const         { return _top; }</span>
+<span class="changed"> 107 </span>
+<span class="changed"> 108  public:</span>
+<span class="changed"> 109   // Metachunks are allocated out of a MetadataVirtualSpace and</span>
+<span class="changed"> 110   // and use some of its space to describe itself (plus alignment</span>
+<span class="changed"> 111   // considerations).  Metadata is allocated in the rest of the chunk.</span>
+<span class="changed"> 112   // This size is the overhead of maintaining the Metachunk within</span>
+<span class="changed"> 113   // the space.</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 114 
+<span class="changed"> 115   // Alignment of each allocation in the chunks.</span>
+<span class="changed"> 116   static size_t object_alignment();</span>
+<span class="changed"> 117 </span>
+<span class="changed"> 118   // Size of the Metachunk header, in words, including alignment.</span>
+<span class="changed"> 119   static size_t overhead();</span>
+<span class="changed"> 120 </span>
+<span class="changed"> 121   Metachunk(ChunkIndex chunktype, bool is_class, size_t word_size, VirtualSpaceNode* container);</span>
+<span class="changed"> 122 </span>
+<span class="changed"> 123   MetaWord* allocate(size_t word_size);</span>
+<span class="changed"> 124 </span>
+<span class="changed"> 125   VirtualSpaceNode* container() const { return _container; }</span>
+<span class="changed"> 126 </span>
+<span class="changed"> 127   MetaWord* bottom() const { return (MetaWord*) this; }</span>
+<span class="changed"> 128 </span>
+<span class="changed"> 129   // Reset top to bottom so chunk can be reused.</span>
+<span class="changed"> 130   void reset_empty() { _top = initial_top(); clear_next(); clear_prev(); }</span>
+<span class="changed"> 131   bool is_empty() { return _top == initial_top(); }</span>
+<span class="changed"> 132 </span>
+<span class="changed"> 133   // used (has been allocated)</span>
+<span class="changed"> 134   // free (available for future allocations)</span>
+<span class="changed"> 135   size_t word_size() const { return size(); }</span>
+<span class="changed"> 136   size_t used_word_size() const;</span>
+<span class="changed"> 137   size_t free_word_size() const;</span>
+<span class="changed"> 138 </span>
+<span class="changed"> 139   bool is_tagged_free() { return _is_tagged_free; }</span>
+<span class="changed"> 140   void set_is_tagged_free(bool v) { _is_tagged_free = v; }</span>
+<span class="changed"> 141 </span>
+<span class="changed"> 142   bool contains(const void* ptr) { return bottom() &lt;= ptr &amp;&amp; ptr &lt; _top; }</span>
+ 143 
+ 144   void print_on(outputStream* st) const;
+ 145 
+<span class="removed"> 146   bool is_valid_sentinel() const        { return _sentinel == CHUNK_SENTINEL; }</span>
+<span class="removed"> 147   void remove_sentinel()                { _sentinel = CHUNK_SENTINEL_INVALID; }</span>
+<span class="removed"> 148 </span>
+<span class="removed"> 149   int get_use_count() const             { return _use_count; }</span>
+<span class="removed"> 150   void inc_use_count()                  { _use_count ++; }</span>
+<span class="removed"> 151 </span>
+<span class="removed"> 152   ChunkOrigin get_origin() const        { return _origin; }</span>
+<span class="removed"> 153   void set_origin(ChunkOrigin orig)     { _origin = orig; }</span>
+<span class="removed"> 154 </span>
+<span class="removed"> 155   ChunkIndex get_chunk_type() const     { return _chunk_type; }</span>
+<span class="removed"> 156   bool is_class() const                 { return _is_class; }</span>
+<span class="removed"> 157 </span>
+<span class="removed"> 158   DEBUG_ONLY(void mangle(juint word_value);)</span>
+<span class="removed"> 159   DEBUG_ONLY(void verify() const;)</span>
+<span class="removed"> 160 </span>
+ 161 };
+ 162 
+
+
+
+ 163 
+<span class="changed"> 164 // Helper function that does a bunch of checks for a chunk.</span>
+<span class="changed"> 165 DEBUG_ONLY(void do_verify_chunk(Metachunk* chunk);)</span>
+<span class="changed"> 166 </span>
+<span class="changed"> 167 // Given a Metachunk, update its in-use information (both in the</span>
+<span class="changed"> 168 // chunk and the occupancy map).</span>
+<span class="changed"> 169 void do_update_in_use_info_for_chunk(Metachunk* chunk, bool inuse);</span>
+ 170 
+ 171 } // namespace metaspace
+ 172 
+ 173 #endif // SHARE_MEMORY_METASPACE_METACHUNK_HPP
+</pre></td><td><pre>
+   1 /*
+<span class="changed">   2  * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">   3  * Copyright (c) 2017, 2020 SAP SE. All rights reserved.</span>
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+<span class="new">  25 </span>
+  26 #ifndef SHARE_MEMORY_METASPACE_METACHUNK_HPP
+  27 #define SHARE_MEMORY_METASPACE_METACHUNK_HPP
+  28 
+<span class="changed">  29 </span>
+<span class="changed">  30 #include "memory/metaspace/counter.hpp"</span>
+<span class="changed">  31 #include "memory/metaspace/chunkLevel.hpp"</span>
+  32 #include "utilities/debug.hpp"
+  33 #include "utilities/globalDefinitions.hpp"
+  34 
+<span class="changed">  35 </span>
+<span class="changed">  36 class outputStream;</span>
+  37 
+  38 namespace metaspace {
+  39 
+  40 class VirtualSpaceNode;
+  41 
+<span class="changed">  42 // A Metachunk is a contiguous metaspace memory region. It is part of</span>
+<span class="changed">  43 // a MetaspaceArena, which keeps a list of MetaChunk and allocates via</span>
+<span class="changed">  44 // pointer bump from the top element in the list.</span>
+<span class="changed">  45 //</span>
+<span class="changed">  46 // The Metachunk object itself (the "chunk header") is separated from</span>
+<span class="changed">  47 //  the memory region (the chunk payload) it describes. It also can have</span>
+<span class="changed">  48 //  no payload (a "dead" chunk). In itself it lives in C-heap, managed</span>
+<span class="changed">  49 //  as part of a pool of Metachunk headers (ChunkHeaderPool).</span>
+<span class="changed">  50 //</span>
+<span class="changed">  51 // -- Metachunk state --</span>
+<span class="changed">  52 //</span>
+<span class="changed">  53 // A Metachunk is "in-use" if it is part of a MetaspaceArena. That means</span>
+<span class="changed">  54 //  its memory is used - or will be used shortly - to hold VM metadata</span>
+<span class="changed">  55 //  on behalf of a class loader.</span>
+<span class="changed">  56 //</span>
+<span class="changed">  57 // A Metachunk is "free" if its payload is currently unused. In that</span>
+<span class="changed">  58 //  case it is managed by a chunk freelist (the ChunkManager).</span>
+<span class="changed">  59 // </span>
+<span class="changed">  60 // A Metachunk is "dead" if it does not have a corresponding payload.</span>
+<span class="changed">  61 //  In that case it lives as part of a freelist-of-dead-chunk-headers</span>
+<span class="changed">  62 //  in the ChunkHeaderPool.</span>
+<span class="changed">  63 //</span>
+<span class="changed">  64 // -- Level --</span>
+<span class="changed">  65 //</span>
+<span class="changed">  66 // Metachunks are managed as part of a buddy style allocation scheme.</span>
+<span class="changed">  67 // Sized always in steps of power-of-2, ranging from the smallest chunk size</span>
+<span class="changed">  68 // (1Kb) to the largest (4Mb) (see chunklevel.hpp).</span>
+<span class="changed">  69 // Its size is encoded as level, with level 0 being the largest chunk</span>
+<span class="changed">  70 // size ("root chunk").</span>
+<span class="changed">  71 //</span>
+<span class="changed">  72 // -- Payload commit state --</span>
+<span class="changed">  73 //</span>
+<span class="changed">  74 // A Metachunk payload may be committed, partly committed or completely</span>
+<span class="changed">  75 // uncommitted. Technically, a payload may be committed "checkered" -</span>
+<span class="changed">  76 // i.e. committed and uncommitted parts may interleave - but the</span>
+<span class="changed">  77 // important part is how much contiguous space is committed starting</span>
+<span class="changed">  78 // at the base of the payload (since that's where we allocate). </span>
+<span class="changed">  79 // </span>
+<span class="changed">  80 // The Metachunk keeps track of how much space is committed starting</span>
+<span class="changed">  81 //  at the base of the payload - which is a performace optimization - </span>
+<span class="changed">  82 //  while underlying layers (VirtualSpaceNode-&gt;commitmask) keep track</span>
+<span class="changed">  83 //  of the "real" commit state, aka which granules are committed,</span>
+<span class="changed">  84 //  independent on what chunks reside above those granules.</span>
+<span class="changed">  85 </span>
+  86 
+<span class="changed">  87 //            +--------------+ &lt;- end    -----------+ ----------+</span>
+  88 //            |              |                      |           |
+
+  89 //            |              |                      |           |
+
+  90 //            |              |                      |           |
+
+  91 //            |              |                      |           |
+
+  92 //            |              |                      |           |
+<span class="new">  93 //            | -----------  | &lt;- committed_top  -- +           |</span>
+  94 //            |              |                      |           |
+<span class="changed">  95 //            |              |                      | "free"    |</span>
+<span class="changed">  96 //            |              |                      |           | size </span>
+<span class="changed">  97 //            |              |     "free_below_     |           |</span>
+<span class="changed">  98 //            |              |        committed"    |           |</span>
+<span class="changed">  99 //            |              |                      |           |</span>
+<span class="changed"> 100 //            |              |                      |           |</span>
+<span class="changed"> 101 //            | -----------  | &lt;- top     --------- + --------  |</span>
+<span class="changed"> 102 //            |              |                      |           |</span>
+<span class="changed"> 103 //            |              |     "used"           |           |</span>
+<span class="changed"> 104 //            |              |                      |           |</span>
+<span class="changed"> 105 //            +--------------+ &lt;- start   ----------+ ----------+</span>
+
+
+
+
+
+
+
+ 106 
+<span class="changed"> 107 // Note: this is a chunk **descriptor**. The real Payload area lives in metaspace,</span>
+<span class="changed"> 108 // this class lives somewhere else.</span>
+<span class="changed"> 109 class Metachunk {</span>
+<span class="changed"> 110 </span>
+<span class="changed"> 111   // start of chunk memory; NULL if dead.</span>
+<span class="changed"> 112   MetaWord* _base;</span>
+<span class="changed"> 113 </span>
+<span class="changed"> 114   // Used words.</span>
+<span class="changed"> 115   size_t _used_words;</span>
+<span class="changed"> 116 </span>
+<span class="changed"> 117   // Size of the region, starting from base, which is guaranteed to be committed. In words.</span>
+<span class="changed"> 118   //  The actual size of committed regions may actually be larger.</span>
+<span class="changed"> 119   //</span>
+<span class="changed"> 120   //  (This is a performance optimization. The underlying VirtualSpaceNode knows</span>
+<span class="changed"> 121   //   which granules are committed; but we want to avoid having to ask.)</span>
+<span class="changed"> 122   size_t _committed_words;</span>
+<span class="changed"> 123 </span>
+<span class="changed"> 124   chunklevel_t _level; // aka size.</span>
+<span class="changed"> 125 </span>
+<span class="changed"> 126   // state_free:    free, owned by a ChunkManager</span>
+<span class="changed"> 127   // state_in_use:  in-use, owned by a MetaspaceArena</span>
+<span class="changed"> 128   // dead:          just a hollow chunk header without associated memory, owned</span>
+<span class="changed"> 129   //                 by chunk header pool.</span>
+<span class="changed"> 130   enum state_t {</span>
+<span class="changed"> 131     state_free = 0,</span>
+<span class="changed"> 132     state_in_use = 1,</span>
+<span class="changed"> 133     state_dead = 2</span>
+ 134   };
+<span class="new"> 135   state_t _state;</span>
+ 136 
+<span class="changed"> 137   // We need unfortunately a back link to the virtual space node</span>
+<span class="changed"> 138   // for splitting and merging nodes.</span>
+<span class="changed"> 139   VirtualSpaceNode* _vsnode;</span>
+<span class="changed"> 140 </span>
+<span class="changed"> 141 </span>
+<span class="changed"> 142   // A chunk header is kept in a list:</span>
+<span class="changed"> 143   // 1 in the list of used chunks inside a MetaspaceArena, if it is in use</span>
+<span class="changed"> 144   // 2 in the list of free chunks inside a ChunkManager, if it is free</span>
+<span class="changed"> 145   // 3 in the freelist of unused headers inside the ChunkHeaderPool,</span>
+<span class="changed"> 146   //   if it is unused (e.g. result of chunk merging) and has no associated</span>
+<span class="changed"> 147   //   memory area.</span>
+<span class="changed"> 148   Metachunk* _prev;</span>
+<span class="changed"> 149   Metachunk* _next;</span>
+<span class="changed"> 150 </span>
+<span class="changed"> 151   // Furthermore, we keep, per chunk, information about the neighboring chunks.</span>
+<span class="changed"> 152   // This is needed to split and merge chunks.</span>
+<span class="changed"> 153   //</span>
+<span class="changed"> 154   // Note: These members can be modified concurrently while a chunk is alive and in use.</span>
+<span class="changed"> 155   // This can happen if a neighboring chunk is added or removed.</span>
+<span class="changed"> 156   // This means only read or modify these members under expand lock protection.</span>
+<span class="changed"> 157   Metachunk* _prev_in_vs;</span>
+<span class="changed"> 158   Metachunk* _next_in_vs;</span>
+<span class="changed"> 159 </span>
+<span class="changed"> 160   // Commit uncommitted section of the chunk.</span>
+<span class="changed"> 161   // Fails if we hit a commit limit.</span>
+<span class="changed"> 162   bool commit_up_to(size_t new_committed_words);</span>
+<span class="changed"> 163 </span>
+<span class="changed"> 164   DEBUG_ONLY(static void assert_have_expand_lock();)</span>
+<span class="changed"> 165 </span>
+<span class="changed"> 166 public:</span>
+<span class="changed"> 167 </span>
+<span class="changed"> 168   Metachunk()</span>
+<span class="changed"> 169     : _base(NULL),</span>
+<span class="changed"> 170       _used_words(0),</span>
+<span class="changed"> 171       _committed_words(0),</span>
+<span class="changed"> 172       _level(chunklevel::ROOT_CHUNK_LEVEL),</span>
+<span class="changed"> 173       _state(state_free),</span>
+<span class="changed"> 174       _vsnode(NULL),</span>
+<span class="changed"> 175       _prev(NULL), _next(NULL),</span>
+<span class="changed"> 176       _prev_in_vs(NULL), _next_in_vs(NULL)</span>
+<span class="changed"> 177   {}</span>
+<span class="changed"> 178 </span>
+<span class="changed"> 179  void clear() {</span>
+<span class="changed"> 180    _base = NULL;</span>
+<span class="changed"> 181    _used_words = 0;</span>
+<span class="changed"> 182    _committed_words = 0;</span>
+<span class="changed"> 183    _level = chunklevel::ROOT_CHUNK_LEVEL;</span>
+<span class="changed"> 184    _state = state_free;</span>
+<span class="changed"> 185    _vsnode = NULL;</span>
+<span class="changed"> 186    _prev = NULL;</span>
+<span class="changed"> 187    _next = NULL;</span>
+<span class="changed"> 188    _prev_in_vs = NULL;</span>
+<span class="changed"> 189    _next_in_vs = NULL;</span>
+<span class="changed"> 190   }</span>
+<span class="changed"> 191 </span>
+<span class="changed"> 192 </span>
+<span class="changed"> 193   size_t word_size() const        { return chunklevel::word_size_for_level(_level); }</span>
+<span class="changed"> 194 </span>
+<span class="changed"> 195   MetaWord* base() const          { return _base; }</span>
+<span class="changed"> 196   MetaWord* top() const           { return base() + _used_words; }</span>
+<span class="changed"> 197   MetaWord* committed_top() const { return base() + _committed_words; }</span>
+<span class="changed"> 198   MetaWord* end() const           { return base() + word_size(); }</span>
+<span class="changed"> 199 </span>
+<span class="changed"> 200   // Chunk list wiring</span>
+<span class="changed"> 201   void set_prev(Metachunk* c)     { _prev = c; }</span>
+<span class="changed"> 202   Metachunk* prev() const         { return _prev; }</span>
+<span class="changed"> 203   void set_next(Metachunk* c)     { _next = c; }</span>
+<span class="changed"> 204   Metachunk* next() const         { return _next; }</span>
+<span class="changed"> 205 </span>
+<span class="changed"> 206   DEBUG_ONLY(bool in_list() const { return _prev != NULL || _next != NULL; })</span>
+<span class="changed"> 207 </span>
+<span class="changed"> 208   // Physical neighbors wiring</span>
+<span class="changed"> 209   void set_prev_in_vs(Metachunk* c) { DEBUG_ONLY(assert_have_expand_lock()); _prev_in_vs = c; }</span>
+<span class="changed"> 210   Metachunk* prev_in_vs() const     { DEBUG_ONLY(assert_have_expand_lock()); return _prev_in_vs; }</span>
+<span class="changed"> 211   void set_next_in_vs(Metachunk* c) { DEBUG_ONLY(assert_have_expand_lock()); _next_in_vs = c; }</span>
+<span class="changed"> 212   Metachunk* next_in_vs() const     { DEBUG_ONLY(assert_have_expand_lock()); return _next_in_vs; }</span>
+<span class="changed"> 213 </span>
+<span class="changed"> 214   bool is_free() const            { return _state == state_free; }</span>
+<span class="changed"> 215   bool is_in_use() const          { return _state == state_in_use; }</span>
+<span class="changed"> 216   bool is_dead() const            { return _state == state_dead; }</span>
+<span class="changed"> 217   void set_free()                 { _state = state_free; }</span>
+<span class="changed"> 218   void set_in_use()               { _state = state_in_use; }</span>
+<span class="changed"> 219   void set_dead()                 { _state = state_dead; }</span>
+<span class="changed"> 220 </span>
+<span class="changed"> 221   // Return a single char presentation of the state ('f', 'u', 'd')</span>
+<span class="changed"> 222   char get_state_char() const;</span>
+<span class="changed"> 223 </span>
+<span class="changed"> 224   void inc_level()                { _level ++; DEBUG_ONLY(chunklevel::is_valid_level(_level);) }</span>
+<span class="changed"> 225   void dec_level()                { _level --; DEBUG_ONLY(chunklevel::is_valid_level(_level);) }</span>
+<span class="changed"> 226   chunklevel_t level() const          { return _level; }</span>
+<span class="changed"> 227 </span>
+<span class="changed"> 228   // Convenience functions for extreme levels.</span>
+<span class="changed"> 229   bool is_root_chunk() const      { return chunklevel::ROOT_CHUNK_LEVEL == _level; }</span>
+<span class="changed"> 230   bool is_leaf_chunk() const      { return chunklevel::HIGHEST_CHUNK_LEVEL == _level; }</span>
+<span class="changed"> 231 </span>
+<span class="changed"> 232   VirtualSpaceNode* vsnode() const        { return _vsnode; }</span>
+<span class="changed"> 233 </span>
+<span class="changed"> 234   size_t used_words() const                   { return _used_words; }</span>
+<span class="changed"> 235   size_t free_words() const                   { return word_size() - used_words(); }</span>
+<span class="changed"> 236   size_t free_below_committed_words() const   { return committed_words() - used_words(); }</span>
+<span class="changed"> 237   void reset_used_words()                     { _used_words = 0; }</span>
+<span class="changed"> 238 </span>
+<span class="changed"> 239   size_t committed_words() const      { return _committed_words; }</span>
+<span class="changed"> 240   void set_committed_words(size_t v);</span>
+<span class="changed"> 241   bool is_fully_committed() const     { return committed_words() == word_size(); }</span>
+<span class="changed"> 242   bool is_fully_uncommitted() const   { return committed_words() == 0; }</span>
+<span class="changed"> 243 </span>
+<span class="changed"> 244   // Ensure that chunk is committed up to at least new_committed_words words.</span>
+<span class="changed"> 245   // Fails if we hit a commit limit.</span>
+<span class="changed"> 246   bool ensure_committed(size_t new_committed_words);</span>
+<span class="changed"> 247   bool ensure_committed_locked(size_t new_committed_words);</span>
+<span class="changed"> 248 </span>
+<span class="changed"> 249   bool ensure_fully_committed()           { return ensure_committed(word_size()); }</span>
+<span class="changed"> 250   bool ensure_fully_committed_locked()    { return ensure_committed_locked(word_size()); }</span>
+<span class="changed"> 251 </span>
+<span class="changed"> 252   // Ensure that the chunk is committed far enough to serve an additional allocation of word_size.</span>
+<span class="changed"> 253   bool ensure_committed_additional(size_t additional_word_size)   {</span>
+<span class="changed"> 254     return ensure_committed(used_words() + additional_word_size);</span>
+<span class="changed"> 255   }</span>
+<span class="changed"> 256 </span>
+<span class="changed"> 257   // Uncommit chunk area. The area must be a common multiple of the</span>
+<span class="changed"> 258   // commit granule size (in other words, we cannot uncommit chunks smaller than</span>
+<span class="changed"> 259   // a commit granule size).</span>
+<span class="changed"> 260   void uncommit();</span>
+<span class="changed"> 261   void uncommit_locked();</span>
+<span class="changed"> 262 </span>
+<span class="changed"> 263   // Allocation from a chunk</span>
+<span class="changed"> 264 </span>
+<span class="changed"> 265   // Allocate word_size words from this chunk (word_size must be aligned to</span>
+<span class="changed"> 266   //  allocation_alignment_words).</span>
+<span class="changed"> 267   //</span>
+<span class="changed"> 268   // Caller must make sure the chunk is both large enough and committed far enough</span>
+<span class="changed"> 269   // to hold the allocation. Will always work.</span>
+<span class="changed"> 270   //</span>
+<span class="changed"> 271   MetaWord* allocate(size_t request_word_size);</span>
+<span class="changed"> 272 </span>
+<span class="changed"> 273   // Initialize structure for reuse.</span>
+<span class="changed"> 274   void initialize(VirtualSpaceNode* node, MetaWord* base, chunklevel_t lvl) {</span>
+<span class="changed"> 275     _vsnode = node; _base = base; _level = lvl;</span>
+<span class="changed"> 276     _used_words = _committed_words = 0; _state = state_free;</span>
+<span class="changed"> 277     _next = _prev = _next_in_vs = _prev_in_vs = NULL;</span>
+<span class="changed"> 278   }</span>
+<span class="changed"> 279 </span>
+<span class="changed"> 280   // Returns true if this chunk is the leader in its buddy pair, false if not.</span>
+<span class="changed"> 281   // Do not call for root chunks.</span>
+<span class="changed"> 282   bool is_leader() const {</span>
+<span class="changed"> 283     assert(!is_root_chunk(), "Root chunks have no buddy."); // Bit harsh?</span>
+<span class="changed"> 284     return is_aligned(base(), chunklevel::word_size_for_level(level() - 1) * BytesPerWord);</span>
+<span class="changed"> 285   }</span>
+<span class="changed"> 286 </span>
+<span class="changed"> 287   //// Debug stuff ////</span>
+<span class="changed"> 288 #ifdef ASSERT</span>
+<span class="changed"> 289   void verify(bool slow) const;</span>
+<span class="changed"> 290   // Verifies linking with neighbors in virtual space. Needs expand lock protection.</span>
+<span class="changed"> 291   void verify_neighborhood() const;</span>
+<span class="changed"> 292   void zap_header(uint8_t c = 0x17);</span>
+<span class="changed"> 293   void fill_with_pattern(MetaWord pattern, size_t word_size);</span>
+<span class="changed"> 294   void check_pattern(MetaWord pattern, size_t word_size);</span>
+<span class="changed"> 295 </span>
+<span class="changed"> 296   // Returns true if given pointer points into the payload area of this chunk.</span>
+<span class="changed"> 297   bool is_valid_pointer(const MetaWord* p) const {</span>
+<span class="changed"> 298     return base() &lt;= p &amp;&amp; p &lt; top();</span>
+<span class="changed"> 299   }</span>
+<span class="changed"> 300 </span>
+<span class="changed"> 301   // Returns true if given pointer points into the commmitted payload area of this chunk.</span>
+<span class="changed"> 302   bool is_valid_committed_pointer(const MetaWord* p) const {</span>
+<span class="changed"> 303     return base() &lt;= p &amp;&amp; p &lt; committed_top();</span>
+<span class="changed"> 304   }</span>
+ 305 
+<span class="changed"> 306 #endif // ASSERT</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 307 
+ 308   void print_on(outputStream* st) const;
+ 309 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 310 };
+ 311 
+<span class="new"> 312 // Little print helpers: since we often print out chunks, here some convenience macros</span>
+<span class="new"> 313 #define METACHUNK_FORMAT                "@" PTR_FORMAT ", %c, base " PTR_FORMAT ", level " CHKLVL_FORMAT</span>
+<span class="new"> 314 #define METACHUNK_FORMAT_ARGS(chunk)    p2i(chunk), chunk-&gt;get_state_char(), p2i(chunk-&gt;base()), chunk-&gt;level()</span>
+ 315 
+<span class="changed"> 316 #define METACHUNK_FULL_FORMAT                "@" PTR_FORMAT ", %c, base " PTR_FORMAT ", level " CHKLVL_FORMAT " (" SIZE_FORMAT "), used: " SIZE_FORMAT ", committed: " SIZE_FORMAT ", committed-free: " SIZE_FORMAT</span>
+<span class="changed"> 317 #define METACHUNK_FULL_FORMAT_ARGS(chunk)    p2i(chunk), chunk-&gt;get_state_char(), p2i(chunk-&gt;base()), chunk-&gt;level(), chunk-&gt;word_size(), chunk-&gt;used_words(), chunk-&gt;committed_words(), chunk-&gt;free_below_committed_words()</span>
+
+
+
+
+ 318 
+ 319 } // namespace metaspace
+ 320 
+ 321 #endif // SHARE_MEMORY_METASPACE_METACHUNK_HPP
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/metachunk.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/metaspaceCommon.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

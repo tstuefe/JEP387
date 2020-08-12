@@ -1,0 +1,256 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/metachunk.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 #ifndef SHARE_MEMORY_METASPACE_METACHUNK_HPP
+  25 #define SHARE_MEMORY_METASPACE_METACHUNK_HPP
+  26 
+  27 #include "memory/metaspace/metabase.hpp"
+  28 #include "memory/metaspace/metaspaceCommon.hpp"
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 
+  32 class MetachunkTest;
+  33 
+  34 namespace metaspace {
+  35 
+  36 class VirtualSpaceNode;
+  37 
+  38 //  Metachunk - Quantum of allocation from a Virtualspace
+  39 //    Metachunks are reused (when freed are put on a global freelist) and
+  40 //    have no permanent association to a SpaceManager.
+  41 
+  42 //            +--------------+ &lt;- end    --+       --+
+  43 //            |              |             |         |
+  44 //            |              |             | free    |
+  45 //            |              |             |         |
+  46 //            |              |             |         | size | capacity
+  47 //            |              |             |         |
+  48 //            |              | &lt;- top   -- +         |
+  49 //            |              |             |         |
+  50 //            |              |             | used    |
+  51 //            |              |             |         |
+  52 //            |              |             |         |
+  53 //            +--------------+ &lt;- bottom --+       --+
+  54 
+  55 enum ChunkOrigin {
+  56   // Chunk normally born (via take_from_committed)
+  57   origin_normal = 1,
+  58   // Chunk was born as padding chunk
+  59   origin_pad = 2,
+  60   // Chunk was born as leftover chunk in VirtualSpaceNode::retire
+  61   origin_leftover = 3,
+  62   // Chunk was born as result of a merge of smaller chunks
+  63   origin_merge = 4,
+  64   // Chunk was born as result of a split of a larger chunk
+  65   origin_split = 5,
+  66 
+  67   origin_minimum = origin_normal,
+  68   origin_maximum = origin_split,
+  69   origins_count = origin_maximum + 1
+  70 };
+  71 
+  72 inline bool is_valid_chunkorigin(ChunkOrigin origin) {
+  73   return origin == origin_normal ||
+  74     origin == origin_pad ||
+  75     origin == origin_leftover ||
+  76     origin == origin_merge ||
+  77     origin == origin_split;
+  78 }
+  79 
+  80 class Metachunk : public Metabase&lt;Metachunk&gt; {
+  81 
+  82   friend class ::MetachunkTest;
+  83 
+  84   // The VirtualSpaceNode containing this chunk.
+  85   VirtualSpaceNode* const _container;
+  86 
+  87   // Current allocation top.
+  88   MetaWord* _top;
+  89 
+  90   // A 32bit sentinel for debugging purposes.
+  91   enum { CHUNK_SENTINEL = 0x4d4554EF,  // "MET"
+  92          CHUNK_SENTINEL_INVALID = 0xFEEEEEEF
+  93   };
+  94 
+  95   uint32_t _sentinel;
+  96 
+  97   const ChunkIndex _chunk_type;
+  98   const bool _is_class;
+  99   // Whether the chunk is free (in freelist) or in use by some class loader.
+ 100   bool _is_tagged_free;
+ 101 
+ 102   ChunkOrigin _origin;
+ 103   int _use_count;
+ 104 
+ 105   MetaWord* initial_top() const { return (MetaWord*)this + overhead(); }
+ 106   MetaWord* top() const         { return _top; }
+ 107 
+ 108  public:
+ 109   // Metachunks are allocated out of a MetadataVirtualSpace and
+ 110   // and use some of its space to describe itself (plus alignment
+ 111   // considerations).  Metadata is allocated in the rest of the chunk.
+ 112   // This size is the overhead of maintaining the Metachunk within
+ 113   // the space.
+ 114 
+ 115   // Alignment of each allocation in the chunks.
+ 116   static size_t object_alignment();
+ 117 
+ 118   // Size of the Metachunk header, in words, including alignment.
+ 119   static size_t overhead();
+ 120 
+ 121   Metachunk(ChunkIndex chunktype, bool is_class, size_t word_size, VirtualSpaceNode* container);
+ 122 
+ 123   MetaWord* allocate(size_t word_size);
+ 124 
+ 125   VirtualSpaceNode* container() const { return _container; }
+ 126 
+ 127   MetaWord* bottom() const { return (MetaWord*) this; }
+ 128 
+ 129   // Reset top to bottom so chunk can be reused.
+ 130   void reset_empty() { _top = initial_top(); clear_next(); clear_prev(); }
+ 131   bool is_empty() { return _top == initial_top(); }
+ 132 
+ 133   // used (has been allocated)
+ 134   // free (available for future allocations)
+ 135   size_t word_size() const { return size(); }
+ 136   size_t used_word_size() const;
+ 137   size_t free_word_size() const;
+ 138 
+ 139   bool is_tagged_free() { return _is_tagged_free; }
+ 140   void set_is_tagged_free(bool v) { _is_tagged_free = v; }
+ 141 
+ 142   bool contains(const void* ptr) { return bottom() &lt;= ptr &amp;&amp; ptr &lt; _top; }
+ 143 
+ 144   void print_on(outputStream* st) const;
+ 145 
+ 146   bool is_valid_sentinel() const        { return _sentinel == CHUNK_SENTINEL; }
+ 147   void remove_sentinel()                { _sentinel = CHUNK_SENTINEL_INVALID; }
+ 148 
+ 149   int get_use_count() const             { return _use_count; }
+ 150   void inc_use_count()                  { _use_count ++; }
+ 151 
+ 152   ChunkOrigin get_origin() const        { return _origin; }
+ 153   void set_origin(ChunkOrigin orig)     { _origin = orig; }
+ 154 
+ 155   ChunkIndex get_chunk_type() const     { return _chunk_type; }
+ 156   bool is_class() const                 { return _is_class; }
+ 157 
+ 158   DEBUG_ONLY(void mangle(juint word_value);)
+ 159   DEBUG_ONLY(void verify() const;)
+ 160 
+ 161 };
+ 162 
+ 163 
+ 164 // Helper function that does a bunch of checks for a chunk.
+ 165 DEBUG_ONLY(void do_verify_chunk(Metachunk* chunk);)
+ 166 
+ 167 // Given a Metachunk, update its in-use information (both in the
+ 168 // chunk and the occupancy map).
+ 169 void do_update_in_use_info_for_chunk(Metachunk* chunk, bool inuse);
+ 170 
+ 171 } // namespace metaspace
+ 172 
+ 173 #endif // SHARE_MEMORY_METASPACE_METACHUNK_HPP
+</pre></body></html>

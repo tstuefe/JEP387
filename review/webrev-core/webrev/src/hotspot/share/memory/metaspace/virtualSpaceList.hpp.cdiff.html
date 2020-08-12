@@ -1,0 +1,385 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff src/hotspot/share/memory/metaspace/virtualSpaceList.hpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceList.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace/virtualSpaceList.hpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-core.patch</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 1,7 ****</span>
+  /*
+<span class="changed">!  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<span class="newmarker">--- 1,8 ----</span>
+  /*
+<span class="changed">!  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<hr /><span class="oldmarker">*** 24,168 ****</span>
+  
+  #ifndef SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
+  #define SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
+  
+  #include "memory/allocation.hpp"
+  #include "memory/metaspace/virtualSpaceNode.hpp"
+  #include "utilities/globalDefinitions.hpp"
+  
+  
+  namespace metaspace {
+  
+  class Metachunk;
+<span class="changed">! class ChunkManager;</span>
+  
+<span class="removed">- // List of VirtualSpaces for metadata allocation.</span>
+<span class="removed">- class VirtualSpaceList : public CHeapObj&lt;mtClass&gt; {</span>
+<span class="removed">-   friend class VirtualSpaceNode;</span>
+<span class="removed">- </span>
+<span class="removed">-   enum VirtualSpaceSizes {</span>
+<span class="removed">-     VirtualSpaceSize = 256 * K</span>
+<span class="removed">-   };</span>
+<span class="removed">- </span>
+<span class="removed">-   // Head of the list</span>
+<span class="removed">-   VirtualSpaceNode* _virtual_space_list;</span>
+<span class="removed">-   // virtual space currently being used for allocations</span>
+<span class="removed">-   VirtualSpaceNode* _current_virtual_space;</span>
+  
+<span class="changed">!   // Is this VirtualSpaceList used for the compressed class space</span>
+<span class="changed">!   bool _is_class;</span>
+  
+<span class="changed">!   // Sum of reserved and committed memory in the virtual spaces</span>
+<span class="changed">!   size_t _reserved_words;</span>
+<span class="changed">!   size_t _committed_words;</span>
+<span class="changed">! </span>
+<span class="changed">!   // Number of virtual spaces</span>
+<span class="changed">!   size_t _virtual_space_count;</span>
+  
+<span class="changed">!   // Optimization: we keep an address range to quickly exclude pointers</span>
+<span class="changed">!   // which are clearly not pointing into metaspace. This is an optimization for</span>
+<span class="changed">!   // VirtualSpaceList::contains().</span>
+<span class="changed">!   address _envelope_lo;</span>
+<span class="changed">!   address _envelope_hi;</span>
+  
+<span class="changed">!   bool is_within_envelope(address p) const {</span>
+<span class="changed">!     return p &gt;= _envelope_lo &amp;&amp; p &lt; _envelope_hi;</span>
+<span class="changed">!   }</span>
+  
+<span class="changed">!   // Given a node, expand range such that it includes the node.</span>
+<span class="changed">!   void expand_envelope_to_include_node(const VirtualSpaceNode* node);</span>
+  
+<span class="changed">!   ~VirtualSpaceList();</span>
+  
+<span class="changed">!   VirtualSpaceNode* virtual_space_list() const { return _virtual_space_list; }</span>
+  
+<span class="changed">!   void set_virtual_space_list(VirtualSpaceNode* v) {</span>
+<span class="changed">!     _virtual_space_list = v;</span>
+<span class="changed">!   }</span>
+<span class="changed">!   void set_current_virtual_space(VirtualSpaceNode* v) {</span>
+<span class="changed">!     _current_virtual_space = v;</span>
+<span class="changed">!   }</span>
+  
+<span class="changed">!   void link_vs(VirtualSpaceNode* new_entry);</span>
+  
+<span class="changed">!   // Get another virtual space and add it to the list.  This</span>
+<span class="changed">!   // is typically prompted by a failed attempt to allocate a chunk</span>
+<span class="changed">!   // and is typically followed by the allocation of a chunk.</span>
+<span class="changed">!   bool create_new_virtual_space(size_t vs_word_size);</span>
+  
+<span class="changed">!   // Chunk up the unused committed space in the current</span>
+<span class="changed">!   // virtual space and add the chunks to the free list.</span>
+<span class="changed">!   void retire_current_virtual_space();</span>
+  
+<span class="changed">!   DEBUG_ONLY(bool contains_node(const VirtualSpaceNode* node) const;)</span>
+  
+<span class="changed">!  public:</span>
+<span class="changed">!   VirtualSpaceList(size_t word_size);</span>
+<span class="changed">!   VirtualSpaceList(ReservedSpace rs);</span>
+  
+<span class="changed">!   size_t free_bytes();</span>
+  
+<span class="changed">!   Metachunk* get_new_chunk(size_t chunk_word_size,</span>
+<span class="changed">!                            size_t suggested_commit_granularity);</span>
+  
+<span class="changed">!   bool expand_node_by(VirtualSpaceNode* node,</span>
+<span class="changed">!                       size_t min_words,</span>
+<span class="changed">!                       size_t preferred_words);</span>
+  
+<span class="changed">!   bool expand_by(size_t min_words,</span>
+<span class="changed">!                  size_t preferred_words);</span>
+  
+<span class="changed">!   VirtualSpaceNode* current_virtual_space() {</span>
+<span class="changed">!     return _current_virtual_space;</span>
+<span class="changed">!   }</span>
+  
+<span class="changed">!   bool is_class() const { return _is_class; }</span>
+  
+<span class="changed">!   bool initialization_succeeded() { return _virtual_space_list != NULL; }</span>
+  
+<span class="changed">!   size_t reserved_words()  { return _reserved_words; }</span>
+<span class="changed">!   size_t reserved_bytes()  { return reserved_words() * BytesPerWord; }</span>
+<span class="changed">!   size_t committed_words() { return _committed_words; }</span>
+<span class="changed">!   size_t committed_bytes() { return committed_words() * BytesPerWord; }</span>
+  
+<span class="changed">!   void inc_reserved_words(size_t v);</span>
+<span class="changed">!   void dec_reserved_words(size_t v);</span>
+<span class="changed">!   void inc_committed_words(size_t v);</span>
+<span class="changed">!   void dec_committed_words(size_t v);</span>
+<span class="changed">!   void inc_virtual_space_count();</span>
+<span class="changed">!   void dec_virtual_space_count();</span>
+  
+<span class="changed">!   VirtualSpaceNode* find_enclosing_space(const void* ptr);</span>
+<span class="changed">!   bool contains(const void* ptr) { return find_enclosing_space(ptr) != NULL; }</span>
+  
+<span class="changed">!   // Unlink empty VirtualSpaceNodes and free it.</span>
+<span class="changed">!   void purge(ChunkManager* chunk_manager);</span>
+  
+<span class="changed">!   void print_on(outputStream* st) const                 { print_on(st, K); }</span>
+<span class="changed">!   void print_on(outputStream* st, size_t scale) const;</span>
+<span class="changed">!   void print_map(outputStream* st) const;</span>
+  
+<span class="changed">!   DEBUG_ONLY(void verify(bool slow);)</span>
+  
+<span class="changed">!   class VirtualSpaceListIterator : public StackObj {</span>
+<span class="changed">!     VirtualSpaceNode* _virtual_spaces;</span>
+<span class="changed">!    public:</span>
+<span class="changed">!     VirtualSpaceListIterator(VirtualSpaceNode* virtual_spaces) :</span>
+<span class="changed">!       _virtual_spaces(virtual_spaces) {}</span>
+  
+<span class="changed">!     bool repeat() {</span>
+<span class="changed">!       return _virtual_spaces != NULL;</span>
+<span class="changed">!     }</span>
+  
+<span class="removed">-     VirtualSpaceNode* get_next() {</span>
+<span class="removed">-       VirtualSpaceNode* result = _virtual_spaces;</span>
+<span class="removed">-       if (_virtual_spaces != NULL) {</span>
+<span class="removed">-         _virtual_spaces = _virtual_spaces-&gt;next();</span>
+<span class="removed">-       }</span>
+<span class="removed">-       return result;</span>
+<span class="removed">-     }</span>
+<span class="removed">-   };</span>
+  };
+  
+  } // namespace metaspace
+  
+  #endif // SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
+<span class="newmarker">--- 25,154 ----</span>
+  
+  #ifndef SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
+  #define SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
+  
+  #include "memory/allocation.hpp"
+<span class="new">+ #include "memory/metaspace/counter.hpp"</span>
+<span class="new">+ #include "memory/metaspace/commitLimiter.hpp"</span>
+  #include "memory/metaspace/virtualSpaceNode.hpp"
+<span class="new">+ #include "memory/virtualspace.hpp"</span>
+  #include "utilities/globalDefinitions.hpp"
+  
+<span class="new">+ class outputStream;</span>
+  
+  namespace metaspace {
+  
+  class Metachunk;
+<span class="changed">! class FreeChunkListVector;</span>
+  
+  
+<span class="changed">! // VirtualSpaceList manages a single (if its non-expandable) or</span>
+<span class="changed">! //  a series of (if its expandable) virtual memory regions used</span>
+<span class="changed">! //  for metaspace.</span>
+<span class="changed">! //</span>
+<span class="changed">! // Internally it holds a list of nodes (VirtualSpaceNode) each</span>
+<span class="changed">! //  managing a single contiguous memory region. The first node of</span>
+<span class="changed">! //  this list is the current node and used for allocation of new</span>
+<span class="changed">! //  root chunks.</span>
+<span class="changed">! //</span>
+<span class="changed">! // Beyond access to those nodes and the ability to grow new nodes</span>
+<span class="changed">! //  (if expandable) it allows for purging: purging this list means</span>
+<span class="changed">! //  removing and unmapping all memory regions which are unused.</span>
+  
+<span class="changed">! class VirtualSpaceList : public CHeapObj&lt;mtClass&gt; {</span>
+  
+<span class="changed">!   // Name</span>
+<span class="changed">!   const char* const _name;</span>
+  
+<span class="changed">!   // Head of the list.</span>
+<span class="changed">!   VirtualSpaceNode* _first_node;</span>
+  
+<span class="changed">!   // Number of nodes (kept for statistics only).</span>
+<span class="changed">!   IntCounter _nodes_counter;</span>
+  
+<span class="changed">!   // Whether this list can expand by allocating new nodes.</span>
+<span class="changed">!   const bool _can_expand;</span>
+  
+<span class="changed">!   // Whether this list can be purged.</span>
+<span class="changed">!   const bool _can_purge;</span>
+  
+<span class="changed">!   // Used to check limits before committing memory.</span>
+<span class="changed">!   CommitLimiter* const _commit_limiter;</span>
+  
+<span class="changed">!   // Statistics</span>
+  
+<span class="changed">!   // Holds sum of reserved space, in words, over all list nodes.</span>
+<span class="changed">!   SizeCounter _reserved_words_counter;</span>
+  
+<span class="changed">!   // Holds sum of committed space, in words, over all list nodes.</span>
+<span class="changed">!   SizeCounter _committed_words_counter;</span>
+  
+<span class="changed">!   // Create a new node and append it to the list. After</span>
+<span class="changed">!   // this function, _current_node shall point to a new empty node.</span>
+<span class="changed">!   // List must be expandable for this to work.</span>
+<span class="changed">!   void create_new_node();</span>
+  
+<span class="changed">! public:</span>
+  
+<span class="changed">!   // Create a new, empty, expandable list.</span>
+<span class="changed">!   VirtualSpaceList(const char* name, CommitLimiter* commit_limiter);</span>
+  
+<span class="changed">!   // Create a new list. The list will contain one node only, which uses the given ReservedSpace.</span>
+<span class="changed">!   // It will be not expandable beyond that first node.</span>
+<span class="changed">!   VirtualSpaceList(const char* name, ReservedSpace rs, CommitLimiter* commit_limiter);</span>
+  
+<span class="changed">!   virtual ~VirtualSpaceList();</span>
+  
+<span class="changed">!   // Allocate a root chunk from this list.</span>
+<span class="changed">!   // Note: this just returns a chunk whose memory is reserved; no memory is committed yet.</span>
+<span class="changed">!   // Hence, before using this chunk, it must be committed.</span>
+<span class="changed">!   // May return NULL if vslist would need to be expanded to hold the new root node but</span>
+<span class="changed">!   // the list cannot be expanded (in practice this means we reached CompressedClassSpaceSize).</span>
+<span class="changed">!   Metachunk* allocate_root_chunk();</span>
+  
+<span class="changed">!   // Attempts to purge nodes. This will remove and delete nodes which only contain free chunks.</span>
+<span class="changed">!   // The free chunks are removed from the freelists before the nodes are deleted.</span>
+<span class="changed">!   // Return number of purged nodes.</span>
+<span class="changed">!   int purge(FreeChunkListVector* freelists);</span>
+  
+<span class="changed">!   //// Statistics ////</span>
+  
+<span class="changed">!   // Return sum of reserved words in all nodes.</span>
+<span class="changed">!   size_t reserved_words() const     { return _reserved_words_counter.get(); }</span>
+  
+<span class="changed">!   // Return sum of committed words in all nodes.</span>
+<span class="changed">!   size_t committed_words() const    { return _committed_words_counter.get(); }</span>
+  
+<span class="changed">!   // Return number of nodes in this list.</span>
+<span class="changed">!   int num_nodes() const             { return _nodes_counter.get(); }</span>
+  
+<span class="changed">!   //// Debug stuff ////</span>
+<span class="changed">!   DEBUG_ONLY(void verify(bool slow) const;)</span>
+<span class="changed">!   DEBUG_ONLY(void verify_locked(bool slow) const;)</span>
+  
+<span class="changed">!   // Print all nodes in this space list.</span>
+<span class="changed">!   void print_on(outputStream* st) const;</span>
+  
+<span class="changed">!   // Returns true if this pointer is contained in one of our nodes.</span>
+<span class="changed">!   bool contains(const MetaWord* p) const;</span>
+  
+<span class="changed">!   // Returns true if the list is not expandable and no more root chunks</span>
+<span class="changed">!   // can be allocated.</span>
+<span class="changed">!   bool is_full() const;</span>
+  
+<span class="changed">!   // Convenience methods to return the global class-space vslist</span>
+<span class="changed">!   //  and non-class vslist, respectively.</span>
+<span class="changed">!   static VirtualSpaceList* vslist_class();</span>
+<span class="changed">!   static VirtualSpaceList* vslist_nonclass();</span>
+  
+<span class="changed">!   // These exist purely to print limits of the compressed class space;</span>
+<span class="changed">!   // if we ever change the ccs to not use a degenerated-list-of-one-node this</span>
+<span class="changed">!   // will go away.</span>
+<span class="changed">!   MetaWord* base_of_first_node() const { return _first_node != NULL ? _first_node-&gt;base() : NULL; }</span>
+<span class="changed">!   size_t word_size_of_first_node() const { return _first_node != NULL ? _first_node-&gt;word_size() : 0; }</span>
+  
+  };
+  
+  } // namespace metaspace
+  
+  #endif // SHARE_MEMORY_METASPACE_VIRTUALSPACELIST_HPP
+<span class="new">+ </span>
+</pre>
+<center><a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceList.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/memory/metaspace/virtualSpaceNode.cpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

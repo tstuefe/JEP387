@@ -1,0 +1,413 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/freeList.inline.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2001, 2017, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_FREELIST_INLINE_HPP
+  26 #define SHARE_MEMORY_FREELIST_INLINE_HPP
+  27 
+  28 #include "gc/shared/collectedHeap.hpp"
+  29 #include "memory/freeList.hpp"
+  30 #include "runtime/globals.hpp"
+  31 #include "runtime/mutex.hpp"
+  32 #include "runtime/vmThread.hpp"
+  33 #include "utilities/macros.hpp"
+  34 
+  35 // Free list.  A FreeList is used to access a linked list of chunks
+  36 // of space in the heap.  The head and tail are maintained so that
+  37 // items can be (as in the current implementation) added at the
+  38 // at the tail of the list and removed from the head of the list to
+  39 // maintain a FIFO queue.
+  40 
+  41 template &lt;class Chunk&gt;
+  42 FreeList&lt;Chunk&gt;::FreeList() :
+  43   _head(NULL), _tail(NULL)
+  44 #ifdef ASSERT
+  45   , _protecting_lock(NULL)
+  46 #endif
+  47 {
+  48   _size         = 0;
+  49   _count        = 0;
+  50 }
+  51 
+  52 template &lt;class Chunk&gt;
+  53 void FreeList&lt;Chunk&gt;::link_head(Chunk* v) {
+  54   assert_proper_lock_protection();
+  55   set_head(v);
+  56   // If this method is not used (just set the head instead),
+  57   // this check can be avoided.
+  58   if (v != NULL) {
+  59     v-&gt;link_prev(NULL);
+  60   }
+  61 }
+  62 
+  63 
+  64 
+  65 template &lt;class Chunk&gt;
+  66 void FreeList&lt;Chunk&gt;::reset() {
+  67   // Don't set the _size to 0 because this method is
+  68   // used with a existing list that has a size but which has
+  69   // been emptied.
+  70   // Don't clear the _protecting_lock of an existing list.
+  71   set_count(0);
+  72   set_head(NULL);
+  73   set_tail(NULL);
+  74 }
+  75 
+  76 template &lt;class Chunk&gt;
+  77 void FreeList&lt;Chunk&gt;::initialize() {
+  78 #ifdef ASSERT
+  79   // Needed early because it might be checked in other initializing code.
+  80   set_protecting_lock(NULL);
+  81 #endif
+  82   reset();
+  83   set_size(0);
+  84 }
+  85 
+  86 template &lt;class Chunk_t&gt;
+  87 Chunk_t* FreeList&lt;Chunk_t&gt;::get_chunk_at_head() {
+  88   assert_proper_lock_protection();
+  89   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+  90   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+  91   Chunk_t* fc = head();
+  92   if (fc != NULL) {
+  93     Chunk_t* nextFC = fc-&gt;next();
+  94     if (nextFC != NULL) {
+  95       // The chunk fc being removed has a "next".  Set the "next" to the
+  96       // "prev" of fc.
+  97       nextFC-&gt;link_prev(NULL);
+  98     } else { // removed tail of list
+  99       link_tail(NULL);
+ 100     }
+ 101     link_head(nextFC);
+ 102     decrement_count();
+ 103   }
+ 104   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 105   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 106   return fc;
+ 107 }
+ 108 
+ 109 
+ 110 template &lt;class Chunk&gt;
+ 111 void FreeList&lt;Chunk&gt;::getFirstNChunksFromList(size_t n, FreeList&lt;Chunk&gt;* fl) {
+ 112   assert_proper_lock_protection();
+ 113   assert(fl-&gt;count() == 0, "Precondition");
+ 114   if (count() &gt; 0) {
+ 115     int k = 1;
+ 116     fl-&gt;set_head(head()); n--;
+ 117     Chunk* tl = head();
+ 118     while (tl-&gt;next() != NULL &amp;&amp; n &gt; 0) {
+ 119       tl = tl-&gt;next(); n--; k++;
+ 120     }
+ 121     assert(tl != NULL, "Loop Inv.");
+ 122 
+ 123     // First, fix up the list we took from.
+ 124     Chunk* new_head = tl-&gt;next();
+ 125     set_head(new_head);
+ 126     set_count(count() - k);
+ 127     if (new_head == NULL) {
+ 128       set_tail(NULL);
+ 129     } else {
+ 130       new_head-&gt;link_prev(NULL);
+ 131     }
+ 132     // Now we can fix up the tail.
+ 133     tl-&gt;link_next(NULL);
+ 134     // And return the result.
+ 135     fl-&gt;set_tail(tl);
+ 136     fl-&gt;set_count(k);
+ 137   }
+ 138 }
+ 139 
+ 140 // Remove this chunk from the list
+ 141 template &lt;class Chunk&gt;
+ 142 void FreeList&lt;Chunk&gt;::remove_chunk(Chunk*fc) {
+ 143    assert_proper_lock_protection();
+ 144    assert(head() != NULL, "Remove from empty list");
+ 145    assert(fc != NULL, "Remove a NULL chunk");
+ 146    assert(size() == fc-&gt;size(), "Wrong list");
+ 147    assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 148    assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 149 
+ 150    Chunk* prevFC = fc-&gt;prev();
+ 151    Chunk* nextFC = fc-&gt;next();
+ 152    if (nextFC != NULL) {
+ 153      // The chunk fc being removed has a "next".  Set the "next" to the
+ 154      // "prev" of fc.
+ 155      nextFC-&gt;link_prev(prevFC);
+ 156    } else { // removed tail of list
+ 157      link_tail(prevFC);
+ 158    }
+ 159    if (prevFC == NULL) { // removed head of list
+ 160      link_head(nextFC);
+ 161      assert(nextFC == NULL || nextFC-&gt;prev() == NULL,
+ 162        "Prev of head should be NULL");
+ 163    } else {
+ 164      prevFC-&gt;link_next(nextFC);
+ 165      assert(tail() != prevFC || prevFC-&gt;next() == NULL,
+ 166        "Next of tail should be NULL");
+ 167    }
+ 168    decrement_count();
+ 169    assert(((head() == NULL) + (tail() == NULL) + (count() == 0)) % 3 == 0,
+ 170           "H/T/C Inconsistency");
+ 171    // clear next and prev fields of fc, debug only
+ 172    NOT_PRODUCT(
+ 173      fc-&gt;link_prev(NULL);
+ 174      fc-&gt;link_next(NULL);
+ 175    )
+ 176    assert(fc-&gt;is_free(), "Should still be a free chunk");
+ 177    assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 178    assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 179    assert(head() == NULL || head()-&gt;size() == size(), "wrong item on list");
+ 180    assert(tail() == NULL || tail()-&gt;size() == size(), "wrong item on list");
+ 181 }
+ 182 
+ 183 // Add this chunk at the head of the list.
+ 184 template &lt;class Chunk&gt;
+ 185 void FreeList&lt;Chunk&gt;::return_chunk_at_head(Chunk* chunk, bool record_return) {
+ 186   assert_proper_lock_protection();
+ 187   assert(chunk != NULL, "insert a NULL chunk");
+ 188   assert(size() == chunk-&gt;size(), "Wrong size");
+ 189   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 190   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 191 
+ 192   Chunk* oldHead = head();
+ 193   assert(chunk != oldHead, "double insertion");
+ 194   chunk-&gt;link_after(oldHead);
+ 195   link_head(chunk);
+ 196   if (oldHead == NULL) { // only chunk in list
+ 197     assert(tail() == NULL, "inconsistent FreeList");
+ 198     link_tail(chunk);
+ 199   }
+ 200   increment_count(); // of # of chunks in list
+ 201   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 202   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 203   assert(head() == NULL || head()-&gt;size() == size(), "wrong item on list");
+ 204   assert(tail() == NULL || tail()-&gt;size() == size(), "wrong item on list");
+ 205 }
+ 206 
+ 207 template &lt;class Chunk&gt;
+ 208 void FreeList&lt;Chunk&gt;::return_chunk_at_head(Chunk* chunk) {
+ 209   assert_proper_lock_protection();
+ 210   return_chunk_at_head(chunk, true);
+ 211 }
+ 212 
+ 213 // Add this chunk at the tail of the list.
+ 214 template &lt;class Chunk&gt;
+ 215 void FreeList&lt;Chunk&gt;::return_chunk_at_tail(Chunk* chunk, bool record_return) {
+ 216   assert_proper_lock_protection();
+ 217   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 218   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 219   assert(chunk != NULL, "insert a NULL chunk");
+ 220   assert(size() == chunk-&gt;size(), "wrong size");
+ 221 
+ 222   Chunk* oldTail = tail();
+ 223   assert(chunk != oldTail, "double insertion");
+ 224   if (oldTail != NULL) {
+ 225     oldTail-&gt;link_after(chunk);
+ 226   } else { // only chunk in list
+ 227     assert(head() == NULL, "inconsistent FreeList");
+ 228     link_head(chunk);
+ 229   }
+ 230   link_tail(chunk);
+ 231   increment_count();  // of # of chunks in list
+ 232   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 233   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 234   assert(head() == NULL || head()-&gt;size() == size(), "wrong item on list");
+ 235   assert(tail() == NULL || tail()-&gt;size() == size(), "wrong item on list");
+ 236 }
+ 237 
+ 238 template &lt;class Chunk&gt;
+ 239 void FreeList&lt;Chunk&gt;::return_chunk_at_tail(Chunk* chunk) {
+ 240   return_chunk_at_tail(chunk, true);
+ 241 }
+ 242 
+ 243 template &lt;class Chunk&gt;
+ 244 void FreeList&lt;Chunk&gt;::prepend(FreeList&lt;Chunk&gt;* fl) {
+ 245   assert_proper_lock_protection();
+ 246   if (fl-&gt;count() &gt; 0) {
+ 247     if (count() == 0) {
+ 248       set_head(fl-&gt;head());
+ 249       set_tail(fl-&gt;tail());
+ 250       set_count(fl-&gt;count());
+ 251     } else {
+ 252       // Both are non-empty.
+ 253       Chunk* fl_tail = fl-&gt;tail();
+ 254       Chunk* this_head = head();
+ 255       assert(fl_tail-&gt;next() == NULL, "Well-formedness of fl");
+ 256       fl_tail-&gt;link_next(this_head);
+ 257       this_head-&gt;link_prev(fl_tail);
+ 258       set_head(fl-&gt;head());
+ 259       set_count(count() + fl-&gt;count());
+ 260     }
+ 261     fl-&gt;set_head(NULL);
+ 262     fl-&gt;set_tail(NULL);
+ 263     fl-&gt;set_count(0);
+ 264   }
+ 265 }
+ 266 
+ 267 // verify_chunk_in_free_lists() is used to verify that an item is in this free list.
+ 268 // It is used as a debugging aid.
+ 269 template &lt;class Chunk&gt;
+ 270 bool FreeList&lt;Chunk&gt;::verify_chunk_in_free_list(Chunk* fc) const {
+ 271   // This is an internal consistency check, not part of the check that the
+ 272   // chunk is in the free lists.
+ 273   guarantee(fc-&gt;size() == size(), "Wrong list is being searched");
+ 274   Chunk* curFC = head();
+ 275   while (curFC) {
+ 276     // This is an internal consistency check.
+ 277     guarantee(size() == curFC-&gt;size(), "Chunk is in wrong list.");
+ 278     if (fc == curFC) {
+ 279       return true;
+ 280     }
+ 281     curFC = curFC-&gt;next();
+ 282   }
+ 283   return false;
+ 284 }
+ 285 
+ 286 #ifdef ASSERT
+ 287 template &lt;class Chunk&gt;
+ 288 void FreeList&lt;Chunk&gt;::assert_proper_lock_protection_work() const {
+ 289   // Nothing to do if the list has no assigned protecting lock
+ 290   if (protecting_lock() == NULL) {
+ 291     return;
+ 292   }
+ 293 
+ 294   Thread* thr = Thread::current();
+ 295   if (thr-&gt;is_VM_thread() || thr-&gt;is_ConcurrentGC_thread()) {
+ 296     // assert that we are holding the freelist lock
+ 297   } else if (thr-&gt;is_GC_task_thread()) {
+ 298     assert(protecting_lock()-&gt;owned_by_self(), "FreeList RACE DETECTED");
+ 299   } else if (thr-&gt;is_Java_thread()) {
+ 300     assert(!SafepointSynchronize::is_at_safepoint(), "Should not be executing");
+ 301   } else {
+ 302     ShouldNotReachHere();  // unaccounted thread type?
+ 303   }
+ 304 }
+ 305 #endif
+ 306 
+ 307 // Print the "label line" for free list stats.
+ 308 template &lt;class Chunk&gt;
+ 309 void FreeList&lt;Chunk&gt;::print_labels_on(outputStream* st, const char* c) {
+ 310   st-&gt;print("%16s\t", c);
+ 311   st-&gt;print("%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"
+ 312             "%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"    "\n",
+ 313             "bfrsurp", "surplus", "desired", "prvSwep", "bfrSwep",
+ 314             "count",   "cBirths", "cDeaths", "sBirths", "sDeaths");
+ 315 }
+ 316 
+ 317 // Print the AllocationStats for the given free list. If the second argument
+ 318 // to the call is a non-null string, it is printed in the first column;
+ 319 // otherwise, if the argument is null (the default), then the size of the
+ 320 // (free list) block is printed in the first column.
+ 321 template &lt;class Chunk_t&gt;
+ 322 void FreeList&lt;Chunk_t&gt;::print_on(outputStream* st, const char* c) const {
+ 323   if (c != NULL) {
+ 324     st-&gt;print("%16s", c);
+ 325   } else {
+ 326     st-&gt;print(SIZE_FORMAT_W(16), size());
+ 327   }
+ 328 }
+ 329 
+ 330 #endif // SHARE_MEMORY_FREELIST_INLINE_HPP
+</pre></body></html>

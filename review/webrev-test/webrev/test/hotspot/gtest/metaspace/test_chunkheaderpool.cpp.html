@@ -1,0 +1,231 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "metaspaceTestsCommon.hpp"
+  29 
+  30 class ChunkHeaderPoolTest {
+  31 
+  32   static const size_t max_cap = 0x1000;
+  33 
+  34   ChunkHeaderPool _pool;
+  35 
+  36   // Array of the same size as the pool max capacity; holds the allocated elements.
+  37   Metachunk* _elems[max_cap];
+  38   SizeCounter _num_allocated;
+  39 
+  40   void attempt_free_at(size_t index) {
+  41 
+  42     LOG("attempt_free_at " SIZE_FORMAT ".", index);
+  43 
+  44     if (_elems[index] == NULL) {
+  45       return;
+  46     }
+  47 
+  48     _pool.return_chunk_header(_elems[index]);
+  49     _elems[index] = NULL;
+  50 
+  51     _num_allocated.decrement();
+  52     DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  53 
+  54     DEBUG_ONLY(_pool.verify(true);)
+  55 
+  56   }
+  57 
+  58   void attempt_allocate_at(size_t index) {
+  59 
+  60     LOG("attempt_allocate_at " SIZE_FORMAT ".", index);
+  61 
+  62     if (_elems[index] != NULL) {
+  63       return;
+  64     }
+  65 
+  66     Metachunk* c = _pool.allocate_chunk_header();
+  67     EXPECT_NOT_NULL(c);
+  68     _elems[index] = c;
+  69     c-&gt;set_free();
+  70 
+  71     _num_allocated.increment();
+  72     DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  73 
+  74     DEBUG_ONLY(_pool.verify(true);)
+  75   }
+  76 
+  77   void attempt_allocate_or_free_at(size_t index) {
+  78     if (_elems[index] == NULL) {
+  79       attempt_allocate_at(index);
+  80     } else {
+  81       attempt_free_at(index);
+  82     }
+  83   }
+  84 
+  85   // Randomly allocate from the pool and free. Slight preference for allocation.
+  86   void test_random_alloc_free(int num_iterations) {
+  87 
+  88     for (int iter = 0; iter &lt; num_iterations; iter ++) {
+  89       size_t index = (size_t)os::random() % max_cap;
+  90       attempt_allocate_or_free_at(index);
+  91     }
+  92 
+  93     DEBUG_ONLY(_pool.verify(true);)
+  94 
+  95   }
+  96 
+  97   static void test_once() {
+  98     ChunkHeaderPoolTest test;
+  99     test.test_random_alloc_free(100);
+ 100   }
+ 101 
+ 102 
+ 103 public:
+ 104 
+ 105   ChunkHeaderPoolTest() : _pool() {
+ 106     memset(_elems, 0, sizeof(_elems));
+ 107   }
+ 108 
+ 109   static void run_tests() {
+ 110     for (int i = 0; i &lt; 1000; i ++) {
+ 111       test_once();
+ 112     }
+ 113   }
+ 114 
+ 115 };
+ 116 
+ 117 TEST_VM(metaspace, chunk_header_pool_basics) {
+ 118 
+ 119   ChunkHeaderPool pool;
+ 120   EXPECT_EQ(pool.used(), (int)0);
+ 121   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 122 
+ 123   Metachunk* header = pool.allocate_chunk_header();
+ 124   EXPECT_NOT_NULL(header);
+ 125   EXPECT_EQ(pool.used(), 1);
+ 126   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 127 
+ 128   header-&gt;set_free();
+ 129   pool.return_chunk_header(header);
+ 130   EXPECT_EQ(pool.used(), (int)0);
+ 131   EXPECT_EQ(pool.freelist_size(), 1);
+ 132 
+ 133   header = pool.allocate_chunk_header();
+ 134   EXPECT_NOT_NULL(header);
+ 135   EXPECT_EQ(pool.used(), 1);
+ 136   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 137 
+ 138   header-&gt;set_free();
+ 139   pool.return_chunk_header(header);
+ 140   EXPECT_EQ(pool.used(), (int)0);
+ 141   EXPECT_EQ(pool.freelist_size(), 1);
+ 142 
+ 143 }
+ 144 
+ 145 
+ 146 TEST_VM(metaspace, chunk_header_pool) {
+ 147   ChunkHeaderPoolTest::run_tests();
+ 148 }
+</pre></body></html>

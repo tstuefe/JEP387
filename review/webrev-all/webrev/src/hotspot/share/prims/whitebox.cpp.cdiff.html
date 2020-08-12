@@ -1,0 +1,248 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff src/hotspot/share/prims/whitebox.cpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/universe.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/globals.hpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/prims/whitebox.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 44,53 ****</span>
+<span class="newmarker">--- 44,54 ----</span>
+  #include "logging/log.hpp"
+  #include "memory/filemap.hpp"
+  #include "memory/heapShared.inline.hpp"
+  #include "memory/metaspaceShared.hpp"
+  #include "memory/metadataFactory.hpp"
+<span class="new">+ #include "memory/metaspace/metaspace_test.hpp"</span>
+  #include "memory/iterator.hpp"
+  #include "memory/resourceArea.hpp"
+  #include "memory/universe.hpp"
+  #include "memory/oopFactory.hpp"
+  #include "oops/array.hpp"
+<hr /><span class="oldmarker">*** 82,91 ****</span>
+<span class="newmarker">--- 83,93 ----</span>
+  #include "utilities/align.hpp"
+  #include "utilities/debug.hpp"
+  #include "utilities/elfFile.hpp"
+  #include "utilities/exceptions.hpp"
+  #include "utilities/macros.hpp"
+<span class="new">+ #include "utilities/ostream.hpp"</span>
+  #if INCLUDE_CDS
+  #include "prims/cdsoffsets.hpp"
+  #endif // INCLUDE_CDS
+  #if INCLUDE_G1GC
+  #include "gc/g1/g1Arguments.hpp"
+<hr /><span class="oldmarker">*** 1688,1697 ****</span>
+<span class="newmarker">--- 1690,1758 ----</span>
+  
+  int WhiteBox::array_bytes_to_length(size_t bytes) {
+    return Array&lt;u1&gt;::bytes_to_length(bytes);
+  }
+  
+<span class="new">+ ///////////////</span>
+<span class="new">+ // MetaspaceTestContext and MetaspaceTestArena</span>
+<span class="new">+ WB_ENTRY(jlong, WB_CreateMetaspaceTestContext(JNIEnv* env, jobject wb, jlong commit_limit, jlong reserve_limit))</span>
+<span class="new">+   metaspace::MetaspaceTestContext* context =</span>
+<span class="new">+       new metaspace::MetaspaceTestContext("whitebox-metaspace-context", (size_t) commit_limit, (size_t) reserve_limit);</span>
+<span class="new">+   return (jlong)p2i(context);</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(void, WB_DestroyMetaspaceTestContext(JNIEnv* env, jobject wb, jlong context))</span>
+<span class="new">+   delete (metaspace::MetaspaceTestContext*) context;</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(void, WB_PurgeMetaspaceTestContext(JNIEnv* env, jobject wb, jlong context))</span>
+<span class="new">+   metaspace::MetaspaceTestContext* context0 = (metaspace::MetaspaceTestContext*) context;</span>
+<span class="new">+   context0-&gt;purge_area();</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(void, WB_PrintMetaspaceTestContext(JNIEnv* env, jobject wb, jlong context))</span>
+<span class="new">+   metaspace::MetaspaceTestContext* context0 = (metaspace::MetaspaceTestContext*) context;</span>
+<span class="new">+   context0-&gt;print_on(tty);</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(jlong, WB_GetTotalCommittedWordsInMetaspaceTestContext(JNIEnv* env, jobject wb, jlong context))</span>
+<span class="new">+   metaspace::MetaspaceTestContext* context0 = (metaspace::MetaspaceTestContext*) context;</span>
+<span class="new">+   return context0-&gt;committed_words();</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(jlong, WB_GetTotalUsedWordsInMetaspaceTestContext(JNIEnv* env, jobject wb, jlong context))</span>
+<span class="new">+   metaspace::MetaspaceTestContext* context0 = (metaspace::MetaspaceTestContext*) context;</span>
+<span class="new">+   return context0-&gt;used_words();</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(jlong, WB_CreateArenaInTestContext(JNIEnv* env, jobject wb, jlong context, jboolean is_micro))</span>
+<span class="new">+   const Metaspace::MetaspaceType type = is_micro ? Metaspace::ReflectionMetaspaceType : Metaspace::StandardMetaspaceType;</span>
+<span class="new">+   metaspace::MetaspaceTestContext* context0 = (metaspace::MetaspaceTestContext*) context;</span>
+<span class="new">+   return (jlong)p2i(context0-&gt;create_arena(type));</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(void, WB_DestroyMetaspaceTestArena(JNIEnv* env, jobject wb, jlong arena))</span>
+<span class="new">+   delete (metaspace::MetaspaceTestArena*) arena;</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(jlong, WB_AllocateFromMetaspaceTestArena(JNIEnv* env, jobject wb, jlong arena, jlong word_size))</span>
+<span class="new">+   metaspace::MetaspaceTestArena* arena0 = (metaspace::MetaspaceTestArena*) arena;</span>
+<span class="new">+   MetaWord* p = arena0-&gt;allocate((size_t) word_size);</span>
+<span class="new">+   return (jlong)p2i(p);</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(void, WB_DeallocateToMetaspaceTestArena(JNIEnv* env, jobject wb, jlong arena, jlong p, jlong word_size))</span>
+<span class="new">+   metaspace::MetaspaceTestArena* arena0 = (metaspace::MetaspaceTestArena*) arena;</span>
+<span class="new">+   arena0-&gt;deallocate((MetaWord*)p, (size_t) word_size);</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ WB_ENTRY(jlong, WB_GetMaxMetaspaceAllocationSize(JNIEnv* env, jobject wb))</span>
+<span class="new">+   return (jlong) Metaspace::max_allocation_word_size() * BytesPerWord;</span>
+<span class="new">+ WB_END</span>
+<span class="new">+ </span>
+<span class="new">+ //////////////</span>
+<span class="new">+ </span>
+  WB_ENTRY(jlong, WB_AllocateMetaspace(JNIEnv* env, jobject wb, jobject class_loader, jlong size))
+    if (size &lt; 0) {
+      THROW_MSG_0(vmSymbols::java_lang_IllegalArgumentException(),
+          err_msg("WB_AllocateMetaspace: size is negative: " JLONG_FORMAT, size));
+    }
+<hr /><span class="oldmarker">*** 1704,1722 ****</span>
+    void* metadata = MetadataFactory::new_array&lt;u1&gt;(cld, WhiteBox::array_bytes_to_length((size_t)size), thread);
+  
+    return (jlong)(uintptr_t)metadata;
+  WB_END
+  
+<span class="removed">- WB_ENTRY(void, WB_FreeMetaspace(JNIEnv* env, jobject wb, jobject class_loader, jlong addr, jlong size))</span>
+<span class="removed">-   oop class_loader_oop = JNIHandles::resolve(class_loader);</span>
+<span class="removed">-   ClassLoaderData* cld = class_loader_oop != NULL</span>
+<span class="removed">-       ? java_lang_ClassLoader::loader_data_acquire(class_loader_oop)</span>
+<span class="removed">-       : ClassLoaderData::the_null_class_loader_data();</span>
+<span class="removed">- </span>
+<span class="removed">-   MetadataFactory::free_array(cld, (Array&lt;u1&gt;*)(uintptr_t)addr);</span>
+<span class="removed">- WB_END</span>
+<span class="removed">- </span>
+  WB_ENTRY(void, WB_DefineModule(JNIEnv* env, jobject o, jobject module, jboolean is_open,
+                                  jstring version, jstring location, jobjectArray packages))
+    Modules::define_module(module, is_open, version, location, packages, CHECK);
+  WB_END
+  
+<span class="newmarker">--- 1765,1774 ----</span>
+<hr /><span class="oldmarker">*** 2433,2444 ****</span>
+    {CC"fullGC",   CC"()V",                             (void*)&amp;WB_FullGC },
+    {CC"youngGC",  CC"()V",                             (void*)&amp;WB_YoungGC },
+    {CC"readReservedMemory", CC"()V",                   (void*)&amp;WB_ReadReservedMemory },
+    {CC"allocateMetaspace",
+       CC"(Ljava/lang/ClassLoader;J)J",                 (void*)&amp;WB_AllocateMetaspace },
+<span class="removed">-   {CC"freeMetaspace",</span>
+<span class="removed">-      CC"(Ljava/lang/ClassLoader;JJ)V",                (void*)&amp;WB_FreeMetaspace },</span>
+    {CC"incMetaspaceCapacityUntilGC", CC"(J)J",         (void*)&amp;WB_IncMetaspaceCapacityUntilGC },
+    {CC"metaspaceCapacityUntilGC", CC"()J",             (void*)&amp;WB_MetaspaceCapacityUntilGC },
+    {CC"metaspaceReserveAlignment", CC"()J",            (void*)&amp;WB_MetaspaceReserveAlignment },
+    {CC"getCPUFeatures",     CC"()Ljava/lang/String;",  (void*)&amp;WB_GetCPUFeatures     },
+    {CC"getNMethod0",         CC"(Ljava/lang/reflect/Executable;Z)[Ljava/lang/Object;",
+<span class="newmarker">--- 2485,2494 ----</span>
+<hr /><span class="oldmarker">*** 2531,2540 ****</span>
+<span class="newmarker">--- 2581,2603 ----</span>
+    {CC"disableElfSectionCache",    CC"()V",            (void*)&amp;WB_DisableElfSectionCache },
+    {CC"resolvedMethodItemsCount",  CC"()J",            (void*)&amp;WB_ResolvedMethodItemsCount },
+    {CC"protectionDomainRemovedCount",   CC"()I",       (void*)&amp;WB_ProtectionDomainRemovedCount },
+    {CC"aotLibrariesCount", CC"()I",                    (void*)&amp;WB_AotLibrariesCount },
+    {CC"getKlassMetadataSize", CC"(Ljava/lang/Class;)I",(void*)&amp;WB_GetKlassMetadataSize},
+<span class="new">+ </span>
+<span class="new">+   {CC"createMetaspaceTestContext", CC"(JJ)J",         (void*)&amp;WB_CreateMetaspaceTestContext},</span>
+<span class="new">+   {CC"destroyMetaspaceTestContext", CC"(J)V",         (void*)&amp;WB_DestroyMetaspaceTestContext},</span>
+<span class="new">+   {CC"purgeMetaspaceTestContext", CC"(J)V",           (void*)&amp;WB_PurgeMetaspaceTestContext},</span>
+<span class="new">+   {CC"printMetaspaceTestContext", CC"(J)V",           (void*)&amp;WB_PrintMetaspaceTestContext},</span>
+<span class="new">+   {CC"getTotalCommittedWordsInMetaspaceTestContext", CC"(J)J",(void*)&amp;WB_GetTotalCommittedWordsInMetaspaceTestContext},</span>
+<span class="new">+   {CC"getTotalUsedWordsInMetaspaceTestContext", CC"(J)J", (void*)&amp;WB_GetTotalUsedWordsInMetaspaceTestContext},</span>
+<span class="new">+   {CC"createArenaInTestContext", CC"(JZ)J",           (void*)&amp;WB_CreateArenaInTestContext},</span>
+<span class="new">+   {CC"destroyMetaspaceTestArena", CC"(J)V",           (void*)&amp;WB_DestroyMetaspaceTestArena},</span>
+<span class="new">+   {CC"allocateFromMetaspaceTestArena", CC"(JJ)J",     (void*)&amp;WB_AllocateFromMetaspaceTestArena},</span>
+<span class="new">+   {CC"deallocateToMetaspaceTestArena", CC"(JJJ)V",    (void*)&amp;WB_DeallocateToMetaspaceTestArena},</span>
+<span class="new">+   {CC"maxMetaspaceAllocationSize", CC"()J",           (void*)&amp;WB_GetMaxMetaspaceAllocationSize},</span>
+<span class="new">+ </span>
+  };
+  
+  
+  #undef CC
+  
+</pre>
+<center><a href='../../../../src/hotspot/share/memory/universe.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/globals.hpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

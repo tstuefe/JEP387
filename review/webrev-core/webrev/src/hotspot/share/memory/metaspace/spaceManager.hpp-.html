@@ -1,0 +1,316 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/spaceManager.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  26 #define SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 #include "memory/metaspace.hpp"
+  30 #include "memory/metaspace/blockFreelist.hpp"
+  31 #include "memory/metaspace/metaspaceCommon.hpp"
+  32 #include "memory/metaspace/metachunk.hpp"
+  33 #include "memory/metaspace/metaspaceStatistics.hpp"
+  34 #include "utilities/debug.hpp"
+  35 #include "utilities/globalDefinitions.hpp"
+  36 
+  37 class outputStream;
+  38 class Mutex;
+  39 
+  40 namespace metaspace {
+  41 
+  42 //  SpaceManager - used by Metaspace to handle allocations
+  43 class SpaceManager : public CHeapObj&lt;mtClass&gt; {
+  44   friend class ::ClassLoaderMetaspace;
+  45   friend class Metadebug;
+  46 
+  47  private:
+  48 
+  49   // protects allocations
+  50   Mutex* const _lock;
+  51 
+  52   // Type of metadata allocated.
+  53   const Metaspace::MetadataType   _mdtype;
+  54 
+  55   // Type of metaspace
+  56   const Metaspace::MetaspaceType  _space_type;
+  57 
+  58   // List of chunks in use by this SpaceManager.  Allocations
+  59   // are done from the current chunk.  The list is used for deallocating
+  60   // chunks when the SpaceManager is freed.
+  61   Metachunk* _chunk_list;
+  62   Metachunk* _current_chunk;
+  63 
+  64   enum {
+  65 
+  66     // Maximum number of small chunks to allocate to a SpaceManager
+  67     small_chunk_limit = 4,
+  68 
+  69     // Maximum number of specialize chunks to allocate for anonymous and delegating
+  70     // metadata space to a SpaceManager
+  71     anon_and_delegating_metadata_specialize_chunk_limit = 4,
+  72 
+  73     allocation_from_dictionary_limit = 4 * K
+  74 
+  75   };
+  76 
+  77   // Some running counters, but lets keep their number small to not add to much to
+  78   // the per-classloader footprint.
+  79   // Note: capacity = used + free + waste + overhead. We do not keep running counters for
+  80   // free and waste. Their sum can be deduced from the three other values.
+  81   size_t _overhead_words;
+  82   size_t _capacity_words;
+  83   size_t _used_words;
+  84   uintx _num_chunks_by_type[NumberOfInUseLists];
+  85 
+  86   // Free lists of blocks are per SpaceManager since they
+  87   // are assumed to be in chunks in use by the SpaceManager
+  88   // and all chunks in use by a SpaceManager are freed when
+  89   // the class loader using the SpaceManager is collected.
+  90   BlockFreelist* _block_freelists;
+  91 
+  92  private:
+  93   // Accessors
+  94   Metachunk* chunk_list() const { return _chunk_list; }
+  95 
+  96   BlockFreelist* block_freelists() const { return _block_freelists; }
+  97 
+  98   Metaspace::MetadataType mdtype() { return _mdtype; }
+  99 
+ 100   VirtualSpaceList* vs_list()   const { return Metaspace::get_space_list(_mdtype); }
+ 101   ChunkManager* chunk_manager() const { return Metaspace::get_chunk_manager(_mdtype); }
+ 102 
+ 103   Metachunk* current_chunk() const { return _current_chunk; }
+ 104   void set_current_chunk(Metachunk* v) {
+ 105     _current_chunk = v;
+ 106   }
+ 107 
+ 108   Metachunk* find_current_chunk(size_t word_size);
+ 109 
+ 110   // Add chunk to the list of chunks in use
+ 111   void add_chunk(Metachunk* v, bool make_current);
+ 112   void retire_current_chunk();
+ 113 
+ 114   Mutex* lock() const { return _lock; }
+ 115 
+ 116   // Adds to the given statistic object. Expects to be locked with lock().
+ 117   void add_to_statistics_locked(SpaceManagerStatistics* out) const;
+ 118 
+ 119   // Verify internal counters against the current state. Expects to be locked with lock().
+ 120   DEBUG_ONLY(void verify_metrics_locked() const;)
+ 121 
+ 122  public:
+ 123   SpaceManager(Metaspace::MetadataType mdtype,
+ 124                Metaspace::MetaspaceType space_type,
+ 125                Mutex* lock);
+ 126   ~SpaceManager();
+ 127 
+ 128   enum ChunkMultiples {
+ 129     MediumChunkMultiple = 4
+ 130   };
+ 131 
+ 132   static size_t specialized_chunk_size(bool is_class) { return is_class ? ClassSpecializedChunk : SpecializedChunk; }
+ 133   static size_t small_chunk_size(bool is_class)       { return is_class ? ClassSmallChunk : SmallChunk; }
+ 134   static size_t medium_chunk_size(bool is_class)      { return is_class ? ClassMediumChunk : MediumChunk; }
+ 135 
+ 136   static size_t smallest_chunk_size(bool is_class)    { return specialized_chunk_size(is_class); }
+ 137 
+ 138   // Accessors
+ 139   bool is_class() const { return _mdtype == Metaspace::ClassType; }
+ 140 
+ 141   size_t specialized_chunk_size() const { return specialized_chunk_size(is_class()); }
+ 142   size_t small_chunk_size()       const { return small_chunk_size(is_class()); }
+ 143   size_t medium_chunk_size()      const { return medium_chunk_size(is_class()); }
+ 144 
+ 145   size_t smallest_chunk_size()    const { return smallest_chunk_size(is_class()); }
+ 146 
+ 147   size_t medium_chunk_bunch()     const { return medium_chunk_size() * MediumChunkMultiple; }
+ 148 
+ 149   bool is_humongous(size_t word_size) { return word_size &gt; medium_chunk_size(); }
+ 150 
+ 151   size_t capacity_words() const     { return _capacity_words; }
+ 152   size_t used_words() const         { return _used_words; }
+ 153   size_t overhead_words() const     { return _overhead_words; }
+ 154 
+ 155   // Adjust local, global counters after a new chunk has been added.
+ 156   void account_for_new_chunk(const Metachunk* new_chunk);
+ 157 
+ 158   // Adjust local, global counters after space has been allocated from the current chunk.
+ 159   void account_for_allocation(size_t words);
+ 160 
+ 161   // Adjust global counters just before the SpaceManager dies, after all its chunks
+ 162   // have been returned to the freelist.
+ 163   void account_for_spacemanager_death();
+ 164 
+ 165   // Adjust the initial chunk size to match one of the fixed chunk list sizes,
+ 166   // or return the unadjusted size if the requested size is humongous.
+ 167   static size_t adjust_initial_chunk_size(size_t requested, bool is_class_space);
+ 168   size_t adjust_initial_chunk_size(size_t requested) const;
+ 169 
+ 170   // Get the initial chunks size for this metaspace type.
+ 171   size_t get_initial_chunk_size(Metaspace::MetaspaceType type) const;
+ 172 
+ 173   // Todo: remove this once we have counters by chunk type.
+ 174   uintx num_chunks_by_type(ChunkIndex chunk_type) const       { return _num_chunks_by_type[chunk_type]; }
+ 175 
+ 176   Metachunk* get_new_chunk(size_t chunk_word_size);
+ 177 
+ 178   // Block allocation and deallocation.
+ 179   // Allocates a block from the current chunk
+ 180   MetaWord* allocate(size_t word_size);
+ 181 
+ 182   // Helper for allocations
+ 183   MetaWord* allocate_work(size_t word_size);
+ 184 
+ 185   // Returns a block to the per manager freelist
+ 186   void deallocate(MetaWord* p, size_t word_size);
+ 187 
+ 188   // Based on the allocation size and a minimum chunk size,
+ 189   // returned chunk size (for expanding space for chunk allocation).
+ 190   size_t calc_chunk_size(size_t allocation_word_size);
+ 191 
+ 192   // Called when an allocation from the current chunk fails.
+ 193   // Gets a new chunk (may require getting a new virtual space),
+ 194   // and allocates from that chunk.
+ 195   MetaWord* grow_and_allocate(size_t word_size);
+ 196 
+ 197   // Notify memory usage to MemoryService.
+ 198   void track_metaspace_memory_usage();
+ 199 
+ 200   // debugging support.
+ 201 
+ 202   void print_on(outputStream* st) const;
+ 203   void locked_print_chunks_in_use_on(outputStream* st) const;
+ 204 
+ 205   void verify();
+ 206   void verify_chunk_size(Metachunk* chunk);
+ 207 
+ 208   // This adjusts the size given to be greater than the minimum allocation size in
+ 209   // words for data in metaspace.  Esentially the minimum size is currently 3 words.
+ 210   size_t get_allocation_word_size(size_t word_size) {
+ 211     size_t byte_size = word_size * BytesPerWord;
+ 212 
+ 213     size_t raw_bytes_size = MAX2(byte_size, sizeof(Metablock));
+ 214     raw_bytes_size = align_up(raw_bytes_size, Metachunk::object_alignment());
+ 215 
+ 216     size_t raw_word_size = raw_bytes_size / BytesPerWord;
+ 217     assert(raw_word_size * BytesPerWord == raw_bytes_size, "Size problem");
+ 218 
+ 219     return raw_word_size;
+ 220   }
+ 221 
+ 222   // Adds to the given statistic object.
+ 223   void add_to_statistics(SpaceManagerStatistics* out) const;
+ 224 
+ 225   // Verify internal counters against the current state.
+ 226   DEBUG_ONLY(void verify_metrics() const;)
+ 227 
+ 228 };
+ 229 
+ 230 
+ 231 } // namespace metaspace
+ 232 
+ 233 #endif // SHARE_MEMORY_METASPACE_SPACEMANAGER_HPP
+</pre></body></html>

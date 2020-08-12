@@ -2,16 +2,26 @@
 
 Contains:
 
-- jep387-all.patch : Current patch for jdk/jdk
+- jep387-all.patch : Current complete patch for jdk/jdk
 
-  As of 2020-08-05, this patch applies cleanly atop of jdk/jdk:
+- jep387-core.patch : The portion which contains the core metaspace changes
+- jep387-test.patch : The portion which contains the test changes
+- jep387-misc.patch : The portion which contains unsorted unexciting changes
 
-  changeset:   60447:50795536daca
-  summary:     8250920: Increase @jls usage in core reflection
+all these patches apply cleanly atop of:
 
-- webrev : Webrev of current patch
+changeset:   60528:0d7947ba5389
+tag:         tip
+user:        iklam
+date:        Tue Aug 11 22:05:56 2020 -0700
+summary:     8249276: CDS archived objects must have "neutral" markwords
 
-- guide : Review guide 
+- webrev-all, webrev-code, webrev-test, webrev-misc : Webrevs for a.m. changes
+
+- guide : Review/architectural guide:
+
+  - guide/review-guide.html
+  - guide/review-guide.pdf
 
 
 

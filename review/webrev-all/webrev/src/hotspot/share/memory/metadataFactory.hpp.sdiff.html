@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/allocation.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metadataFactory.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METADATAFACTORY_HPP
+  26 #define SHARE_MEMORY_METADATAFACTORY_HPP
+  27 
+  28 #include "classfile/classLoaderData.hpp"
+
+  29 #include "oops/array.hpp"
+  30 #include "utilities/exceptions.hpp"
+  31 #include "utilities/globalDefinitions.hpp"
+  32 
+  33 class MetadataFactory : AllStatic {
+  34  public:
+  35   template &lt;typename T&gt;
+  36   static Array&lt;T&gt;* new_array(ClassLoaderData* loader_data, int length, TRAPS) {
+  37     // The "true" argument is because all metadata arrays are read only when
+  38     // dumped to the shared archive
+  39     return new (loader_data, length, THREAD) Array&lt;T&gt;(length);
+  40   }
+  41 
+  42   template &lt;typename T&gt;
+  43   static Array&lt;T&gt;* new_array(ClassLoaderData* loader_data, int length, T value, TRAPS) {
+  44     Array&lt;T&gt;* array = new_array&lt;T&gt;(loader_data, length, CHECK_NULL);
+  45     for (int i = 0; i &lt; length; i++) {
+  46       array-&gt;at_put(i, value);
+  47     }
+  48     return array;
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METADATAFACTORY_HPP
+  26 #define SHARE_MEMORY_METADATAFACTORY_HPP
+  27 
+  28 #include "classfile/classLoaderData.hpp"
+<span class="new">  29 #include "memory/metaspace.hpp"</span>
+  30 #include "oops/array.hpp"
+  31 #include "utilities/exceptions.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 class MetadataFactory : AllStatic {
+  35  public:
+  36   template &lt;typename T&gt;
+  37   static Array&lt;T&gt;* new_array(ClassLoaderData* loader_data, int length, TRAPS) {
+  38     // The "true" argument is because all metadata arrays are read only when
+  39     // dumped to the shared archive
+  40     return new (loader_data, length, THREAD) Array&lt;T&gt;(length);
+  41   }
+  42 
+  43   template &lt;typename T&gt;
+  44   static Array&lt;T&gt;* new_array(ClassLoaderData* loader_data, int length, T value, TRAPS) {
+  45     Array&lt;T&gt;* array = new_array&lt;T&gt;(loader_data, length, CHECK_NULL);
+  46     for (int i = 0; i &lt; length; i++) {
+  47       array-&gt;at_put(i, value);
+  48     }
+  49     return array;
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/memory/allocation.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

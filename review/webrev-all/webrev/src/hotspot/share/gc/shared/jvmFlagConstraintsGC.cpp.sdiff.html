@@ -1,0 +1,249 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/gc/shared </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/gc/shared/generationSpec.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+   1 /*
+<span class="changed">   2  * Copyright (c) 2015, 2019, Oracle and/or its affiliates. All rights reserved.</span>
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+
+</pre><hr></hr><pre>
+ 242 
+ 243 JVMFlag::Error MaxGCPauseMillisConstraintFunc(uintx value, bool verbose) {
+ 244 #if INCLUDE_G1GC
+ 245   JVMFlag::Error status = MaxGCPauseMillisConstraintFuncG1(value, verbose);
+ 246   if (status != JVMFlag::SUCCESS) {
+ 247     return status;
+ 248   }
+ 249 #endif
+ 250 
+ 251   return JVMFlag::SUCCESS;
+ 252 }
+ 253 
+ 254 JVMFlag::Error GCPauseIntervalMillisConstraintFunc(uintx value, bool verbose) {
+ 255 #if INCLUDE_G1GC
+ 256   JVMFlag::Error status = GCPauseIntervalMillisConstraintFuncG1(value, verbose);
+ 257   if (status != JVMFlag::SUCCESS) {
+ 258     return status;
+ 259   }
+ 260 #endif
+ 261 
+<span class="removed"> 262   return JVMFlag::SUCCESS;</span>
+<span class="removed"> 263 }</span>
+<span class="removed"> 264 </span>
+<span class="removed"> 265 JVMFlag::Error InitialBootClassLoaderMetaspaceSizeConstraintFunc(size_t value, bool verbose) {</span>
+<span class="removed"> 266   size_t aligned_max = align_down(max_uintx/2, Metaspace::reserve_alignment_words());</span>
+<span class="removed"> 267   if (value &gt; aligned_max) {</span>
+<span class="removed"> 268     JVMFlag::printError(verbose,</span>
+<span class="removed"> 269                         "InitialBootClassLoaderMetaspaceSize (" SIZE_FORMAT ") must be "</span>
+<span class="removed"> 270                         "less than or equal to aligned maximum value (" SIZE_FORMAT ")\n",</span>
+<span class="removed"> 271                         value, aligned_max);</span>
+<span class="removed"> 272     return JVMFlag::VIOLATES_CONSTRAINT;</span>
+<span class="removed"> 273   }</span>
+ 274   return JVMFlag::SUCCESS;
+ 275 }
+ 276 
+ 277 // To avoid an overflow by 'align_up(value, alignment)'.
+ 278 static JVMFlag::Error MaxSizeForAlignment(const char* name, size_t value, size_t alignment, bool verbose) {
+ 279   size_t aligned_max = ((max_uintx - alignment) &amp; ~(alignment-1));
+ 280   if (value &gt; aligned_max) {
+ 281     JVMFlag::printError(verbose,
+ 282                         "%s (" SIZE_FORMAT ") must be "
+ 283                         "less than or equal to aligned maximum value (" SIZE_FORMAT ")\n",
+ 284                         name, value, aligned_max);
+ 285     return JVMFlag::VIOLATES_CONSTRAINT;
+ 286   }
+ 287   return JVMFlag::SUCCESS;
+ 288 }
+ 289 
+ 290 static JVMFlag::Error MaxSizeForHeapAlignment(const char* name, size_t value, bool verbose) {
+ 291   size_t heap_alignment;
+ 292 
+ 293 #if INCLUDE_G1GC
+
+</pre><hr></hr>
+</pre></td><td><pre>
+   1 /*
+<span class="changed">   2  * Copyright (c) 2015, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+
+</pre><hr></hr><pre>
+ 242 
+ 243 JVMFlag::Error MaxGCPauseMillisConstraintFunc(uintx value, bool verbose) {
+ 244 #if INCLUDE_G1GC
+ 245   JVMFlag::Error status = MaxGCPauseMillisConstraintFuncG1(value, verbose);
+ 246   if (status != JVMFlag::SUCCESS) {
+ 247     return status;
+ 248   }
+ 249 #endif
+ 250 
+ 251   return JVMFlag::SUCCESS;
+ 252 }
+ 253 
+ 254 JVMFlag::Error GCPauseIntervalMillisConstraintFunc(uintx value, bool verbose) {
+ 255 #if INCLUDE_G1GC
+ 256   JVMFlag::Error status = GCPauseIntervalMillisConstraintFuncG1(value, verbose);
+ 257   if (status != JVMFlag::SUCCESS) {
+ 258     return status;
+ 259   }
+ 260 #endif
+ 261 
+
+
+
+
+
+
+
+
+
+
+
+
+ 262   return JVMFlag::SUCCESS;
+ 263 }
+ 264 
+ 265 // To avoid an overflow by 'align_up(value, alignment)'.
+ 266 static JVMFlag::Error MaxSizeForAlignment(const char* name, size_t value, size_t alignment, bool verbose) {
+ 267   size_t aligned_max = ((max_uintx - alignment) &amp; ~(alignment-1));
+ 268   if (value &gt; aligned_max) {
+ 269     JVMFlag::printError(verbose,
+ 270                         "%s (" SIZE_FORMAT ") must be "
+ 271                         "less than or equal to aligned maximum value (" SIZE_FORMAT ")\n",
+ 272                         name, value, aligned_max);
+ 273     return JVMFlag::VIOLATES_CONSTRAINT;
+ 274   }
+ 275   return JVMFlag::SUCCESS;
+ 276 }
+ 277 
+ 278 static JVMFlag::Error MaxSizeForHeapAlignment(const char* name, size_t value, bool verbose) {
+ 279   size_t heap_alignment;
+ 280 
+ 281 #if INCLUDE_G1GC
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/gc/shared/generationSpec.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

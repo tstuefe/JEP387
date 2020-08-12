@@ -1,0 +1,215 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/chunkLevel.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_CHUNKLEVEL_HPP
+  27 #define SHARE_MEMORY_METASPACE_CHUNKLEVEL_HPP
+  28 
+  29 #include "utilities/globalDefinitions.hpp"
+  30 
+  31 // Constants for the chunk levels and some utility functions.
+  32 
+  33 class outputStream;
+  34 
+  35 namespace metaspace {
+  36 
+  37 
+  38 // Chunks are managed by a binary buddy allocator.
+  39 
+  40 // Chunk sizes range from 1K to 4MB (64bit).
+  41 //
+  42 
+  43 // Each chunk has a level; the level corresponds to its position in the tree
+  44 // and describes its size.
+  45 //
+  46 // The largest chunks are called root chunks, of 4MB in size, and have level 0.
+  47 // From there on it goes:
+  48 //
+  49 // size    level
+  50 // 4MB     0
+  51 // 2MB     1
+  52 // 1MB     2
+  53 // 512K    3
+  54 // 256K    4
+  55 // 128K    5
+  56 // 64K     6
+  57 // 32K     7
+  58 // 16K     8
+  59 // 8K      9
+  60 // 4K      10
+  61 // 2K      11
+  62 // 1K      12
+  63 
+  64 // Metachunk level (must be signed)
+  65 typedef signed char chunklevel_t;
+  66 
+  67 #define CHKLVL_FORMAT "lv%.2d"
+  68 
+  69 namespace chunklevel {
+  70 
+  71 static const size_t   MAX_CHUNK_BYTE_SIZE    = 4 * M;
+  72 static const int      NUM_CHUNK_LEVELS       = 13;
+  73 static const size_t   MIN_CHUNK_BYTE_SIZE    = (MAX_CHUNK_BYTE_SIZE &gt;&gt; ((size_t)NUM_CHUNK_LEVELS - 1));
+  74 
+  75 static const size_t   MIN_CHUNK_WORD_SIZE    = MIN_CHUNK_BYTE_SIZE / sizeof(MetaWord);
+  76 static const size_t   MAX_CHUNK_WORD_SIZE    = MAX_CHUNK_BYTE_SIZE / sizeof(MetaWord);
+  77 
+  78 static const chunklevel_t ROOT_CHUNK_LEVEL       = 0;
+  79 
+  80 static const chunklevel_t HIGHEST_CHUNK_LEVEL    = NUM_CHUNK_LEVELS - 1;
+  81 static const chunklevel_t LOWEST_CHUNK_LEVEL     = 0;
+  82 
+  83 static const chunklevel_t INVALID_CHUNK_LEVEL    = (chunklevel_t) -1;
+  84 
+  85 inline bool is_valid_level(chunklevel_t level) {
+  86   return level &gt;= LOWEST_CHUNK_LEVEL &amp;&amp;
+  87          level &lt;= HIGHEST_CHUNK_LEVEL;
+  88 }
+  89 
+  90 inline void check_valid_level(chunklevel_t lvl) {
+  91   assert(is_valid_level(lvl), "invalid level (%d)", (int)lvl);
+  92 }
+  93 
+  94 // Given a level return the chunk size, in words.
+  95 inline size_t word_size_for_level(chunklevel_t level) {
+  96   return (MAX_CHUNK_BYTE_SIZE &gt;&gt; level) / BytesPerWord;
+  97 }
+  98 
+  99 // Given an arbitrary word size smaller than the highest chunk size,
+ 100 // return the highest chunk level able to hold this size.
+ 101 // Returns INVALID_CHUNK_LEVEL if no fitting level can be found.
+ 102 chunklevel_t level_fitting_word_size(size_t word_size);
+ 103 
+ 104 // Shorthands to refer to exact sizes
+ 105 static const chunklevel_t CHUNK_LEVEL_4M =     ROOT_CHUNK_LEVEL;
+ 106 static const chunklevel_t CHUNK_LEVEL_2M =    (ROOT_CHUNK_LEVEL + 1);
+ 107 static const chunklevel_t CHUNK_LEVEL_1M =    (ROOT_CHUNK_LEVEL + 2);
+ 108 static const chunklevel_t CHUNK_LEVEL_512K =  (ROOT_CHUNK_LEVEL + 3);
+ 109 static const chunklevel_t CHUNK_LEVEL_256K =  (ROOT_CHUNK_LEVEL + 4);
+ 110 static const chunklevel_t CHUNK_LEVEL_128K =  (ROOT_CHUNK_LEVEL + 5);
+ 111 static const chunklevel_t CHUNK_LEVEL_64K =   (ROOT_CHUNK_LEVEL + 6);
+ 112 static const chunklevel_t CHUNK_LEVEL_32K =   (ROOT_CHUNK_LEVEL + 7);
+ 113 static const chunklevel_t CHUNK_LEVEL_16K =   (ROOT_CHUNK_LEVEL + 8);
+ 114 static const chunklevel_t CHUNK_LEVEL_8K =    (ROOT_CHUNK_LEVEL + 9);
+ 115 static const chunklevel_t CHUNK_LEVEL_4K =    (ROOT_CHUNK_LEVEL + 10);
+ 116 static const chunklevel_t CHUNK_LEVEL_2K =    (ROOT_CHUNK_LEVEL + 11);
+ 117 static const chunklevel_t CHUNK_LEVEL_1K =    (ROOT_CHUNK_LEVEL + 12);
+ 118 
+ 119 STATIC_ASSERT(CHUNK_LEVEL_1K == HIGHEST_CHUNK_LEVEL);
+ 120 STATIC_ASSERT(CHUNK_LEVEL_4M == LOWEST_CHUNK_LEVEL);
+ 121 STATIC_ASSERT(ROOT_CHUNK_LEVEL == LOWEST_CHUNK_LEVEL);
+ 122 
+ 123 /////////////////////////////////////////////////////////
+ 124 // print helpers
+ 125 void print_chunk_size(outputStream* st, chunklevel_t lvl);
+ 126 
+ 127 
+ 128 } // namespace chunklevel
+ 129 
+ 130 } // namespace metaspace
+ 131 
+ 132 #endif // SHARE_MEMORY_METASPACE_CHUNKLEVEL_HPP
+</pre></body></html>

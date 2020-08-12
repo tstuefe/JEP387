@@ -1,0 +1,281 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/chunkManager.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
+  26 #define SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 #include "memory/binaryTreeDictionary.hpp"
+  30 #include "memory/freeList.hpp"
+  31 #include "memory/metaspace/metachunk.hpp"
+  32 #include "memory/metaspace/metaspaceStatistics.hpp"
+  33 #include "memory/metaspaceChunkFreeListSummary.hpp"
+  34 #include "utilities/globalDefinitions.hpp"
+  35 
+  36 class ChunkManagerTestAccessor;
+  37 
+  38 namespace metaspace {
+  39 
+  40 typedef class FreeList&lt;Metachunk&gt; ChunkList;
+  41 typedef BinaryTreeDictionary&lt;Metachunk, FreeList&lt;Metachunk&gt; &gt; ChunkTreeDictionary;
+  42 
+  43 // Manages the global free lists of chunks.
+  44 class ChunkManager : public CHeapObj&lt;mtInternal&gt; {
+  45   friend class ::ChunkManagerTestAccessor;
+  46 
+  47   // Free list of chunks of different sizes.
+  48   //   SpecializedChunk
+  49   //   SmallChunk
+  50   //   MediumChunk
+  51   ChunkList _free_chunks[NumberOfFreeLists];
+  52 
+  53   // Whether or not this is the class chunkmanager.
+  54   const bool _is_class;
+  55 
+  56   // Return non-humongous chunk list by its index.
+  57   ChunkList* free_chunks(ChunkIndex index);
+  58 
+  59   // Returns non-humongous chunk list for the given chunk word size.
+  60   ChunkList* find_free_chunks_list(size_t word_size);
+  61 
+  62   //   HumongousChunk
+  63   ChunkTreeDictionary _humongous_dictionary;
+  64 
+  65   // Returns the humongous chunk dictionary.
+  66   ChunkTreeDictionary* humongous_dictionary() { return &amp;_humongous_dictionary; }
+  67   const ChunkTreeDictionary* humongous_dictionary() const { return &amp;_humongous_dictionary; }
+  68 
+  69   // Size, in metaspace words, of all chunks managed by this ChunkManager
+  70   size_t _free_chunks_total;
+  71   // Number of chunks in this ChunkManager
+  72   size_t _free_chunks_count;
+  73 
+  74   // Update counters after a chunk was added or removed removed.
+  75   void account_for_added_chunk(const Metachunk* c);
+  76   void account_for_removed_chunk(const Metachunk* c);
+  77 
+  78   // Given a pointer to a chunk, attempts to merge it with neighboring
+  79   // free chunks to form a bigger chunk. Returns true if successful.
+  80   bool attempt_to_coalesce_around_chunk(Metachunk* chunk, ChunkIndex target_chunk_type);
+  81 
+  82   // Helper for chunk merging:
+  83   //  Given an address range with 1-n chunks which are all supposed to be
+  84   //  free and hence currently managed by this ChunkManager, remove them
+  85   //  from this ChunkManager and mark them as invalid.
+  86   // - This does not correct the occupancy map.
+  87   // - This does not adjust the counters in ChunkManager.
+  88   // - Does not adjust container count counter in containing VirtualSpaceNode.
+  89   // Returns number of chunks removed.
+  90   int remove_chunks_in_area(MetaWord* p, size_t word_size);
+  91 
+  92   // Helper for chunk splitting: given a target chunk size and a larger free chunk,
+  93   // split up the larger chunk into n smaller chunks, at least one of which should be
+  94   // the target chunk of target chunk size. The smaller chunks, including the target
+  95   // chunk, are returned to the freelist. The pointer to the target chunk is returned.
+  96   // Note that this chunk is supposed to be removed from the freelist right away.
+  97   Metachunk* split_chunk(size_t target_chunk_word_size, Metachunk* chunk);
+  98 
+  99  public:
+ 100 
+ 101   ChunkManager(bool is_class);
+ 102 
+ 103   // Add or delete (return) a chunk to the global freelist.
+ 104   Metachunk* chunk_freelist_allocate(size_t word_size);
+ 105 
+ 106   // Map a size to a list index assuming that there are lists
+ 107   // for special, small, medium, and humongous chunks.
+ 108   ChunkIndex list_index(size_t size);
+ 109 
+ 110   // Map a given index to the chunk size.
+ 111   size_t size_by_index(ChunkIndex index) const;
+ 112 
+ 113   bool is_class() const { return _is_class; }
+ 114 
+ 115   // Convenience accessors.
+ 116   size_t medium_chunk_word_size() const { return size_by_index(MediumIndex); }
+ 117   size_t small_chunk_word_size() const { return size_by_index(SmallIndex); }
+ 118   size_t specialized_chunk_word_size() const { return size_by_index(SpecializedIndex); }
+ 119 
+ 120   // Take a chunk from the ChunkManager. The chunk is expected to be in
+ 121   // the chunk manager (the freelist if non-humongous, the dictionary if
+ 122   // humongous).
+ 123   void remove_chunk(Metachunk* chunk);
+ 124 
+ 125   // Return a single chunk of type index to the ChunkManager.
+ 126   void return_single_chunk(Metachunk* chunk);
+ 127 
+ 128   // Add the simple linked list of chunks to the freelist of chunks
+ 129   // of type index.
+ 130   void return_chunk_list(Metachunk* chunk);
+ 131 
+ 132   // Total of the space in the free chunks list
+ 133   size_t free_chunks_total_words() const { return _free_chunks_total; }
+ 134   size_t free_chunks_total_bytes() const { return free_chunks_total_words() * BytesPerWord; }
+ 135 
+ 136   // Number of chunks in the free chunks list
+ 137   size_t free_chunks_count() const { return _free_chunks_count; }
+ 138 
+ 139   // Remove from a list by size.  Selects list based on size of chunk.
+ 140   Metachunk* free_chunks_get(size_t chunk_word_size);
+ 141 
+ 142 #define index_bounds_check(index)                                         \
+ 143   assert(is_valid_chunktype(index), "Bad index: %d", (int) index)
+ 144 
+ 145   size_t num_free_chunks(ChunkIndex index) const {
+ 146     index_bounds_check(index);
+ 147 
+ 148     if (index == HumongousIndex) {
+ 149       return _humongous_dictionary.total_free_blocks();
+ 150     }
+ 151 
+ 152     ssize_t count = _free_chunks[index].count();
+ 153     return count == -1 ? 0 : (size_t) count;
+ 154   }
+ 155 
+ 156   size_t size_free_chunks_in_bytes(ChunkIndex index) const {
+ 157     index_bounds_check(index);
+ 158 
+ 159     size_t word_size = 0;
+ 160     if (index == HumongousIndex) {
+ 161       word_size = _humongous_dictionary.total_size();
+ 162     } else {
+ 163       const size_t size_per_chunk_in_words = _free_chunks[index].size();
+ 164       word_size = size_per_chunk_in_words * num_free_chunks(index);
+ 165     }
+ 166 
+ 167     return word_size * BytesPerWord;
+ 168   }
+ 169 
+ 170   MetaspaceChunkFreeListSummary chunk_free_list_summary() const {
+ 171     return MetaspaceChunkFreeListSummary(num_free_chunks(SpecializedIndex),
+ 172                                          num_free_chunks(SmallIndex),
+ 173                                          num_free_chunks(MediumIndex),
+ 174                                          num_free_chunks(HumongousIndex),
+ 175                                          size_free_chunks_in_bytes(SpecializedIndex),
+ 176                                          size_free_chunks_in_bytes(SmallIndex),
+ 177                                          size_free_chunks_in_bytes(MediumIndex),
+ 178                                          size_free_chunks_in_bytes(HumongousIndex));
+ 179   }
+ 180 
+ 181 #ifdef ASSERT
+ 182   // Debug support
+ 183   // Verify free list integrity. slow=true: verify chunk-internal integrity too.
+ 184   void verify(bool slow) const;
+ 185   void locked_verify(bool slow) const;
+ 186 #endif
+ 187 
+ 188   void locked_print_free_chunks(outputStream* st);
+ 189 
+ 190   // Fill in current statistic values to the given statistics object.
+ 191   void collect_statistics(ChunkManagerStatistics* out) const;
+ 192 
+ 193 };
+ 194 
+ 195 } // namespace metaspace
+ 196 
+ 197 
+ 198 #endif // SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
+</pre></body></html>

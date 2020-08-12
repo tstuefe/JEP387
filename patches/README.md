@@ -1,10 +1,12 @@
-This is the "raw" patch, directly generated from jdk-sandbox.
+This is the "raw", unadultered, bleeding edge patch, directly generated from jdk-sandbox.
 
-As of 2020-07-30, this patch applies cleanly at jdk/jdk atop of :
+This patch applies cleanly at jdk/jdk atop of :
 
-changeset:   63595:447366afcf86
-user:        hannesw
-date:        Thu Jul 30 16:53:56 2020 +0200
-summary:     8250779: Anchor is ignored when reloading a page in Chrome
+changeset:   60528:0d7947ba5389
+tag:         tip
+user:        iklam
+date:        Tue Aug 11 22:05:56 2020 -0700
+summary:     8249276: CDS archived objects must have "neutral" markwords
+
 
 

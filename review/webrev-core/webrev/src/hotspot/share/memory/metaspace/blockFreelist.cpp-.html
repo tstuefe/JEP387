@@ -1,0 +1,192 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/blockFreelist.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 #include "precompiled.hpp"
+  25 
+  26 #include "logging/log.hpp"
+  27 #include "memory/binaryTreeDictionary.inline.hpp"
+  28 #include "memory/metaspace/blockFreelist.hpp"
+  29 #include "utilities/ostream.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 
+  32 
+  33 namespace metaspace {
+  34 
+  35 
+  36 BlockFreelist::BlockFreelist() : _dictionary(new BlockTreeDictionary()), _small_blocks(NULL) {}
+  37 
+  38 BlockFreelist::~BlockFreelist() {
+  39   delete _dictionary;
+  40   if (_small_blocks != NULL) {
+  41     delete _small_blocks;
+  42   }
+  43 }
+  44 
+  45 void BlockFreelist::return_block(MetaWord* p, size_t word_size) {
+  46   assert(word_size &gt;= SmallBlocks::small_block_min_size(), "never return dark matter");
+  47 
+  48   Metablock* free_chunk = ::new (p) Metablock(word_size);
+  49   if (word_size &lt; SmallBlocks::small_block_max_size()) {
+  50     small_blocks()-&gt;return_block(free_chunk, word_size);
+  51   } else {
+  52   dictionary()-&gt;return_chunk(free_chunk);
+  53 }
+  54   log_trace(gc, metaspace, freelist, blocks)("returning block at " INTPTR_FORMAT " size = "
+  55             SIZE_FORMAT, p2i(free_chunk), word_size);
+  56 }
+  57 
+  58 MetaWord* BlockFreelist::get_block(size_t word_size) {
+  59   assert(word_size &gt;= SmallBlocks::small_block_min_size(), "never get dark matter");
+  60 
+  61   // Try small_blocks first.
+  62   if (word_size &lt; SmallBlocks::small_block_max_size()) {
+  63     // Don't create small_blocks() until needed.  small_blocks() allocates the small block list for
+  64     // this space manager.
+  65     MetaWord* new_block = (MetaWord*) small_blocks()-&gt;get_block(word_size);
+  66     if (new_block != NULL) {
+  67       log_trace(gc, metaspace, freelist, blocks)("getting block at " INTPTR_FORMAT " size = " SIZE_FORMAT,
+  68               p2i(new_block), word_size);
+  69       return new_block;
+  70     }
+  71   }
+  72 
+  73   if (word_size &lt; BlockFreelist::min_dictionary_size()) {
+  74     // If allocation in small blocks fails, this is Dark Matter.  Too small for dictionary.
+  75     return NULL;
+  76   }
+  77 
+  78   Metablock* free_block = dictionary()-&gt;get_chunk(word_size);
+  79   if (free_block == NULL) {
+  80     return NULL;
+  81   }
+  82 
+  83   const size_t block_size = free_block-&gt;size();
+  84   if (block_size &gt; WasteMultiplier * word_size) {
+  85     return_block((MetaWord*)free_block, block_size);
+  86     return NULL;
+  87   }
+  88 
+  89   MetaWord* new_block = (MetaWord*)free_block;
+  90   assert(block_size &gt;= word_size, "Incorrect size of block from freelist");
+  91   const size_t unused = block_size - word_size;
+  92   if (unused &gt;= SmallBlocks::small_block_min_size()) {
+  93     return_block(new_block + word_size, unused);
+  94   }
+  95 
+  96   log_trace(gc, metaspace, freelist, blocks)("getting block at " INTPTR_FORMAT " size = " SIZE_FORMAT,
+  97             p2i(new_block), word_size);
+  98   return new_block;
+  99 }
+ 100 
+ 101 void BlockFreelist::print_on(outputStream* st) const {
+ 102   dictionary()-&gt;print_free_lists(st);
+ 103   if (_small_blocks != NULL) {
+ 104     _small_blocks-&gt;print_on(st);
+ 105   }
+ 106 }
+ 107 
+ 108 } // namespace metaspace
+ 109 
+</pre></body></html>

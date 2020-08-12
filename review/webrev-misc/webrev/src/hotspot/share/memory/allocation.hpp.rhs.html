@@ -1,0 +1,733 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-misc.patch</pre><hr></hr>
+<pre>
+   1 /*
+<a name="1" id="anc1"></a><span class="changed">   2  * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_ALLOCATION_HPP
+  26 #define SHARE_MEMORY_ALLOCATION_HPP
+  27 
+  28 #include "memory/allStatic.hpp"
+  29 #include "utilities/globalDefinitions.hpp"
+  30 #include "utilities/macros.hpp"
+  31 
+  32 #include &lt;new&gt;
+  33 
+  34 class outputStream;
+  35 class Thread;
+  36 
+  37 class AllocFailStrategy {
+  38 public:
+  39   enum AllocFailEnum { EXIT_OOM, RETURN_NULL };
+  40 };
+  41 typedef AllocFailStrategy::AllocFailEnum AllocFailType;
+  42 
+  43 // The virtual machine must never call one of the implicitly declared
+  44 // global allocation or deletion functions.  (Such calls may result in
+  45 // link-time or run-time errors.)  For convenience and documentation of
+  46 // intended use, classes in the virtual machine may be derived from one
+  47 // of the following allocation classes, some of which define allocation
+  48 // and deletion functions.
+  49 // Note: std::malloc and std::free should never called directly.
+  50 
+  51 //
+  52 // For objects allocated in the resource area (see resourceArea.hpp).
+  53 // - ResourceObj
+  54 //
+  55 // For objects allocated in the C-heap (managed by: free &amp; malloc and tracked with NMT)
+  56 // - CHeapObj
+  57 //
+  58 // For objects allocated on the stack.
+  59 // - StackObj
+  60 //
+  61 // For classes used as name spaces.
+  62 // - AllStatic
+  63 //
+  64 // For classes in Metaspace (class data)
+  65 // - MetaspaceObj
+  66 //
+  67 // The printable subclasses are used for debugging and define virtual
+  68 // member functions for printing. Classes that avoid allocating the
+  69 // vtbl entries in the objects should therefore not be the printable
+  70 // subclasses.
+  71 //
+  72 // The following macros and function should be used to allocate memory
+  73 // directly in the resource area or in the C-heap, The _OBJ variants
+  74 // of the NEW/FREE_C_HEAP macros are used for alloc/dealloc simple
+  75 // objects which are not inherited from CHeapObj, note constructor and
+  76 // destructor are not called. The preferable way to allocate objects
+  77 // is using the new operator.
+  78 //
+  79 // WARNING: The array variant must only be used for a homogenous array
+  80 // where all objects are of the exact type specified. If subtypes are
+  81 // stored in the array then must pay attention to calling destructors
+  82 // at needed.
+  83 //
+  84 // NEW_RESOURCE_ARRAY*
+  85 // REALLOC_RESOURCE_ARRAY*
+  86 // FREE_RESOURCE_ARRAY*
+  87 // NEW_RESOURCE_OBJ*
+  88 // NEW_C_HEAP_ARRAY*
+  89 // REALLOC_C_HEAP_ARRAY*
+  90 // FREE_C_HEAP_ARRAY*
+  91 // NEW_C_HEAP_OBJ*
+  92 // FREE_C_HEAP_OBJ
+  93 //
+  94 // char* AllocateHeap(size_t size, MEMFLAGS flags, const NativeCallStack&amp; stack, AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+  95 // char* AllocateHeap(size_t size, MEMFLAGS flags, AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+  96 // char* ReallocateHeap(char *old, size_t size, MEMFLAGS flag, AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+  97 // void FreeHeap(void* p);
+  98 //
+  99 // In non product mode we introduce a super class for all allocation classes
+ 100 // that supports printing.
+ 101 // We avoid the superclass in product mode to save space.
+ 102 
+ 103 #ifdef PRODUCT
+ 104 #define ALLOCATION_SUPER_CLASS_SPEC
+ 105 #else
+ 106 #define ALLOCATION_SUPER_CLASS_SPEC : public AllocatedObj
+ 107 class AllocatedObj {
+ 108  public:
+ 109   // Printing support
+ 110   void print() const;
+ 111   void print_value() const;
+ 112 
+ 113   virtual void print_on(outputStream* st) const;
+ 114   virtual void print_value_on(outputStream* st) const;
+ 115 };
+ 116 #endif
+ 117 
+ 118 #define MEMORY_TYPES_DO(f)                                                           \
+ 119   /* Memory type by sub systems. It occupies lower byte. */                          \
+ 120   f(mtJavaHeap,       "Java Heap")   /* Java heap                                 */ \
+ 121   f(mtClass,          "Class")       /* Java classes                              */ \
+ 122   f(mtThread,         "Thread")      /* thread objects                            */ \
+ 123   f(mtThreadStack,    "Thread Stack")                                                \
+ 124   f(mtCode,           "Code")        /* generated code                            */ \
+ 125   f(mtGC,             "GC")                                                          \
+ 126   f(mtCompiler,       "Compiler")                                                    \
+ 127   f(mtJVMCI,          "JVMCI")                                                       \
+ 128   f(mtInternal,       "Internal")    /* memory used by VM, but does not belong to */ \
+ 129                                      /* any of above categories, and not used by  */ \
+ 130                                      /* NMT                                       */ \
+ 131   f(mtOther,          "Other")       /* memory not used by VM                     */ \
+ 132   f(mtSymbol,         "Symbol")                                                      \
+ 133   f(mtNMT,            "Native Memory Tracking")  /* memory used by NMT            */ \
+ 134   f(mtClassShared,    "Shared class space")      /* class data sharing            */ \
+ 135   f(mtChunk,          "Arena Chunk") /* chunk that holds content of arenas        */ \
+ 136   f(mtTest,           "Test")        /* Test type for verifying NMT               */ \
+ 137   f(mtTracing,        "Tracing")                                                     \
+ 138   f(mtLogging,        "Logging")                                                     \
+ 139   f(mtStatistics,     "Statistics")                                                  \
+ 140   f(mtArguments,      "Arguments")                                                   \
+ 141   f(mtModule,         "Module")                                                      \
+ 142   f(mtSafepoint,      "Safepoint")                                                   \
+ 143   f(mtSynchronizer,   "Synchronization")                                             \
+ 144   f(mtServiceability, "Serviceability")                                              \
+<a name="2" id="anc2"></a><span class="new"> 145   f(mtMetaspace,      "Metaspace")                                                   \</span>
+ 146   f(mtNone,           "Unknown")                                                     \
+ 147   //end
+ 148 
+ 149 #define MEMORY_TYPE_DECLARE_ENUM(type, human_readable) \
+ 150   type,
+ 151 
+ 152 /*
+ 153  * Memory types
+ 154  */
+ 155 enum MemoryType {
+ 156   MEMORY_TYPES_DO(MEMORY_TYPE_DECLARE_ENUM)
+ 157   mt_number_of_types   // number of memory types (mtDontTrack
+ 158                        // is not included as validate type)
+ 159 };
+ 160 
+ 161 typedef MemoryType MEMFLAGS;
+ 162 
+ 163 
+ 164 #if INCLUDE_NMT
+ 165 
+ 166 extern bool NMT_track_callsite;
+ 167 
+ 168 #else
+ 169 
+ 170 const bool NMT_track_callsite = false;
+ 171 
+ 172 #endif // INCLUDE_NMT
+ 173 
+ 174 class NativeCallStack;
+ 175 
+ 176 
+ 177 char* AllocateHeap(size_t size,
+ 178                    MEMFLAGS flags,
+ 179                    const NativeCallStack&amp; stack,
+ 180                    AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+ 181 char* AllocateHeap(size_t size,
+ 182                    MEMFLAGS flags,
+ 183                    AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+ 184 
+ 185 char* ReallocateHeap(char *old,
+ 186                      size_t size,
+ 187                      MEMFLAGS flag,
+ 188                      AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+ 189 
+ 190 // handles NULL pointers
+ 191 void FreeHeap(void* p);
+ 192 
+ 193 template &lt;MEMFLAGS F&gt; class CHeapObj ALLOCATION_SUPER_CLASS_SPEC {
+ 194  public:
+ 195   ALWAYSINLINE void* operator new(size_t size) throw() {
+ 196     return (void*)AllocateHeap(size, F);
+ 197   }
+ 198 
+ 199   ALWAYSINLINE void* operator new(size_t size,
+ 200                                   const NativeCallStack&amp; stack) throw() {
+ 201     return (void*)AllocateHeap(size, F, stack);
+ 202   }
+ 203 
+ 204   ALWAYSINLINE void* operator new(size_t size, const std::nothrow_t&amp;,
+ 205                                   const NativeCallStack&amp; stack) throw() {
+ 206     return (void*)AllocateHeap(size, F, stack, AllocFailStrategy::RETURN_NULL);
+ 207   }
+ 208 
+ 209   ALWAYSINLINE void* operator new(size_t size, const std::nothrow_t&amp;) throw() {
+ 210     return (void*)AllocateHeap(size, F, AllocFailStrategy::RETURN_NULL);
+ 211   }
+ 212 
+ 213   ALWAYSINLINE void* operator new[](size_t size) throw() {
+ 214     return (void*)AllocateHeap(size, F);
+ 215   }
+ 216 
+ 217   ALWAYSINLINE void* operator new[](size_t size,
+ 218                                   const NativeCallStack&amp; stack) throw() {
+ 219     return (void*)AllocateHeap(size, F, stack);
+ 220   }
+ 221 
+ 222   ALWAYSINLINE void* operator new[](size_t size, const std::nothrow_t&amp;,
+ 223                                     const NativeCallStack&amp; stack) throw() {
+ 224     return (void*)AllocateHeap(size, F, stack, AllocFailStrategy::RETURN_NULL);
+ 225   }
+ 226 
+ 227   ALWAYSINLINE void* operator new[](size_t size, const std::nothrow_t&amp;) throw() {
+ 228     return (void*)AllocateHeap(size, F, AllocFailStrategy::RETURN_NULL);
+ 229   }
+ 230 
+ 231   void  operator delete(void* p)     { FreeHeap(p); }
+ 232   void  operator delete [] (void* p) { FreeHeap(p); }
+ 233 };
+ 234 
+ 235 // Base class for objects allocated on the stack only.
+ 236 // Calling new or delete will result in fatal error.
+ 237 
+ 238 class StackObj ALLOCATION_SUPER_CLASS_SPEC {
+ 239  private:
+ 240   void* operator new(size_t size) throw();
+ 241   void* operator new [](size_t size) throw();
+ 242   void  operator delete(void* p);
+ 243   void  operator delete [](void* p);
+ 244 };
+ 245 
+ 246 // Base class for objects stored in Metaspace.
+ 247 // Calling delete will result in fatal error.
+ 248 //
+ 249 // Do not inherit from something with a vptr because this class does
+ 250 // not introduce one.  This class is used to allocate both shared read-only
+ 251 // and shared read-write classes.
+ 252 //
+ 253 
+ 254 class ClassLoaderData;
+ 255 class MetaspaceClosure;
+ 256 
+ 257 class MetaspaceObj {
+ 258   friend class VMStructs;
+ 259   // When CDS is enabled, all shared metaspace objects are mapped
+ 260   // into a single contiguous memory block, so we can use these
+ 261   // two pointers to quickly determine if something is in the
+ 262   // shared metaspace.
+ 263   // When CDS is not enabled, both pointers are set to NULL.
+ 264   static void* _shared_metaspace_base;  // (inclusive) low address
+ 265   static void* _shared_metaspace_top;   // (exclusive) high address
+ 266 
+ 267  public:
+ 268 
+ 269   // Returns true if the pointer points to a valid MetaspaceObj. A valid
+ 270   // MetaspaceObj is MetaWord-aligned and contained within either
+ 271   // non-shared or shared metaspace.
+ 272   static bool is_valid(const MetaspaceObj* p);
+ 273 
+ 274   static bool is_shared(const MetaspaceObj* p) {
+ 275     // If no shared metaspace regions are mapped, _shared_metaspace_{base,top} will
+ 276     // both be NULL and all values of p will be rejected quickly.
+ 277     return (((void*)p) &lt; _shared_metaspace_top &amp;&amp;
+ 278             ((void*)p) &gt;= _shared_metaspace_base);
+ 279   }
+ 280   bool is_shared() const { return MetaspaceObj::is_shared(this); }
+ 281 
+ 282   void print_address_on(outputStream* st) const;  // nonvirtual address printing
+ 283 
+ 284   static void set_shared_metaspace_range(void* base, void* top) {
+ 285     _shared_metaspace_base = base;
+ 286     _shared_metaspace_top = top;
+ 287   }
+ 288 
+ 289   static void* shared_metaspace_base() { return _shared_metaspace_base; }
+ 290   static void* shared_metaspace_top()  { return _shared_metaspace_top;  }
+ 291 
+ 292 #define METASPACE_OBJ_TYPES_DO(f) \
+ 293   f(Class) \
+ 294   f(Symbol) \
+ 295   f(TypeArrayU1) \
+ 296   f(TypeArrayU2) \
+ 297   f(TypeArrayU4) \
+ 298   f(TypeArrayU8) \
+ 299   f(TypeArrayOther) \
+ 300   f(Method) \
+ 301   f(ConstMethod) \
+ 302   f(MethodData) \
+ 303   f(ConstantPool) \
+ 304   f(ConstantPoolCache) \
+ 305   f(Annotations) \
+ 306   f(MethodCounters) \
+ 307   f(RecordComponent)
+ 308 
+ 309 #define METASPACE_OBJ_TYPE_DECLARE(name) name ## Type,
+ 310 #define METASPACE_OBJ_TYPE_NAME_CASE(name) case name ## Type: return #name;
+ 311 
+ 312   enum Type {
+ 313     // Types are MetaspaceObj::ClassType, MetaspaceObj::SymbolType, etc
+ 314     METASPACE_OBJ_TYPES_DO(METASPACE_OBJ_TYPE_DECLARE)
+ 315     _number_of_types
+ 316   };
+ 317 
+ 318   static const char * type_name(Type type) {
+ 319     switch(type) {
+ 320     METASPACE_OBJ_TYPES_DO(METASPACE_OBJ_TYPE_NAME_CASE)
+ 321     default:
+ 322       ShouldNotReachHere();
+ 323       return NULL;
+ 324     }
+ 325   }
+ 326 
+ 327   static MetaspaceObj::Type array_type(size_t elem_size) {
+ 328     switch (elem_size) {
+ 329     case 1: return TypeArrayU1Type;
+ 330     case 2: return TypeArrayU2Type;
+ 331     case 4: return TypeArrayU4Type;
+ 332     case 8: return TypeArrayU8Type;
+ 333     default:
+ 334       return TypeArrayOtherType;
+ 335     }
+ 336   }
+ 337 
+ 338   void* operator new(size_t size, ClassLoaderData* loader_data,
+ 339                      size_t word_size,
+ 340                      Type type, Thread* thread) throw();
+ 341                      // can't use TRAPS from this header file.
+ 342   void operator delete(void* p) { ShouldNotCallThis(); }
+ 343 
+ 344   // Declare a *static* method with the same signature in any subclass of MetaspaceObj
+ 345   // that should be read-only by default. See symbol.hpp for an example. This function
+ 346   // is used by the templates in metaspaceClosure.hpp
+ 347   static bool is_read_only_by_default() { return false; }
+ 348 };
+ 349 
+ 350 // Base class for classes that constitute name spaces.
+ 351 
+ 352 class Arena;
+ 353 
+ 354 extern char* resource_allocate_bytes(size_t size,
+ 355     AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+ 356 extern char* resource_allocate_bytes(Thread* thread, size_t size,
+ 357     AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+ 358 extern char* resource_reallocate_bytes( char *old, size_t old_size, size_t new_size,
+ 359     AllocFailType alloc_failmode = AllocFailStrategy::EXIT_OOM);
+ 360 extern void resource_free_bytes( char *old, size_t size );
+ 361 
+ 362 //----------------------------------------------------------------------
+ 363 // Base class for objects allocated in the resource area per default.
+ 364 // Optionally, objects may be allocated on the C heap with
+ 365 // new(ResourceObj::C_HEAP) Foo(...) or in an Arena with new (&amp;arena)
+ 366 // ResourceObj's can be allocated within other objects, but don't use
+ 367 // new or delete (allocation_type is unknown).  If new is used to allocate,
+ 368 // use delete to deallocate.
+ 369 class ResourceObj ALLOCATION_SUPER_CLASS_SPEC {
+ 370  public:
+ 371   enum allocation_type { STACK_OR_EMBEDDED = 0, RESOURCE_AREA, C_HEAP, ARENA, allocation_mask = 0x3 };
+ 372   static void set_allocation_type(address res, allocation_type type) NOT_DEBUG_RETURN;
+ 373 #ifdef ASSERT
+ 374  private:
+ 375   // When this object is allocated on stack the new() operator is not
+ 376   // called but garbage on stack may look like a valid allocation_type.
+ 377   // Store negated 'this' pointer when new() is called to distinguish cases.
+ 378   // Use second array's element for verification value to distinguish garbage.
+ 379   uintptr_t _allocation_t[2];
+ 380   bool is_type_set() const;
+ 381   void initialize_allocation_info();
+ 382  public:
+ 383   allocation_type get_allocation_type() const;
+ 384   bool allocated_on_stack()    const { return get_allocation_type() == STACK_OR_EMBEDDED; }
+ 385   bool allocated_on_res_area() const { return get_allocation_type() == RESOURCE_AREA; }
+ 386   bool allocated_on_C_heap()   const { return get_allocation_type() == C_HEAP; }
+ 387   bool allocated_on_arena()    const { return get_allocation_type() == ARENA; }
+ 388 protected:
+ 389   ResourceObj(); // default constructor
+ 390   ResourceObj(const ResourceObj&amp; r); // default copy constructor
+ 391   ResourceObj&amp; operator=(const ResourceObj&amp; r); // default copy assignment
+ 392   ~ResourceObj();
+ 393 #endif // ASSERT
+ 394 
+ 395  public:
+ 396   void* operator new(size_t size, allocation_type type, MEMFLAGS flags) throw();
+ 397   void* operator new [](size_t size, allocation_type type, MEMFLAGS flags) throw();
+ 398   void* operator new(size_t size, const std::nothrow_t&amp;  nothrow_constant,
+ 399       allocation_type type, MEMFLAGS flags) throw();
+ 400   void* operator new [](size_t size, const std::nothrow_t&amp;  nothrow_constant,
+ 401       allocation_type type, MEMFLAGS flags) throw();
+ 402 
+ 403   void* operator new(size_t size, Arena *arena) throw();
+ 404 
+ 405   void* operator new [](size_t size, Arena *arena) throw();
+ 406 
+ 407   void* operator new(size_t size) throw() {
+ 408       address res = (address)resource_allocate_bytes(size);
+ 409       DEBUG_ONLY(set_allocation_type(res, RESOURCE_AREA);)
+ 410       return res;
+ 411   }
+ 412 
+ 413   void* operator new(size_t size, const std::nothrow_t&amp; nothrow_constant) throw() {
+ 414       address res = (address)resource_allocate_bytes(size, AllocFailStrategy::RETURN_NULL);
+ 415       DEBUG_ONLY(if (res != NULL) set_allocation_type(res, RESOURCE_AREA);)
+ 416       return res;
+ 417   }
+ 418 
+ 419   void* operator new [](size_t size) throw() {
+ 420       address res = (address)resource_allocate_bytes(size);
+ 421       DEBUG_ONLY(set_allocation_type(res, RESOURCE_AREA);)
+ 422       return res;
+ 423   }
+ 424 
+ 425   void* operator new [](size_t size, const std::nothrow_t&amp; nothrow_constant) throw() {
+ 426       address res = (address)resource_allocate_bytes(size, AllocFailStrategy::RETURN_NULL);
+ 427       DEBUG_ONLY(if (res != NULL) set_allocation_type(res, RESOURCE_AREA);)
+ 428       return res;
+ 429   }
+ 430 
+ 431   void  operator delete(void* p);
+ 432   void  operator delete [](void* p);
+ 433 };
+ 434 
+ 435 // One of the following macros must be used when allocating an array
+ 436 // or object to determine whether it should reside in the C heap on in
+ 437 // the resource area.
+ 438 
+ 439 #define NEW_RESOURCE_ARRAY(type, size)\
+ 440   (type*) resource_allocate_bytes((size) * sizeof(type))
+ 441 
+ 442 #define NEW_RESOURCE_ARRAY_RETURN_NULL(type, size)\
+ 443   (type*) resource_allocate_bytes((size) * sizeof(type), AllocFailStrategy::RETURN_NULL)
+ 444 
+ 445 #define NEW_RESOURCE_ARRAY_IN_THREAD(thread, type, size)\
+ 446   (type*) resource_allocate_bytes(thread, (size) * sizeof(type))
+ 447 
+ 448 #define NEW_RESOURCE_ARRAY_IN_THREAD_RETURN_NULL(thread, type, size)\
+ 449   (type*) resource_allocate_bytes(thread, (size) * sizeof(type), AllocFailStrategy::RETURN_NULL)
+ 450 
+ 451 #define REALLOC_RESOURCE_ARRAY(type, old, old_size, new_size)\
+ 452   (type*) resource_reallocate_bytes((char*)(old), (old_size) * sizeof(type), (new_size) * sizeof(type))
+ 453 
+ 454 #define REALLOC_RESOURCE_ARRAY_RETURN_NULL(type, old, old_size, new_size)\
+ 455   (type*) resource_reallocate_bytes((char*)(old), (old_size) * sizeof(type),\
+ 456                                     (new_size) * sizeof(type), AllocFailStrategy::RETURN_NULL)
+ 457 
+ 458 #define FREE_RESOURCE_ARRAY(type, old, size)\
+ 459   resource_free_bytes((char*)(old), (size) * sizeof(type))
+ 460 
+ 461 #define FREE_FAST(old)\
+ 462     /* nop */
+ 463 
+ 464 #define NEW_RESOURCE_OBJ(type)\
+ 465   NEW_RESOURCE_ARRAY(type, 1)
+ 466 
+ 467 #define NEW_RESOURCE_OBJ_RETURN_NULL(type)\
+ 468   NEW_RESOURCE_ARRAY_RETURN_NULL(type, 1)
+ 469 
+ 470 #define NEW_C_HEAP_ARRAY3(type, size, memflags, pc, allocfail)\
+ 471   (type*) AllocateHeap((size) * sizeof(type), memflags, pc, allocfail)
+ 472 
+ 473 #define NEW_C_HEAP_ARRAY2(type, size, memflags, pc)\
+ 474   (type*) (AllocateHeap((size) * sizeof(type), memflags, pc))
+ 475 
+ 476 #define NEW_C_HEAP_ARRAY(type, size, memflags)\
+ 477   (type*) (AllocateHeap((size) * sizeof(type), memflags))
+ 478 
+ 479 #define NEW_C_HEAP_ARRAY2_RETURN_NULL(type, size, memflags, pc)\
+ 480   NEW_C_HEAP_ARRAY3(type, (size), memflags, pc, AllocFailStrategy::RETURN_NULL)
+ 481 
+ 482 #define NEW_C_HEAP_ARRAY_RETURN_NULL(type, size, memflags)\
+ 483   NEW_C_HEAP_ARRAY3(type, (size), memflags, CURRENT_PC, AllocFailStrategy::RETURN_NULL)
+ 484 
+ 485 #define REALLOC_C_HEAP_ARRAY(type, old, size, memflags)\
+ 486   (type*) (ReallocateHeap((char*)(old), (size) * sizeof(type), memflags))
+ 487 
+ 488 #define REALLOC_C_HEAP_ARRAY_RETURN_NULL(type, old, size, memflags)\
+ 489   (type*) (ReallocateHeap((char*)(old), (size) * sizeof(type), memflags, AllocFailStrategy::RETURN_NULL))
+ 490 
+ 491 #define FREE_C_HEAP_ARRAY(type, old) \
+ 492   FreeHeap((char*)(old))
+ 493 
+ 494 // allocate type in heap without calling ctor
+ 495 #define NEW_C_HEAP_OBJ(type, memflags)\
+ 496   NEW_C_HEAP_ARRAY(type, 1, memflags)
+ 497 
+ 498 #define NEW_C_HEAP_OBJ_RETURN_NULL(type, memflags)\
+ 499   NEW_C_HEAP_ARRAY_RETURN_NULL(type, 1, memflags)
+ 500 
+ 501 // deallocate obj of type in heap without calling dtor
+ 502 #define FREE_C_HEAP_OBJ(objname)\
+ 503   FreeHeap((char*)objname);
+ 504 
+ 505 
+ 506 //------------------------------ReallocMark---------------------------------
+ 507 // Code which uses REALLOC_RESOURCE_ARRAY should check an associated
+ 508 // ReallocMark, which is declared in the same scope as the reallocated
+ 509 // pointer.  Any operation that could __potentially__ cause a reallocation
+ 510 // should check the ReallocMark.
+ 511 class ReallocMark: public StackObj {
+ 512 protected:
+ 513   NOT_PRODUCT(int _nesting;)
+ 514 
+ 515 public:
+ 516   ReallocMark()   PRODUCT_RETURN;
+ 517   void check()    PRODUCT_RETURN;
+ 518 };
+ 519 
+ 520 // Helper class to allocate arrays that may become large.
+ 521 // Uses the OS malloc for allocations smaller than ArrayAllocatorMallocLimit
+ 522 // and uses mapped memory for larger allocations.
+ 523 // Most OS mallocs do something similar but Solaris malloc does not revert
+ 524 // to mapped memory for large allocations. By default ArrayAllocatorMallocLimit
+ 525 // is set so that we always use malloc except for Solaris where we set the
+ 526 // limit to get mapped memory.
+ 527 template &lt;class E&gt;
+ 528 class ArrayAllocator : public AllStatic {
+ 529  private:
+ 530   static bool should_use_malloc(size_t length);
+ 531 
+ 532   static E* allocate_malloc(size_t length, MEMFLAGS flags);
+ 533   static E* allocate_mmap(size_t length, MEMFLAGS flags);
+ 534 
+ 535   static void free_malloc(E* addr, size_t length);
+ 536   static void free_mmap(E* addr, size_t length);
+ 537 
+ 538  public:
+ 539   static E* allocate(size_t length, MEMFLAGS flags);
+ 540   static E* reallocate(E* old_addr, size_t old_length, size_t new_length, MEMFLAGS flags);
+ 541   static void free(E* addr, size_t length);
+ 542 };
+ 543 
+ 544 // Uses mmaped memory for all allocations. All allocations are initially
+ 545 // zero-filled. No pre-touching.
+ 546 template &lt;class E&gt;
+ 547 class MmapArrayAllocator : public AllStatic {
+ 548  private:
+ 549   static size_t size_for(size_t length);
+ 550 
+ 551  public:
+ 552   static E* allocate_or_null(size_t length, MEMFLAGS flags);
+ 553   static E* allocate(size_t length, MEMFLAGS flags);
+ 554   static void free(E* addr, size_t length);
+ 555 };
+ 556 
+ 557 // Uses malloc:ed memory for all allocations.
+ 558 template &lt;class E&gt;
+ 559 class MallocArrayAllocator : public AllStatic {
+ 560  public:
+ 561   static size_t size_for(size_t length);
+ 562 
+ 563   static E* allocate(size_t length, MEMFLAGS flags);
+ 564   static void free(E* addr);
+ 565 };
+ 566 
+ 567 #endif // SHARE_MEMORY_ALLOCATION_HPP
+<a name="3" id="anc3"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="3" type="hidden" /></form></body></html>

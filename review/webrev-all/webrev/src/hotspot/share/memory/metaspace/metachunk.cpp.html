@@ -1,0 +1,590 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/metachunk.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2017, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "logging/log.hpp"
+  29 #include "memory/metaspace/chunkLevel.hpp"
+  30 #include "memory/metaspace/metachunk.hpp"
+  31 #include "memory/metaspace/metaspaceCommon.hpp"
+  32 #include "memory/metaspace/settings.hpp"
+  33 #include "memory/metaspace/virtualSpaceNode.hpp"
+  34 #include "runtime/mutexLocker.hpp"
+  35 
+  36 #include "utilities/align.hpp"
+  37 #include "utilities/copy.hpp"
+  38 #include "utilities/debug.hpp"
+  39 
+  40 namespace metaspace {
+  41 
+  42 // Return a single char presentation of the state ('f', 'u', 'd')
+  43 char Metachunk::get_state_char() const {
+  44   switch (_state) {
+  45   case state_free:    return 'f';
+  46   case state_in_use:  return 'u';
+  47   case state_dead:    return 'd';
+  48   }
+  49   return '?';
+  50 }
+  51 
+  52 #ifdef ASSERT
+  53 void Metachunk::assert_have_expand_lock() {
+  54   assert_lock_strong(MetaspaceExpand_lock);
+  55 }
+  56 #endif
+  57 
+  58 // Commit uncommitted section of the chunk.
+  59 // Fails if we hit a commit limit.
+  60 bool Metachunk::commit_up_to(size_t new_committed_words) {
+  61 
+  62   // Please note:
+  63   //
+  64   // VirtualSpaceNode::ensure_range_is_committed(), when called over a range containing both committed and uncommitted parts,
+  65   // will replace the whole range with a new mapping, thus erasing the existing content in the committed parts. Therefore
+  66   // we must make sure never to call VirtualSpaceNode::ensure_range_is_committed() over a range containing live data.
+  67   //
+  68   // Luckily, this cannot happen by design. We have two cases:
+  69   //
+  70   // 1) chunks equal or larger than a commit granule.
+  71   //    In this case, due to chunk geometry, the chunk should cover whole commit granules (in other words, a chunk equal or larger than
+  72   //    a commit granule will never share a granule with a neighbor). That means whatever we commit or uncommit here does not affect
+  73   //    neighboring chunks. We only have to take care not to re-commit used parts of ourself. We do this by moving the committed_words
+  74   //    limit in multiple of commit granules.
+  75   //
+  76   // 2) chunks smaller than a commit granule.
+  77   //    In this case, a chunk shares a single commit granule with its neighbors. But this never can be a problem:
+  78   //    - Either the commit granule is already committed (and maybe the neighbors contain live data). In that case calling
+  79   //      ensure_range_is_committed() will do nothing.
+  80   //    - Or the commit granule is not committed, but in this case, the neighbors are uncommitted too and cannot contain live data.
+  81 
+  82 #ifdef ASSERT
+  83   if (word_size() &gt;= Settings::commit_granule_words()) {
+  84     // case (1)
+  85     assert(is_aligned(base(), Settings::commit_granule_bytes()) &amp;&amp;
+  86            is_aligned(end(), Settings::commit_granule_bytes()),
+  87            "Chunks larger than a commit granule must cover whole granules.");
+  88     assert(is_aligned(_committed_words, Settings::commit_granule_words()),
+  89            "The commit boundary must be aligned to commit granule size");
+  90     assert(_used_words &lt;= _committed_words, "Sanity");
+  91   } else {
+  92     // case (2)
+  93     assert(_committed_words == 0 || _committed_words == word_size(), "Sanity");
+  94   }
+  95 #endif
+  96 
+  97   // We should hold the expand lock at this point.
+  98   assert_lock_strong(MetaspaceExpand_lock);
+  99 
+ 100   const size_t commit_from = _committed_words;
+ 101   const size_t commit_to =   MIN2(align_up(new_committed_words, Settings::commit_granule_words()), word_size());
+ 102 
+ 103   assert(commit_from &gt;= used_words(), "Sanity");
+ 104   assert(commit_to &lt;= word_size(), "Sanity");
+ 105 
+ 106   if (commit_to &gt; commit_from) {
+ 107     log_debug(metaspace)("Chunk " METACHUNK_FORMAT ": attempting to move commit line to "
+ 108                          SIZE_FORMAT " words.", METACHUNK_FORMAT_ARGS(this), commit_to);
+ 109 
+ 110     if (!_vsnode-&gt;ensure_range_is_committed(base() + commit_from, commit_to - commit_from)) {
+ 111       DEBUG_ONLY(verify(true);)
+ 112       return false;
+ 113     }
+ 114   }
+ 115 
+ 116   // Remember how far we have committed.
+ 117   _committed_words = commit_to;
+ 118 
+ 119   DEBUG_ONLY(verify(true);)
+ 120 
+ 121   return true;
+ 122 
+ 123 }
+ 124 
+ 125 
+ 126 // Ensure that chunk is committed up to at least new_committed_words words.
+ 127 // Fails if we hit a commit limit.
+ 128 bool Metachunk::ensure_committed(size_t new_committed_words) {
+ 129 
+ 130   bool rc = true;
+ 131 
+ 132   if (new_committed_words &gt; committed_words()) {
+ 133     MutexLocker cl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 134     rc = commit_up_to(new_committed_words);
+ 135   }
+ 136 
+ 137   return rc;
+ 138 
+ 139 }
+ 140 
+ 141 bool Metachunk::ensure_committed_locked(size_t new_committed_words) {
+ 142 
+ 143   // the .._locked() variant should be called if we own the lock already.
+ 144   assert_lock_strong(MetaspaceExpand_lock);
+ 145 
+ 146   bool rc = true;
+ 147 
+ 148   if (new_committed_words &gt; committed_words()) {
+ 149     rc = commit_up_to(new_committed_words);
+ 150   }
+ 151 
+ 152   return rc;
+ 153 
+ 154 }
+ 155 
+ 156 // Uncommit chunk area. The area must be a common multiple of the
+ 157 // commit granule size (in other words, we cannot uncommit chunks smaller than
+ 158 // a commit granule size).
+ 159 void Metachunk::uncommit() {
+ 160   MutexLocker cl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 161   uncommit_locked();
+ 162 }
+ 163 
+ 164 void Metachunk::uncommit_locked() {
+ 165   // Only uncommit chunks which are free, have no used words set (extra precaution) and are equal or larger in size than a single commit granule.
+ 166   assert_lock_strong(MetaspaceExpand_lock);
+ 167   assert(_state == state_free &amp;&amp; _used_words == 0 &amp;&amp; word_size() &gt;= Settings::commit_granule_words(),
+ 168          "Only free chunks equal or larger than commit granule size can be uncommitted "
+ 169          "(chunk " METACHUNK_FULL_FORMAT ").", METACHUNK_FULL_FORMAT_ARGS(this));
+ 170   if (word_size() &gt;= Settings::commit_granule_words()) {
+ 171     _vsnode-&gt;uncommit_range(base(), word_size());
+ 172     _committed_words = 0;
+ 173   }
+ 174 }
+ 175 void Metachunk::set_committed_words(size_t v) {
+ 176   // Set committed words. Since we know that we only commit whole commit granules, we can round up v here.
+ 177   v = MIN2(align_up(v, Settings::commit_granule_words()), word_size());
+ 178  _committed_words = v;
+ 179 }
+ 180 
+ 181 
+ 182 // Allocate word_size words from this chunk (word_size must be aligned to
+ 183 //  allocation_alignment_words).
+ 184 //
+ 185 // Caller must make sure the chunk is both large enough and committed far enough
+ 186 // to hold the allocation. Will always work.
+ 187 //
+ 188 MetaWord* Metachunk::allocate(size_t request_word_size) {
+ 189 
+ 190   log_trace(metaspace)("Chunk " METACHUNK_FULL_FORMAT ": allocating " SIZE_FORMAT " words.",
+ 191                        METACHUNK_FULL_FORMAT_ARGS(this), request_word_size);
+ 192 
+ 193   // Caller must have made sure this works
+ 194   assert(free_words() &gt;= request_word_size, "Chunk too small.");
+ 195   assert(free_below_committed_words() &gt;= request_word_size, "Chunk not committed.");
+ 196 
+ 197   MetaWord* const p = top();
+ 198 
+ 199   _used_words += request_word_size;
+ 200 
+ 201   SOMETIMES(verify(false);)
+ 202 
+ 203   return p;
+ 204 
+ 205 }
+ 206 
+ 207 #ifdef ASSERT
+ 208 
+ 209 // Zap this structure.
+ 210 void Metachunk::zap_header(uint8_t c) {
+ 211   memset(this, c, sizeof(Metachunk));
+ 212 }
+ 213 
+ 214 void Metachunk::fill_with_pattern(MetaWord pattern, size_t word_size) {
+ 215   assert(word_size &lt;= committed_words(), "Sanity");
+ 216   for (size_t l = 0; l &lt; word_size; l ++) {
+ 217     _base[l] = pattern;
+ 218   }
+ 219 }
+ 220 
+ 221 void Metachunk::check_pattern(MetaWord pattern, size_t word_size) {
+ 222   assert(word_size &lt;= committed_words(), "Sanity");
+ 223   for (size_t l = 0; l &lt; word_size; l ++) {
+ 224     assert(_base[l] == pattern,
+ 225            "chunk " METACHUNK_FULL_FORMAT ": pattern change at " PTR_FORMAT ": expected " UINTX_FORMAT " but got " UINTX_FORMAT ".",
+ 226            METACHUNK_FULL_FORMAT_ARGS(this), p2i(_base + l), (uintx)pattern, (uintx)_base[l]);
+ 227 
+ 228     ////////////////////////////////////////////
+ 229     // A double-headed list of Metachunks.
+ 230 
+ 231     class AbstractMetachunkList {
+ 232 
+ 233       Metachunk* _first;
+ 234       Metachunk* _last;
+ 235 
+ 236       // Number of chunks
+ 237       IntCounter _num;
+ 238 
+ 239     protected:
+ 240 
+ 241       AbstractMetachunkList() : _first(NULL), _last(NULL), _num() {}
+ 242 
+ 243       Metachunk* first() const { return _first; }
+ 244       int count() const { return _num.get(); }
+ 245 
+ 246       // Add chunk to the front of the list.
+ 247       void add_front(Metachunk* c) {
+ 248         if (_first == NULL) {
+ 249           assert(_last == NULL &amp;&amp; _num.get() == 0, "Sanity");
+ 250           _first = _last = c;
+ 251           c-&gt;set_prev(NULL);
+ 252           c-&gt;set_next(NULL);
+ 253         } else {
+ 254           assert(_last != NULL &amp;&amp; _num.get() &gt; 0, "Sanity");
+ 255           c-&gt;set_next(_first);
+ 256           c-&gt;set_prev(NULL);
+ 257           _first-&gt;set_prev(c);
+ 258           _first = c;
+ 259         }
+ 260         _num.increment();
+ 261       }
+ 262 
+ 263       // Add chunk to the back of the list.
+ 264       void add_back(Metachunk* c) {
+ 265         if (_last == NULL) {
+ 266           assert(_first == NULL &amp;&amp; _num.get() == 0, "Sanity");
+ 267           _last = _first = c;
+ 268           c-&gt;set_prev(NULL);
+ 269           c-&gt;set_next(NULL);
+ 270         } else {
+ 271           assert(_first != NULL &amp;&amp; _num.get() &gt; 0, "Sanity");
+ 272           c-&gt;set_next(NULL);
+ 273           c-&gt;set_prev(_last);
+ 274           _last-&gt;set_next(c);
+ 275           _last = c;
+ 276         }
+ 277         _num.increment();
+ 278       }
+ 279 
+ 280       // Remove chunk from the front of the list. Returns NULL if list is empty.
+ 281       Metachunk* remove_front() {
+ 282         Metachunk* c = NULL;
+ 283         if (_first == NULL) {
+ 284           assert(_last == NULL &amp;&amp; _num.get() == 0, "Sanity");
+ 285         } else {
+ 286           c = _first;
+ 287           assert(c-&gt;prev() == NULL, "Sanity");
+ 288           if (_first == _last) {
+ 289             assert(_num.get() == 1, "Sanity");
+ 290             _first = _last = NULL;
+ 291           } else {
+ 292             assert(_num.get() &gt; 1, "Sanity");
+ 293             _first = _first-&gt;next();
+ 294             _first-&gt;set_prev(NULL);
+ 295           }
+ 296           _num.decrement();
+ 297           c-&gt;set_next(NULL);
+ 298         }
+ 299         return c;
+ 300       }
+ 301 
+ 302       // Remove chunk from the back of the list. Returns NULL if list is empty.
+ 303       Metachunk* remove_back() {
+ 304         Metachunk* c = NULL;
+ 305         if (_last == NULL) {
+ 306           assert(_first == NULL &amp;&amp; _num.get() == 0, "Sanity");
+ 307         } else {
+ 308           c = _last;
+ 309           assert(c-&gt;next() == NULL, "Sanity");
+ 310           if (_first == _last) {
+ 311             assert(_num.get() == 1, "Sanity");
+ 312             _first = _last = NULL;
+ 313           } else {
+ 314             assert(_num.get() &gt; 1, "Sanity");
+ 315             _last = _last-&gt;prev();
+ 316             _last-&gt;set_next(NULL);
+ 317           }
+ 318           _num.decrement();
+ 319           c-&gt;set_prev(NULL);
+ 320         }
+ 321         return c;
+ 322       }
+ 323 
+ 324     public:
+ 325 
+ 326     #ifdef ASSERT
+ 327       bool contains(const Metachunk* c) const;
+ 328       void verify() const;
+ 329     #endif
+ 330 
+ 331       // Returns size, in words, of committed space of all chunks in this list.
+ 332       // Note: walks list.
+ 333       size_t committed_word_size() const {
+ 334         size_t l = 0;
+ 335         for (const Metachunk* c = _first; c != NULL; c = c-&gt;next()) {
+ 336           l += c-&gt;committed_words();
+ 337         }
+ 338         return l;
+ 339       }
+ 340 
+ 341       void print_on(outputStream* st) const;
+ 342 
+ 343     };
+ 344 
+ 345     class UnsortedMetachunkList : public AbstractMetachunkList {
+ 346     public:
+ 347 
+ 348 
+ 349 
+ 350 
+ 351 
+ 352     };
+ 353 
+ 354 
+ 355   }
+ 356 }
+ 357 
+ 358 
+ 359 // Verifies linking with neighbors in virtual space.
+ 360 // Can only be done under expand lock protection.
+ 361 void Metachunk::verify_neighborhood() const {
+ 362 
+ 363   assert_lock_strong(MetaspaceExpand_lock);
+ 364   assert(!is_dead(), "Do not call on dead chunks.");
+ 365 
+ 366   if (is_root_chunk()) {
+ 367 
+ 368     // Root chunks are all alone in the world.
+ 369     assert(next_in_vs() == NULL || prev_in_vs() == NULL, "Root chunks should have no neighbors");
+ 370 
+ 371   } else {
+ 372 
+ 373     // Non-root chunks have neighbors, at least one, possibly two.
+ 374 
+ 375     assert(next_in_vs() != NULL || prev_in_vs() != NULL,
+ 376            "A non-root chunk should have neighbors (chunk @" PTR_FORMAT
+ 377            ", base " PTR_FORMAT ", level " CHKLVL_FORMAT ".",
+ 378            p2i(this), p2i(base()), level());
+ 379 
+ 380     if (prev_in_vs() != NULL) {
+ 381       assert(prev_in_vs()-&gt;end() == base(),
+ 382              "Chunk " METACHUNK_FULL_FORMAT ": should be adjacent to predecessor: " METACHUNK_FULL_FORMAT ".",
+ 383              METACHUNK_FULL_FORMAT_ARGS(this), METACHUNK_FULL_FORMAT_ARGS(prev_in_vs()));
+ 384       assert(prev_in_vs()-&gt;next_in_vs() == this,
+ 385              "Chunk " METACHUNK_FULL_FORMAT ": broken link to left neighbor: " METACHUNK_FULL_FORMAT " (" PTR_FORMAT ").",
+ 386              METACHUNK_FULL_FORMAT_ARGS(this), METACHUNK_FULL_FORMAT_ARGS(prev_in_vs()), p2i(prev_in_vs()-&gt;next_in_vs()));
+ 387     }
+ 388 
+ 389     if (next_in_vs() != NULL) {
+ 390       assert(end() == next_in_vs()-&gt;base(),
+ 391              "Chunk " METACHUNK_FULL_FORMAT ": should be adjacent to successor: " METACHUNK_FULL_FORMAT ".",
+ 392              METACHUNK_FULL_FORMAT_ARGS(this), METACHUNK_FULL_FORMAT_ARGS(next_in_vs()));
+ 393       assert(next_in_vs()-&gt;prev_in_vs() == this,
+ 394              "Chunk " METACHUNK_FULL_FORMAT ": broken link to right neighbor: " METACHUNK_FULL_FORMAT " (" PTR_FORMAT ").",
+ 395              METACHUNK_FULL_FORMAT_ARGS(this), METACHUNK_FULL_FORMAT_ARGS(next_in_vs()), p2i(next_in_vs()-&gt;prev_in_vs()));
+ 396     }
+ 397 
+ 398     // One of the neighbors must be the buddy. It can be whole or splintered.
+ 399 
+ 400     // The chunk following us or preceeding us may be our buddy or a splintered part of it.
+ 401     Metachunk* buddy = is_leader() ? next_in_vs() : prev_in_vs();
+ 402 
+ 403     assert(buddy != NULL, "Missing neighbor.");
+ 404     assert(!buddy-&gt;is_dead(), "Invalid buddy state.");
+ 405 
+ 406     // This neighbor is either or buddy (same level) or a splinter of our buddy - hence
+ 407     // the level can never be smaller (aka the chunk size cannot be larger).
+ 408     assert(buddy-&gt;level() &gt;= level(), "Wrong level.");
+ 409 
+ 410     if (buddy-&gt;level() == level()) {
+ 411 
+ 412       // If the buddy is of the same size as us, it is unsplintered.
+ 413       assert(buddy-&gt;is_leader() == !is_leader(),
+ 414              "Only one chunk can be leader in a pair");
+ 415 
+ 416       // When direct buddies are neighbors, one or both should be in use, otherwise they should
+ 417       // have been merged.
+ 418 
+ 419       // But since we call this verification function from internal functions where we are about to merge or just did split,
+ 420       // do not test this. We have RootChunkArea::verify_area_is_ideally_merged() for testing that.
+ 421 
+ 422       // assert(buddy-&gt;is_in_use() || is_in_use(), "incomplete merging?");
+ 423 
+ 424       if (is_leader()) {
+ 425         assert(buddy-&gt;base() == end(), "Sanity");
+ 426         assert(is_aligned(base(), word_size() * 2 * BytesPerWord), "Sanity");
+ 427       } else {
+ 428         assert(buddy-&gt;end() == base(), "Sanity");
+ 429         assert(is_aligned(buddy-&gt;base(), word_size() * 2 * BytesPerWord), "Sanity");
+ 430       }
+ 431 
+ 432     } else {
+ 433 
+ 434       // Buddy, but splintered, and this is a part of it.
+ 435       if (is_leader()) {
+ 436         assert(buddy-&gt;base() == end(), "Sanity");
+ 437       } else {
+ 438         assert(buddy-&gt;end() &gt; (base() - word_size()), "Sanity");
+ 439       }
+ 440 
+ 441     }
+ 442   }
+ 443 }
+ 444 
+ 445 volatile MetaWord dummy = 0;
+ 446 
+ 447 void Metachunk::verify(bool slow) const {
+ 448 
+ 449   // Note. This should be called under CLD lock protection.
+ 450 
+ 451   // We can verify everything except the _prev_in_vs/_next_in_vs pair.
+ 452   // This is because neighbor chunks may be added concurrently, so we cannot rely
+ 453   //  on the content of _next_in_vs/_prev_in_vs unless we have the expand lock.
+ 454 
+ 455   assert(!is_dead(), "Do not call on dead chunks.");
+ 456 
+ 457   if (is_free()) {
+ 458     assert(used_words() == 0, "free chunks are not used.");
+ 459   }
+ 460 
+ 461   // Note: only call this on a life Metachunk.
+ 462   chunklevel::check_valid_level(level());
+ 463 
+ 464   assert(base() != NULL, "No base ptr");
+ 465 
+ 466   assert(committed_words() &gt;= used_words(),
+ 467          "mismatch: committed: " SIZE_FORMAT ", used: " SIZE_FORMAT ".",
+ 468          committed_words(), used_words());
+ 469 
+ 470   assert(word_size() &gt;= committed_words(),
+ 471          "mismatch: word_size: " SIZE_FORMAT ", committed: " SIZE_FORMAT ".",
+ 472          word_size(), committed_words());
+ 473 
+ 474   // Test base pointer
+ 475   assert(base() != NULL, "Base pointer NULL");
+ 476   assert(vsnode() != NULL, "No space");
+ 477   vsnode()-&gt;check_pointer(base());
+ 478 
+ 479   // Starting address shall be aligned to chunk size.
+ 480   const size_t required_alignment = word_size() * sizeof(MetaWord);
+ 481   assert_is_aligned(base(), required_alignment);
+ 482 
+ 483   // If slow, test the committed area
+ 484   if (slow &amp;&amp; _committed_words &gt; 0) {
+ 485     for (const MetaWord* p = _base; p &lt; _base + _committed_words; p += os::vm_page_size()) {
+ 486       dummy = *p;
+ 487     }
+ 488     dummy = *(_base + _committed_words - 1);
+ 489   }
+ 490 
+ 491 }
+ 492 #endif // ASSERT
+ 493 
+ 494 void Metachunk::print_on(outputStream* st) const {
+ 495 
+ 496   // Note: must also work with invalid/random data. (e.g. do not call word_size())
+ 497   st-&gt;print("Chunk @" PTR_FORMAT ", state %c, base " PTR_FORMAT ", "
+ 498             "level " CHKLVL_FORMAT " (" SIZE_FORMAT " words), "
+ 499             "used " SIZE_FORMAT " words, committed " SIZE_FORMAT " words.",
+ 500             p2i(this), get_state_char(), p2i(base()), level(),
+ 501             (chunklevel::is_valid_level(level()) ? chunklevel::word_size_for_level(level()) : (size_t)-1),
+ 502             used_words(), committed_words());
+ 503 
+ 504 }
+ 505 
+ 506 } // namespace metaspace
+ 507 
+</pre></body></html>

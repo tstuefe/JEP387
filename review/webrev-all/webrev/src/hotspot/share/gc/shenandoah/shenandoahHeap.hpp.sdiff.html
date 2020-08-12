@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/gc/shenandoah </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+  26 #define SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+  27 
+  28 #include "gc/shared/markBitMap.hpp"
+  29 #include "gc/shared/softRefPolicy.hpp"
+  30 #include "gc/shared/collectedHeap.hpp"
+  31 #include "gc/shenandoah/shenandoahAsserts.hpp"
+  32 #include "gc/shenandoah/shenandoahAllocRequest.hpp"
+  33 #include "gc/shenandoah/shenandoahLock.hpp"
+  34 #include "gc/shenandoah/shenandoahEvacOOMHandler.hpp"
+  35 #include "gc/shenandoah/shenandoahPadding.hpp"
+  36 #include "gc/shenandoah/shenandoahSharedVariables.hpp"
+  37 #include "gc/shenandoah/shenandoahUnload.hpp"
+
+  38 #include "services/memoryManager.hpp"
+  39 #include "utilities/globalDefinitions.hpp"
+  40 
+  41 class ConcurrentGCTimer;
+  42 class ReferenceProcessor;
+  43 class ShenandoahCollectorPolicy;
+  44 class ShenandoahControlThread;
+  45 class ShenandoahGCSession;
+  46 class ShenandoahGCStateResetter;
+  47 class ShenandoahHeuristics;
+  48 class ShenandoahMarkingContext;
+  49 class ShenandoahMarkCompact;
+  50 class ShenandoahMode;
+  51 class ShenandoahPhaseTimings;
+  52 class ShenandoahHeap;
+  53 class ShenandoahHeapRegion;
+  54 class ShenandoahHeapRegionClosure;
+  55 class ShenandoahCollectionSet;
+  56 class ShenandoahFreeSet;
+  57 class ShenandoahConcurrentMark;
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+  26 #define SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+  27 
+  28 #include "gc/shared/markBitMap.hpp"
+  29 #include "gc/shared/softRefPolicy.hpp"
+  30 #include "gc/shared/collectedHeap.hpp"
+  31 #include "gc/shenandoah/shenandoahAsserts.hpp"
+  32 #include "gc/shenandoah/shenandoahAllocRequest.hpp"
+  33 #include "gc/shenandoah/shenandoahLock.hpp"
+  34 #include "gc/shenandoah/shenandoahEvacOOMHandler.hpp"
+  35 #include "gc/shenandoah/shenandoahPadding.hpp"
+  36 #include "gc/shenandoah/shenandoahSharedVariables.hpp"
+  37 #include "gc/shenandoah/shenandoahUnload.hpp"
+<span class="new">  38 #include "memory/metaspace.hpp"</span>
+  39 #include "services/memoryManager.hpp"
+  40 #include "utilities/globalDefinitions.hpp"
+  41 
+  42 class ConcurrentGCTimer;
+  43 class ReferenceProcessor;
+  44 class ShenandoahCollectorPolicy;
+  45 class ShenandoahControlThread;
+  46 class ShenandoahGCSession;
+  47 class ShenandoahGCStateResetter;
+  48 class ShenandoahHeuristics;
+  49 class ShenandoahMarkingContext;
+  50 class ShenandoahMarkCompact;
+  51 class ShenandoahMode;
+  52 class ShenandoahPhaseTimings;
+  53 class ShenandoahHeap;
+  54 class ShenandoahHeapRegion;
+  55 class ShenandoahHeapRegionClosure;
+  56 class ShenandoahCollectionSet;
+  57 class ShenandoahFreeSet;
+  58 class ShenandoahConcurrentMark;
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

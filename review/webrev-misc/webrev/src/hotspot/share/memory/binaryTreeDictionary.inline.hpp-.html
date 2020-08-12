@@ -1,0 +1,1087 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/binaryTreeDictionary.inline.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2001, 2019, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
+  26 #define SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
+  27 
+  28 #include "gc/shared/spaceDecorator.hpp"
+  29 #include "logging/log.hpp"
+  30 #include "logging/logStream.hpp"
+  31 #include "memory/binaryTreeDictionary.hpp"
+  32 #include "memory/freeList.inline.hpp"
+  33 #include "memory/resourceArea.hpp"
+  34 #include "runtime/mutex.hpp"
+  35 #include "runtime/globals.hpp"
+  36 #include "utilities/macros.hpp"
+  37 #include "utilities/ostream.hpp"
+  38 
+  39 ////////////////////////////////////////////////////////////////////////////////
+  40 // A binary tree based search structure for free blocks.
+  41 // This is currently used in the Concurrent Mark&amp;Sweep implementation.
+  42 ////////////////////////////////////////////////////////////////////////////////
+  43 
+  44 template &lt;class Chunk_t, class FreeList_t&gt;
+  45 TreeChunk&lt;Chunk_t, FreeList_t&gt;* TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(Chunk_t* fc) {
+  46   // Do some assertion checking here.
+  47   return (TreeChunk&lt;Chunk_t, FreeList_t&gt;*) fc;
+  48 }
+  49 
+  50 template &lt;class Chunk_t, class FreeList_t&gt;
+  51 void TreeChunk&lt;Chunk_t, FreeList_t&gt;::verify_tree_chunk_list() const {
+  52   TreeChunk&lt;Chunk_t, FreeList_t&gt;* nextTC = (TreeChunk&lt;Chunk_t, FreeList_t&gt;*)next();
+  53   if (prev() != NULL) { // interior list node shouldn't have tree fields
+  54     guarantee(embedded_list()-&gt;parent() == NULL &amp;&amp; embedded_list()-&gt;left() == NULL &amp;&amp;
+  55               embedded_list()-&gt;right()  == NULL, "should be clear");
+  56   }
+  57   if (nextTC != NULL) {
+  58     guarantee(as_TreeChunk(nextTC-&gt;prev()) == this, "broken chain");
+  59     guarantee(nextTC-&gt;size() == size(), "wrong size");
+  60     nextTC-&gt;verify_tree_chunk_list();
+  61   }
+  62 }
+  63 
+  64 template &lt;class Chunk_t, class FreeList_t&gt;
+  65 TreeList&lt;Chunk_t, FreeList_t&gt;::TreeList() : _parent(NULL),
+  66   _left(NULL), _right(NULL) {}
+  67 
+  68 template &lt;class Chunk_t, class FreeList_t&gt;
+  69 TreeList&lt;Chunk_t, FreeList_t&gt;*
+  70 TreeList&lt;Chunk_t, FreeList_t&gt;::as_TreeList(TreeChunk&lt;Chunk_t,FreeList_t&gt;* tc) {
+  71   // This first free chunk in the list will be the tree list.
+  72   assert((tc-&gt;size() &gt;= (TreeChunk&lt;Chunk_t, FreeList_t&gt;::min_size())),
+  73     "Chunk is too small for a TreeChunk");
+  74   TreeList&lt;Chunk_t, FreeList_t&gt;* tl = tc-&gt;embedded_list();
+  75   tl-&gt;initialize();
+  76   tc-&gt;set_list(tl);
+  77   tl-&gt;set_size(tc-&gt;size());
+  78   tl-&gt;link_head(tc);
+  79   tl-&gt;link_tail(tc);
+  80   tl-&gt;set_count(1);
+  81   assert(tl-&gt;parent() == NULL, "Should be clear");
+  82   return tl;
+  83 }
+  84 
+  85 template &lt;class Chunk_t, class FreeList_t&gt;
+  86 TreeList&lt;Chunk_t, FreeList_t&gt;*
+  87 TreeList&lt;Chunk_t, FreeList_t&gt;::as_TreeList(HeapWord* addr, size_t size) {
+  88   TreeChunk&lt;Chunk_t, FreeList_t&gt;* tc = (TreeChunk&lt;Chunk_t, FreeList_t&gt;*) addr;
+  89   assert((size &gt;= TreeChunk&lt;Chunk_t, FreeList_t&gt;::min_size()),
+  90     "Chunk is too small for a TreeChunk");
+  91   // The space will have been mangled initially but
+  92   // is not remangled when a Chunk_t is returned to the free list
+  93   // (since it is used to maintain the chunk on the free list).
+  94   tc-&gt;assert_is_mangled();
+  95   tc-&gt;set_size(size);
+  96   tc-&gt;link_prev(NULL);
+  97   tc-&gt;link_next(NULL);
+  98   TreeList&lt;Chunk_t, FreeList_t&gt;* tl = TreeList&lt;Chunk_t, FreeList_t&gt;::as_TreeList(tc);
+  99   return tl;
+ 100 }
+ 101 
+ 102 
+ 103 template &lt;class Chunk_t, class FreeList_t&gt;
+ 104 TreeList&lt;Chunk_t, FreeList_t&gt;*
+ 105 TreeList&lt;Chunk_t, FreeList_t&gt;::get_better_list(
+ 106   BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;* dictionary) {
+ 107   return this;
+ 108 }
+ 109 
+ 110 template &lt;class Chunk_t, class FreeList_t&gt;
+ 111 TreeList&lt;Chunk_t, FreeList_t&gt;* TreeList&lt;Chunk_t, FreeList_t&gt;::remove_chunk_replace_if_needed(TreeChunk&lt;Chunk_t, FreeList_t&gt;* tc) {
+ 112 
+ 113   TreeList&lt;Chunk_t, FreeList_t&gt;* retTL = this;
+ 114   Chunk_t* list = head();
+ 115   assert(!list || list != list-&gt;next(), "Chunk on list twice");
+ 116   assert(tc != NULL, "Chunk being removed is NULL");
+ 117   assert(parent() == NULL || this == parent()-&gt;left() ||
+ 118     this == parent()-&gt;right(), "list is inconsistent");
+ 119   assert(tc-&gt;is_free(), "Header is not marked correctly");
+ 120   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 121   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 122 
+ 123   Chunk_t* prevFC = tc-&gt;prev();
+ 124   TreeChunk&lt;Chunk_t, FreeList_t&gt;* nextTC = TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(tc-&gt;next());
+ 125   assert(list != NULL, "should have at least the target chunk");
+ 126 
+ 127   // Is this the first item on the list?
+ 128   if (tc == list) {
+ 129     // The "getChunk..." functions for a TreeList&lt;Chunk_t, FreeList_t&gt; will not return the
+ 130     // first chunk in the list unless it is the last chunk in the list
+ 131     // because the first chunk is also acting as the tree node.
+ 132     // When coalescing happens, however, the first chunk in the a tree
+ 133     // list can be the start of a free range.  Free ranges are removed
+ 134     // from the free lists so that they are not available to be
+ 135     // allocated when the sweeper yields (giving up the free list lock)
+ 136     // to allow mutator activity.  If this chunk is the first in the
+ 137     // list and is not the last in the list, do the work to copy the
+ 138     // TreeList&lt;Chunk_t, FreeList_t&gt; from the first chunk to the next chunk and update all
+ 139     // the TreeList&lt;Chunk_t, FreeList_t&gt; pointers in the chunks in the list.
+ 140     if (nextTC == NULL) {
+ 141       assert(prevFC == NULL, "Not last chunk in the list");
+ 142       set_tail(NULL);
+ 143       set_head(NULL);
+ 144     } else {
+ 145       // copy embedded list.
+ 146       nextTC-&gt;set_embedded_list(tc-&gt;embedded_list());
+ 147       retTL = nextTC-&gt;embedded_list();
+ 148       // Fix the pointer to the list in each chunk in the list.
+ 149       // This can be slow for a long list.  Consider having
+ 150       // an option that does not allow the first chunk on the
+ 151       // list to be coalesced.
+ 152       for (TreeChunk&lt;Chunk_t, FreeList_t&gt;* curTC = nextTC; curTC != NULL;
+ 153           curTC = TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(curTC-&gt;next())) {
+ 154         curTC-&gt;set_list(retTL);
+ 155       }
+ 156       // Fix the parent to point to the new TreeList&lt;Chunk_t, FreeList_t&gt;.
+ 157       if (retTL-&gt;parent() != NULL) {
+ 158         if (this == retTL-&gt;parent()-&gt;left()) {
+ 159           retTL-&gt;parent()-&gt;set_left(retTL);
+ 160         } else {
+ 161           assert(this == retTL-&gt;parent()-&gt;right(), "Parent is incorrect");
+ 162           retTL-&gt;parent()-&gt;set_right(retTL);
+ 163         }
+ 164       }
+ 165       // Fix the children's parent pointers to point to the
+ 166       // new list.
+ 167       assert(right() == retTL-&gt;right(), "Should have been copied");
+ 168       if (retTL-&gt;right() != NULL) {
+ 169         retTL-&gt;right()-&gt;set_parent(retTL);
+ 170       }
+ 171       assert(left() == retTL-&gt;left(), "Should have been copied");
+ 172       if (retTL-&gt;left() != NULL) {
+ 173         retTL-&gt;left()-&gt;set_parent(retTL);
+ 174       }
+ 175       retTL-&gt;link_head(nextTC);
+ 176       assert(nextTC-&gt;is_free(), "Should be a free chunk");
+ 177     }
+ 178   } else {
+ 179     if (nextTC == NULL) {
+ 180       // Removing chunk at tail of list
+ 181       this-&gt;link_tail(prevFC);
+ 182     }
+ 183     // Chunk is interior to the list
+ 184     prevFC-&gt;link_after(nextTC);
+ 185   }
+ 186 
+ 187   // Below this point the embedded TreeList&lt;Chunk_t, FreeList_t&gt; being used for the
+ 188   // tree node may have changed. Don't use "this"
+ 189   // TreeList&lt;Chunk_t, FreeList_t&gt;*.
+ 190   // chunk should still be a free chunk (bit set in _prev)
+ 191   assert(!retTL-&gt;head() || retTL-&gt;size() == retTL-&gt;head()-&gt;size(),
+ 192     "Wrong sized chunk in list");
+ 193   debug_only(
+ 194     tc-&gt;link_prev(NULL);
+ 195     tc-&gt;link_next(NULL);
+ 196     tc-&gt;set_list(NULL);
+ 197     bool prev_found = false;
+ 198     bool next_found = false;
+ 199     for (Chunk_t* curFC = retTL-&gt;head();
+ 200          curFC != NULL; curFC = curFC-&gt;next()) {
+ 201       assert(curFC != tc, "Chunk is still in list");
+ 202       if (curFC == prevFC) {
+ 203         prev_found = true;
+ 204       }
+ 205       if (curFC == nextTC) {
+ 206         next_found = true;
+ 207       }
+ 208     }
+ 209     assert(prevFC == NULL || prev_found, "Chunk was lost from list");
+ 210     assert(nextTC == NULL || next_found, "Chunk was lost from list");
+ 211     assert(retTL-&gt;parent() == NULL ||
+ 212            retTL == retTL-&gt;parent()-&gt;left() ||
+ 213            retTL == retTL-&gt;parent()-&gt;right(),
+ 214            "list is inconsistent");
+ 215   )
+ 216   retTL-&gt;decrement_count();
+ 217 
+ 218   assert(tc-&gt;is_free(), "Should still be a free chunk");
+ 219   assert(retTL-&gt;head() == NULL || retTL-&gt;head()-&gt;prev() == NULL,
+ 220     "list invariant");
+ 221   assert(retTL-&gt;tail() == NULL || retTL-&gt;tail()-&gt;next() == NULL,
+ 222     "list invariant");
+ 223   return retTL;
+ 224 }
+ 225 
+ 226 template &lt;class Chunk_t, class FreeList_t&gt;
+ 227 void TreeList&lt;Chunk_t, FreeList_t&gt;::return_chunk_at_tail(TreeChunk&lt;Chunk_t, FreeList_t&gt;* chunk) {
+ 228   assert(chunk != NULL, "returning NULL chunk");
+ 229   assert(chunk-&gt;list() == this, "list should be set for chunk");
+ 230   assert(tail() != NULL, "The tree list is embedded in the first chunk");
+ 231   // which means that the list can never be empty.
+ 232   // This is expensive for metaspace
+ 233   assert(!FLSVerifyDictionary || !this-&gt;verify_chunk_in_free_list(chunk), "Double entry");
+ 234   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 235   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 236 
+ 237   Chunk_t* fc = tail();
+ 238   fc-&gt;link_after(chunk);
+ 239   this-&gt;link_tail(chunk);
+ 240 
+ 241   assert(!tail() || size() == tail()-&gt;size(), "Wrong sized chunk in list");
+ 242   FreeList_t::increment_count();
+ 243   debug_only(this-&gt;increment_returned_bytes_by(chunk-&gt;size()*sizeof(HeapWord));)
+ 244   assert(head() == NULL || head()-&gt;prev() == NULL, "list invariant");
+ 245   assert(tail() == NULL || tail()-&gt;next() == NULL, "list invariant");
+ 246 }
+ 247 
+ 248 template &lt;class Chunk_t, class FreeList_t&gt;
+ 249 void TreeChunk&lt;Chunk_t, FreeList_t&gt;::assert_is_mangled() const {
+ 250   assert((ZapUnusedHeapArea &amp;&amp;
+ 251           SpaceMangler::is_mangled((HeapWord*) Chunk_t::size_addr()) &amp;&amp;
+ 252           SpaceMangler::is_mangled((HeapWord*) Chunk_t::prev_addr()) &amp;&amp;
+ 253           SpaceMangler::is_mangled((HeapWord*) Chunk_t::next_addr())) ||
+ 254           (size() == 0 &amp;&amp; prev() == NULL &amp;&amp; next() == NULL),
+ 255     "Space should be clear or mangled");
+ 256 }
+ 257 
+ 258 template &lt;class Chunk_t, class FreeList_t&gt;
+ 259 TreeChunk&lt;Chunk_t, FreeList_t&gt;* TreeList&lt;Chunk_t, FreeList_t&gt;::head_as_TreeChunk() {
+ 260   assert(head() == NULL || (TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(head())-&gt;list() == this),
+ 261     "Wrong type of chunk?");
+ 262   return TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(head());
+ 263 }
+ 264 
+ 265 template &lt;class Chunk_t, class FreeList_t&gt;
+ 266 TreeChunk&lt;Chunk_t, FreeList_t&gt;* TreeList&lt;Chunk_t, FreeList_t&gt;::first_available() {
+ 267   assert(head() != NULL, "The head of the list cannot be NULL");
+ 268   Chunk_t* fc = head()-&gt;next();
+ 269   TreeChunk&lt;Chunk_t, FreeList_t&gt;* retTC;
+ 270   if (fc == NULL) {
+ 271     retTC = head_as_TreeChunk();
+ 272   } else {
+ 273     retTC = TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(fc);
+ 274   }
+ 275   assert(retTC-&gt;list() == this, "Wrong type of chunk.");
+ 276   return retTC;
+ 277 }
+ 278 
+ 279 // Returns the block with the largest heap address amongst
+ 280 // those in the list for this size; potentially slow and expensive,
+ 281 // use with caution!
+ 282 template &lt;class Chunk_t, class FreeList_t&gt;
+ 283 TreeChunk&lt;Chunk_t, FreeList_t&gt;* TreeList&lt;Chunk_t, FreeList_t&gt;::largest_address() {
+ 284   assert(head() != NULL, "The head of the list cannot be NULL");
+ 285   Chunk_t* fc = head()-&gt;next();
+ 286   TreeChunk&lt;Chunk_t, FreeList_t&gt;* retTC;
+ 287   if (fc == NULL) {
+ 288     retTC = head_as_TreeChunk();
+ 289   } else {
+ 290     // walk down the list and return the one with the highest
+ 291     // heap address among chunks of this size.
+ 292     Chunk_t* last = fc;
+ 293     while (fc-&gt;next() != NULL) {
+ 294       if ((HeapWord*)last &lt; (HeapWord*)fc) {
+ 295         last = fc;
+ 296       }
+ 297       fc = fc-&gt;next();
+ 298     }
+ 299     retTC = TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(last);
+ 300   }
+ 301   assert(retTC-&gt;list() == this, "Wrong type of chunk.");
+ 302   return retTC;
+ 303 }
+ 304 
+ 305 template &lt;class Chunk_t, class FreeList_t&gt;
+ 306 BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::BinaryTreeDictionary(MemRegion mr) {
+ 307   assert((mr.byte_size() &gt; min_size()), "minimum chunk size");
+ 308 
+ 309   reset(mr);
+ 310   assert(root()-&gt;left() == NULL, "reset check failed");
+ 311   assert(root()-&gt;right() == NULL, "reset check failed");
+ 312   assert(root()-&gt;head()-&gt;next() == NULL, "reset check failed");
+ 313   assert(root()-&gt;head()-&gt;prev() == NULL, "reset check failed");
+ 314   assert(total_size() == root()-&gt;size(), "reset check failed");
+ 315   assert(total_free_blocks() == 1, "reset check failed");
+ 316 }
+ 317 
+ 318 template &lt;class Chunk_t, class FreeList_t&gt;
+ 319 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::inc_total_size(size_t inc) {
+ 320   _total_size = _total_size + inc;
+ 321 }
+ 322 
+ 323 template &lt;class Chunk_t, class FreeList_t&gt;
+ 324 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::dec_total_size(size_t dec) {
+ 325   _total_size = _total_size - dec;
+ 326 }
+ 327 
+ 328 template &lt;class Chunk_t, class FreeList_t&gt;
+ 329 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::reset(MemRegion mr) {
+ 330   assert((mr.byte_size() &gt; min_size()), "minimum chunk size");
+ 331   set_root(TreeList&lt;Chunk_t, FreeList_t&gt;::as_TreeList(mr.start(), mr.word_size()));
+ 332   set_total_size(mr.word_size());
+ 333   set_total_free_blocks(1);
+ 334 }
+ 335 
+ 336 template &lt;class Chunk_t, class FreeList_t&gt;
+ 337 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::reset(HeapWord* addr, size_t byte_size) {
+ 338   MemRegion mr(addr, heap_word_size(byte_size));
+ 339   reset(mr);
+ 340 }
+ 341 
+ 342 template &lt;class Chunk_t, class FreeList_t&gt;
+ 343 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::reset() {
+ 344   set_root(NULL);
+ 345   set_total_size(0);
+ 346   set_total_free_blocks(0);
+ 347 }
+ 348 
+ 349 // Get a free block of size at least size from tree, or NULL.
+ 350 template &lt;class Chunk_t, class FreeList_t&gt;
+ 351 TreeChunk&lt;Chunk_t, FreeList_t&gt;*
+ 352 BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::get_chunk_from_tree(size_t size)
+ 353 {
+ 354   TreeList&lt;Chunk_t, FreeList_t&gt; *curTL, *prevTL;
+ 355   TreeChunk&lt;Chunk_t, FreeList_t&gt;* retTC = NULL;
+ 356 
+ 357   assert((size &gt;= min_size()), "minimum chunk size");
+ 358   if (FLSVerifyDictionary) {
+ 359     verify_tree();
+ 360   }
+ 361   // starting at the root, work downwards trying to find match.
+ 362   // Remember the last node of size too great or too small.
+ 363   for (prevTL = curTL = root(); curTL != NULL;) {
+ 364     if (curTL-&gt;size() == size) {        // exact match
+ 365       break;
+ 366     }
+ 367     prevTL = curTL;
+ 368     if (curTL-&gt;size() &lt; size) {        // proceed to right sub-tree
+ 369       curTL = curTL-&gt;right();
+ 370     } else {                           // proceed to left sub-tree
+ 371       assert(curTL-&gt;size() &gt; size, "size inconsistency");
+ 372       curTL = curTL-&gt;left();
+ 373     }
+ 374   }
+ 375   if (curTL == NULL) { // couldn't find exact match
+ 376 
+ 377     // try and find the next larger size by walking back up the search path
+ 378     for (curTL = prevTL; curTL != NULL;) {
+ 379       if (curTL-&gt;size() &gt;= size) break;
+ 380       else curTL = curTL-&gt;parent();
+ 381     }
+ 382     assert(curTL == NULL || curTL-&gt;count() &gt; 0,
+ 383       "An empty list should not be in the tree");
+ 384   }
+ 385   if (curTL != NULL) {
+ 386     assert(curTL-&gt;size() &gt;= size, "size inconsistency");
+ 387 
+ 388     curTL = curTL-&gt;get_better_list(this);
+ 389 
+ 390     retTC = curTL-&gt;first_available();
+ 391     assert((retTC != NULL) &amp;&amp; (curTL-&gt;count() &gt; 0),
+ 392       "A list in the binary tree should not be NULL");
+ 393     assert(retTC-&gt;size() &gt;= size,
+ 394       "A chunk of the wrong size was found");
+ 395     remove_chunk_from_tree(retTC);
+ 396     assert(retTC-&gt;is_free(), "Header is not marked correctly");
+ 397   }
+ 398 
+ 399   if (FLSVerifyDictionary) {
+ 400     verify();
+ 401   }
+ 402   return retTC;
+ 403 }
+ 404 
+ 405 template &lt;class Chunk_t, class FreeList_t&gt;
+ 406 TreeList&lt;Chunk_t, FreeList_t&gt;* BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::find_list(size_t size) const {
+ 407   TreeList&lt;Chunk_t, FreeList_t&gt;* curTL;
+ 408   for (curTL = root(); curTL != NULL;) {
+ 409     if (curTL-&gt;size() == size) {        // exact match
+ 410       break;
+ 411     }
+ 412 
+ 413     if (curTL-&gt;size() &lt; size) {        // proceed to right sub-tree
+ 414       curTL = curTL-&gt;right();
+ 415     } else {                           // proceed to left sub-tree
+ 416       assert(curTL-&gt;size() &gt; size, "size inconsistency");
+ 417       curTL = curTL-&gt;left();
+ 418     }
+ 419   }
+ 420   return curTL;
+ 421 }
+ 422 
+ 423 
+ 424 template &lt;class Chunk_t, class FreeList_t&gt;
+ 425 bool BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::verify_chunk_in_free_list(Chunk_t* tc) const {
+ 426   size_t size = tc-&gt;size();
+ 427   TreeList&lt;Chunk_t, FreeList_t&gt;* tl = find_list(size);
+ 428   if (tl == NULL) {
+ 429     return false;
+ 430   } else {
+ 431     return tl-&gt;verify_chunk_in_free_list(tc);
+ 432   }
+ 433 }
+ 434 
+ 435 template &lt;class Chunk_t, class FreeList_t&gt;
+ 436 Chunk_t* BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::find_largest_dict() const {
+ 437   TreeList&lt;Chunk_t, FreeList_t&gt; *curTL = root();
+ 438   if (curTL != NULL) {
+ 439     while(curTL-&gt;right() != NULL) curTL = curTL-&gt;right();
+ 440     return curTL-&gt;largest_address();
+ 441   } else {
+ 442     return NULL;
+ 443   }
+ 444 }
+ 445 
+ 446 // Remove the current chunk from the tree.  If it is not the last
+ 447 // chunk in a list on a tree node, just unlink it.
+ 448 // If it is the last chunk in the list (the next link is NULL),
+ 449 // remove the node and repair the tree.
+ 450 template &lt;class Chunk_t, class FreeList_t&gt;
+ 451 TreeChunk&lt;Chunk_t, FreeList_t&gt;*
+ 452 BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::remove_chunk_from_tree(TreeChunk&lt;Chunk_t, FreeList_t&gt;* tc) {
+ 453   assert(tc != NULL, "Should not call with a NULL chunk");
+ 454   assert(tc-&gt;is_free(), "Header is not marked correctly");
+ 455 
+ 456   TreeList&lt;Chunk_t, FreeList_t&gt; *newTL, *parentTL;
+ 457   TreeChunk&lt;Chunk_t, FreeList_t&gt;* retTC;
+ 458   TreeList&lt;Chunk_t, FreeList_t&gt;* tl = tc-&gt;list();
+ 459   debug_only(
+ 460     bool removing_only_chunk = false;
+ 461     if (tl == _root) {
+ 462       if ((_root-&gt;left() == NULL) &amp;&amp; (_root-&gt;right() == NULL)) {
+ 463         if (_root-&gt;count() == 1) {
+ 464           assert(_root-&gt;head() == tc, "Should only be this one chunk");
+ 465           removing_only_chunk = true;
+ 466         }
+ 467       }
+ 468     }
+ 469   )
+ 470   assert(tl != NULL, "List should be set");
+ 471   assert(tl-&gt;parent() == NULL || tl == tl-&gt;parent()-&gt;left() ||
+ 472          tl == tl-&gt;parent()-&gt;right(), "list is inconsistent");
+ 473 
+ 474   bool complicated_splice = false;
+ 475 
+ 476   retTC = tc;
+ 477   // Removing this chunk can have the side effect of changing the node
+ 478   // (TreeList&lt;Chunk_t, FreeList_t&gt;*) in the tree.  If the node is the root, update it.
+ 479   TreeList&lt;Chunk_t, FreeList_t&gt;* replacementTL = tl-&gt;remove_chunk_replace_if_needed(tc);
+ 480   assert(tc-&gt;is_free(), "Chunk should still be free");
+ 481   assert(replacementTL-&gt;parent() == NULL ||
+ 482          replacementTL == replacementTL-&gt;parent()-&gt;left() ||
+ 483          replacementTL == replacementTL-&gt;parent()-&gt;right(),
+ 484          "list is inconsistent");
+ 485   if (tl == root()) {
+ 486     assert(replacementTL-&gt;parent() == NULL, "Incorrectly replacing root");
+ 487     set_root(replacementTL);
+ 488   }
+ 489 #ifdef ASSERT
+ 490     if (tl != replacementTL) {
+ 491       assert(replacementTL-&gt;head() != NULL,
+ 492         "If the tree list was replaced, it should not be a NULL list");
+ 493       TreeList&lt;Chunk_t, FreeList_t&gt;* rhl = replacementTL-&gt;head_as_TreeChunk()-&gt;list();
+ 494       TreeList&lt;Chunk_t, FreeList_t&gt;* rtl =
+ 495         TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(replacementTL-&gt;tail())-&gt;list();
+ 496       assert(rhl == replacementTL, "Broken head");
+ 497       assert(rtl == replacementTL, "Broken tail");
+ 498       assert(replacementTL-&gt;size() == tc-&gt;size(),  "Broken size");
+ 499     }
+ 500 #endif
+ 501 
+ 502   // Does the tree need to be repaired?
+ 503   if (replacementTL-&gt;count() == 0) {
+ 504     assert(replacementTL-&gt;head() == NULL &amp;&amp;
+ 505            replacementTL-&gt;tail() == NULL, "list count is incorrect");
+ 506     // Find the replacement node for the (soon to be empty) node being removed.
+ 507     // if we have a single (or no) child, splice child in our stead
+ 508     if (replacementTL-&gt;left() == NULL) {
+ 509       // left is NULL so pick right.  right may also be NULL.
+ 510       newTL = replacementTL-&gt;right();
+ 511       debug_only(replacementTL-&gt;clear_right();)
+ 512     } else if (replacementTL-&gt;right() == NULL) {
+ 513       // right is NULL
+ 514       newTL = replacementTL-&gt;left();
+ 515       debug_only(replacementTL-&gt;clear_left();)
+ 516     } else {  // we have both children, so, by patriarchal convention,
+ 517               // my replacement is least node in right sub-tree
+ 518       complicated_splice = true;
+ 519       newTL = remove_tree_minimum(replacementTL-&gt;right());
+ 520       assert(newTL != NULL &amp;&amp; newTL-&gt;left() == NULL &amp;&amp;
+ 521              newTL-&gt;right() == NULL, "sub-tree minimum exists");
+ 522     }
+ 523     // newTL is the replacement for the (soon to be empty) node.
+ 524     // newTL may be NULL.
+ 525     // should verify; we just cleanly excised our replacement
+ 526     if (FLSVerifyDictionary) {
+ 527       verify_tree();
+ 528     }
+ 529     // first make newTL my parent's child
+ 530     if ((parentTL = replacementTL-&gt;parent()) == NULL) {
+ 531       // newTL should be root
+ 532       assert(tl == root(), "Incorrectly replacing root");
+ 533       set_root(newTL);
+ 534       if (newTL != NULL) {
+ 535         newTL-&gt;clear_parent();
+ 536       }
+ 537     } else if (parentTL-&gt;right() == replacementTL) {
+ 538       // replacementTL is a right child
+ 539       parentTL-&gt;set_right(newTL);
+ 540     } else {                                // replacementTL is a left child
+ 541       assert(parentTL-&gt;left() == replacementTL, "should be left child");
+ 542       parentTL-&gt;set_left(newTL);
+ 543     }
+ 544     debug_only(replacementTL-&gt;clear_parent();)
+ 545     if (complicated_splice) {  // we need newTL to get replacementTL's
+ 546                               // two children
+ 547       assert(newTL != NULL &amp;&amp;
+ 548              newTL-&gt;left() == NULL &amp;&amp; newTL-&gt;right() == NULL,
+ 549             "newTL should not have encumbrances from the past");
+ 550       // we'd like to assert as below:
+ 551       // assert(replacementTL-&gt;left() != NULL &amp;&amp; replacementTL-&gt;right() != NULL,
+ 552       //       "else !complicated_splice");
+ 553       // ... however, the above assertion is too strong because we aren't
+ 554       // guaranteed that replacementTL-&gt;right() is still NULL.
+ 555       // Recall that we removed
+ 556       // the right sub-tree minimum from replacementTL.
+ 557       // That may well have been its right
+ 558       // child! So we'll just assert half of the above:
+ 559       assert(replacementTL-&gt;left() != NULL, "else !complicated_splice");
+ 560       newTL-&gt;set_left(replacementTL-&gt;left());
+ 561       newTL-&gt;set_right(replacementTL-&gt;right());
+ 562       debug_only(
+ 563         replacementTL-&gt;clear_right();
+ 564         replacementTL-&gt;clear_left();
+ 565       )
+ 566     }
+ 567     assert(replacementTL-&gt;right() == NULL &amp;&amp;
+ 568            replacementTL-&gt;left() == NULL &amp;&amp;
+ 569            replacementTL-&gt;parent() == NULL,
+ 570         "delete without encumbrances");
+ 571   }
+ 572 
+ 573   assert(total_size() &gt;= retTC-&gt;size(), "Incorrect total size");
+ 574   dec_total_size(retTC-&gt;size());     // size book-keeping
+ 575   assert(total_free_blocks() &gt; 0, "Incorrect total count");
+ 576   set_total_free_blocks(total_free_blocks() - 1);
+ 577 
+ 578   assert(retTC != NULL, "null chunk?");
+ 579   assert(retTC-&gt;prev() == NULL &amp;&amp; retTC-&gt;next() == NULL,
+ 580          "should return without encumbrances");
+ 581   if (FLSVerifyDictionary) {
+ 582     verify_tree();
+ 583   }
+ 584   assert(!removing_only_chunk || _root == NULL, "root should be NULL");
+ 585   return TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(retTC);
+ 586 }
+ 587 
+ 588 // Remove the leftmost node (lm) in the tree and return it.
+ 589 // If lm has a right child, link it to the left node of
+ 590 // the parent of lm.
+ 591 template &lt;class Chunk_t, class FreeList_t&gt;
+ 592 TreeList&lt;Chunk_t, FreeList_t&gt;* BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::remove_tree_minimum(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) {
+ 593   assert(tl != NULL &amp;&amp; tl-&gt;parent() != NULL, "really need a proper sub-tree");
+ 594   // locate the subtree minimum by walking down left branches
+ 595   TreeList&lt;Chunk_t, FreeList_t&gt;* curTL = tl;
+ 596   for (; curTL-&gt;left() != NULL; curTL = curTL-&gt;left());
+ 597   // obviously curTL now has at most one child, a right child
+ 598   if (curTL != root()) {  // Should this test just be removed?
+ 599     TreeList&lt;Chunk_t, FreeList_t&gt;* parentTL = curTL-&gt;parent();
+ 600     if (parentTL-&gt;left() == curTL) { // curTL is a left child
+ 601       parentTL-&gt;set_left(curTL-&gt;right());
+ 602     } else {
+ 603       // If the list tl has no left child, then curTL may be
+ 604       // the right child of parentTL.
+ 605       assert(parentTL-&gt;right() == curTL, "should be a right child");
+ 606       parentTL-&gt;set_right(curTL-&gt;right());
+ 607     }
+ 608   } else {
+ 609     // The only use of this method would not pass the root of the
+ 610     // tree (as indicated by the assertion above that the tree list
+ 611     // has a parent) but the specification does not explicitly exclude the
+ 612     // passing of the root so accommodate it.
+ 613     set_root(NULL);
+ 614   }
+ 615   debug_only(
+ 616     curTL-&gt;clear_parent();  // Test if this needs to be cleared
+ 617     curTL-&gt;clear_right();    // recall, above, left child is already null
+ 618   )
+ 619   // we just excised a (non-root) node, we should still verify all tree invariants
+ 620   if (FLSVerifyDictionary) {
+ 621     verify_tree();
+ 622   }
+ 623   return curTL;
+ 624 }
+ 625 
+ 626 template &lt;class Chunk_t, class FreeList_t&gt;
+ 627 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::insert_chunk_in_tree(Chunk_t* fc) {
+ 628   TreeList&lt;Chunk_t, FreeList_t&gt; *curTL, *prevTL;
+ 629   size_t size = fc-&gt;size();
+ 630 
+ 631   assert((size &gt;= min_size()),
+ 632          SIZE_FORMAT " is too small to be a TreeChunk&lt;Chunk_t, FreeList_t&gt; " SIZE_FORMAT,
+ 633          size, min_size());
+ 634   if (FLSVerifyDictionary) {
+ 635     verify_tree();
+ 636   }
+ 637 
+ 638   fc-&gt;clear_next();
+ 639   fc-&gt;link_prev(NULL);
+ 640 
+ 641   // work down from the _root, looking for insertion point
+ 642   for (prevTL = curTL = root(); curTL != NULL;) {
+ 643     if (curTL-&gt;size() == size)  // exact match
+ 644       break;
+ 645     prevTL = curTL;
+ 646     if (curTL-&gt;size() &gt; size) { // follow left branch
+ 647       curTL = curTL-&gt;left();
+ 648     } else {                    // follow right branch
+ 649       assert(curTL-&gt;size() &lt; size, "size inconsistency");
+ 650       curTL = curTL-&gt;right();
+ 651     }
+ 652   }
+ 653   TreeChunk&lt;Chunk_t, FreeList_t&gt;* tc = TreeChunk&lt;Chunk_t, FreeList_t&gt;::as_TreeChunk(fc);
+ 654   // This chunk is being returned to the binary tree.  Its embedded
+ 655   // TreeList&lt;Chunk_t, FreeList_t&gt; should be unused at this point.
+ 656   tc-&gt;initialize();
+ 657   if (curTL != NULL) {          // exact match
+ 658     tc-&gt;set_list(curTL);
+ 659     curTL-&gt;return_chunk_at_tail(tc);
+ 660   } else {                     // need a new node in tree
+ 661     tc-&gt;clear_next();
+ 662     tc-&gt;link_prev(NULL);
+ 663     TreeList&lt;Chunk_t, FreeList_t&gt;* newTL = TreeList&lt;Chunk_t, FreeList_t&gt;::as_TreeList(tc);
+ 664     assert(((TreeChunk&lt;Chunk_t, FreeList_t&gt;*)tc)-&gt;list() == newTL,
+ 665       "List was not initialized correctly");
+ 666     if (prevTL == NULL) {      // we are the only tree node
+ 667       assert(root() == NULL, "control point invariant");
+ 668       set_root(newTL);
+ 669     } else {                   // insert under prevTL ...
+ 670       if (prevTL-&gt;size() &lt; size) {   // am right child
+ 671         assert(prevTL-&gt;right() == NULL, "control point invariant");
+ 672         prevTL-&gt;set_right(newTL);
+ 673       } else {                       // am left child
+ 674         assert(prevTL-&gt;size() &gt; size &amp;&amp; prevTL-&gt;left() == NULL, "cpt pt inv");
+ 675         prevTL-&gt;set_left(newTL);
+ 676       }
+ 677     }
+ 678   }
+ 679   assert(tc-&gt;list() != NULL, "Tree list should be set");
+ 680 
+ 681   inc_total_size(size);
+ 682   // Method 'total_size_in_tree' walks through the every block in the
+ 683   // tree, so it can cause significant performance loss if there are
+ 684   // many blocks in the tree
+ 685   assert(!FLSVerifyDictionary || total_size_in_tree(root()) == total_size(), "_total_size inconsistency");
+ 686   set_total_free_blocks(total_free_blocks() + 1);
+ 687   if (FLSVerifyDictionary) {
+ 688     verify_tree();
+ 689   }
+ 690 }
+ 691 
+ 692 template &lt;class Chunk_t, class FreeList_t&gt;
+ 693 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::max_chunk_size() const {
+ 694   verify_par_locked();
+ 695   TreeList&lt;Chunk_t, FreeList_t&gt;* tc = root();
+ 696   if (tc == NULL) return 0;
+ 697   for (; tc-&gt;right() != NULL; tc = tc-&gt;right());
+ 698   return tc-&gt;size();
+ 699 }
+ 700 
+ 701 template &lt;class Chunk_t, class FreeList_t&gt;
+ 702 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::total_list_length(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) const {
+ 703   size_t res;
+ 704   res = tl-&gt;count();
+ 705 #ifdef ASSERT
+ 706   size_t cnt;
+ 707   Chunk_t* tc = tl-&gt;head();
+ 708   for (cnt = 0; tc != NULL; tc = tc-&gt;next(), cnt++);
+ 709   assert(res == cnt, "The count is not being maintained correctly");
+ 710 #endif
+ 711   return res;
+ 712 }
+ 713 
+ 714 template &lt;class Chunk_t, class FreeList_t&gt;
+ 715 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::total_size_in_tree(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) const {
+ 716   if (tl == NULL)
+ 717     return 0;
+ 718   return (tl-&gt;size() * total_list_length(tl)) +
+ 719          total_size_in_tree(tl-&gt;left())    +
+ 720          total_size_in_tree(tl-&gt;right());
+ 721 }
+ 722 
+ 723 template &lt;class Chunk_t, class FreeList_t&gt;
+ 724 double BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::sum_of_squared_block_sizes(TreeList&lt;Chunk_t, FreeList_t&gt;* const tl) const {
+ 725   if (tl == NULL) {
+ 726     return 0.0;
+ 727   }
+ 728   double size = (double)(tl-&gt;size());
+ 729   double curr = size * size * total_list_length(tl);
+ 730   curr += sum_of_squared_block_sizes(tl-&gt;left());
+ 731   curr += sum_of_squared_block_sizes(tl-&gt;right());
+ 732   return curr;
+ 733 }
+ 734 
+ 735 template &lt;class Chunk_t, class FreeList_t&gt;
+ 736 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::total_free_blocks_in_tree(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) const {
+ 737   if (tl == NULL)
+ 738     return 0;
+ 739   return total_list_length(tl) +
+ 740          total_free_blocks_in_tree(tl-&gt;left()) +
+ 741          total_free_blocks_in_tree(tl-&gt;right());
+ 742 }
+ 743 
+ 744 template &lt;class Chunk_t, class FreeList_t&gt;
+ 745 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::num_free_blocks() const {
+ 746   assert(total_free_blocks_in_tree(root()) == total_free_blocks(),
+ 747          "_total_free_blocks inconsistency");
+ 748   return total_free_blocks();
+ 749 }
+ 750 
+ 751 template &lt;class Chunk_t, class FreeList_t&gt;
+ 752 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::tree_height_helper(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) const {
+ 753   if (tl == NULL)
+ 754     return 0;
+ 755   return 1 + MAX2(tree_height_helper(tl-&gt;left()),
+ 756                   tree_height_helper(tl-&gt;right()));
+ 757 }
+ 758 
+ 759 template &lt;class Chunk_t, class FreeList_t&gt;
+ 760 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::tree_height() const {
+ 761   return tree_height_helper(root());
+ 762 }
+ 763 
+ 764 template &lt;class Chunk_t, class FreeList_t&gt;
+ 765 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::total_nodes_helper(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) const {
+ 766   if (tl == NULL) {
+ 767     return 0;
+ 768   }
+ 769   return 1 + total_nodes_helper(tl-&gt;left()) +
+ 770     total_nodes_helper(tl-&gt;right());
+ 771 }
+ 772 
+ 773 // Searches the tree for a chunk that ends at the
+ 774 // specified address.
+ 775 template &lt;class Chunk_t, class FreeList_t&gt;
+ 776 class EndTreeSearchClosure : public DescendTreeSearchClosure&lt;Chunk_t, FreeList_t&gt; {
+ 777   HeapWord* _target;
+ 778   Chunk_t* _found;
+ 779 
+ 780  public:
+ 781   EndTreeSearchClosure(HeapWord* target) : _target(target), _found(NULL) {}
+ 782   bool do_list(FreeList_t* fl) {
+ 783     Chunk_t* item = fl-&gt;head();
+ 784     while (item != NULL) {
+ 785       if (item-&gt;end() == (uintptr_t*) _target) {
+ 786         _found = item;
+ 787         return true;
+ 788       }
+ 789       item = item-&gt;next();
+ 790     }
+ 791     return false;
+ 792   }
+ 793   Chunk_t* found() { return _found; }
+ 794 };
+ 795 
+ 796 template &lt;class Chunk_t, class FreeList_t&gt;
+ 797 Chunk_t* BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::find_chunk_ends_at(HeapWord* target) const {
+ 798   EndTreeSearchClosure&lt;Chunk_t, FreeList_t&gt; etsc(target);
+ 799   bool found_target = etsc.do_tree(root());
+ 800   assert(found_target || etsc.found() == NULL, "Consistency check");
+ 801   assert(!found_target || etsc.found() != NULL, "Consistency check");
+ 802   return etsc.found();
+ 803 }
+ 804 
+ 805 // Closures and methods for calculating total bytes returned to the
+ 806 // free lists in the tree.
+ 807 #ifndef PRODUCT
+ 808 template &lt;class Chunk_t, class FreeList_t&gt;
+ 809 class InitializeDictReturnedBytesClosure : public AscendTreeCensusClosure&lt;Chunk_t, FreeList_t&gt; {
+ 810    public:
+ 811   void do_list(FreeList_t* fl) {
+ 812     fl-&gt;set_returned_bytes(0);
+ 813   }
+ 814 };
+ 815 
+ 816 template &lt;class Chunk_t, class FreeList_t&gt;
+ 817 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::initialize_dict_returned_bytes() {
+ 818   InitializeDictReturnedBytesClosure&lt;Chunk_t, FreeList_t&gt; idrb;
+ 819   idrb.do_tree(root());
+ 820 }
+ 821 
+ 822 template &lt;class Chunk_t, class FreeList_t&gt;
+ 823 class ReturnedBytesClosure : public AscendTreeCensusClosure&lt;Chunk_t, FreeList_t&gt; {
+ 824   size_t _dict_returned_bytes;
+ 825  public:
+ 826   ReturnedBytesClosure() { _dict_returned_bytes = 0; }
+ 827   void do_list(FreeList_t* fl) {
+ 828     _dict_returned_bytes += fl-&gt;returned_bytes();
+ 829   }
+ 830   size_t dict_returned_bytes() { return _dict_returned_bytes; }
+ 831 };
+ 832 
+ 833 template &lt;class Chunk_t, class FreeList_t&gt;
+ 834 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::sum_dict_returned_bytes() {
+ 835   ReturnedBytesClosure&lt;Chunk_t, FreeList_t&gt; rbc;
+ 836   rbc.do_tree(root());
+ 837 
+ 838   return rbc.dict_returned_bytes();
+ 839 }
+ 840 
+ 841 // Count the number of entries in the tree.
+ 842 template &lt;class Chunk_t, class FreeList_t&gt;
+ 843 class treeCountClosure : public DescendTreeCensusClosure&lt;Chunk_t, FreeList_t&gt; {
+ 844  public:
+ 845   uint count;
+ 846   treeCountClosure(uint c) { count = c; }
+ 847   void do_list(FreeList_t* fl) {
+ 848     count++;
+ 849   }
+ 850 };
+ 851 
+ 852 template &lt;class Chunk_t, class FreeList_t&gt;
+ 853 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::total_count() {
+ 854   treeCountClosure&lt;Chunk_t, FreeList_t&gt; ctc(0);
+ 855   ctc.do_tree(root());
+ 856   return ctc.count;
+ 857 }
+ 858 
+ 859 template &lt;class Chunk_t, class FreeList_t&gt;
+ 860 Mutex* BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::par_lock() const {
+ 861   return _lock;
+ 862 }
+ 863 
+ 864 template &lt;class Chunk_t, class FreeList_t&gt;
+ 865 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::set_par_lock(Mutex* lock) {
+ 866   _lock = lock;
+ 867 }
+ 868 
+ 869 template &lt;class Chunk_t, class FreeList_t&gt;
+ 870 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::verify_par_locked() const {
+ 871 #ifdef ASSERT
+ 872   Thread* my_thread = Thread::current();
+ 873   if (my_thread-&gt;is_GC_task_thread()) {
+ 874     assert(par_lock() != NULL, "Should be using locking?");
+ 875     assert_lock_strong(par_lock());
+ 876   }
+ 877 #endif // ASSERT
+ 878 }
+ 879 #endif // PRODUCT
+ 880 
+ 881 // Print summary statistics
+ 882 template &lt;class Chunk_t, class FreeList_t&gt;
+ 883 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::report_statistics(outputStream* st) const {
+ 884   verify_par_locked();
+ 885   st-&gt;print_cr("Statistics for BinaryTreeDictionary:");
+ 886   st-&gt;print_cr("------------------------------------");
+ 887   size_t total_size = total_chunk_size(debug_only(NULL));
+ 888   size_t free_blocks = num_free_blocks();
+ 889   st-&gt;print_cr("Total Free Space: " SIZE_FORMAT, total_size);
+ 890   st-&gt;print_cr("Max   Chunk Size: " SIZE_FORMAT, max_chunk_size());
+ 891   st-&gt;print_cr("Number of Blocks: " SIZE_FORMAT, free_blocks);
+ 892   if (free_blocks &gt; 0) {
+ 893     st-&gt;print_cr("Av.  Block  Size: " SIZE_FORMAT, total_size/free_blocks);
+ 894   }
+ 895   st-&gt;print_cr("Tree      Height: " SIZE_FORMAT, tree_height());
+ 896 }
+ 897 
+ 898 template &lt;class Chunk_t, class FreeList_t&gt;
+ 899 class PrintFreeListsClosure : public AscendTreeCensusClosure&lt;Chunk_t, FreeList_t&gt; {
+ 900   outputStream* _st;
+ 901   int _print_line;
+ 902 
+ 903  public:
+ 904   PrintFreeListsClosure(outputStream* st) {
+ 905     _st = st;
+ 906     _print_line = 0;
+ 907   }
+ 908   void do_list(FreeList_t* fl) {
+ 909     if (++_print_line &gt;= 40) {
+ 910       FreeList_t::print_labels_on(_st, "size");
+ 911       _print_line = 0;
+ 912     }
+ 913     fl-&gt;print_on(_st);
+ 914     size_t sz = fl-&gt;size();
+ 915     for (Chunk_t* fc = fl-&gt;head(); fc != NULL;
+ 916          fc = fc-&gt;next()) {
+ 917       _st-&gt;print_cr("\t[" PTR_FORMAT "," PTR_FORMAT ")  %s",
+ 918                     p2i(fc), p2i((HeapWord*)fc + sz),
+ 919                     fc-&gt;cantCoalesce() ? "\t CC" : "");
+ 920     }
+ 921   }
+ 922 };
+ 923 
+ 924 template &lt;class Chunk_t, class FreeList_t&gt;
+ 925 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::print_free_lists(outputStream* st) const {
+ 926 
+ 927   FreeList_t::print_labels_on(st, "size");
+ 928   PrintFreeListsClosure&lt;Chunk_t, FreeList_t&gt; pflc(st);
+ 929   pflc.do_tree(root());
+ 930 }
+ 931 
+ 932 // Verify the following tree invariants:
+ 933 // . _root has no parent
+ 934 // . parent and child point to each other
+ 935 // . each node's key correctly related to that of its child(ren)
+ 936 template &lt;class Chunk_t, class FreeList_t&gt;
+ 937 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::verify_tree() const {
+ 938   guarantee(root() == NULL || total_free_blocks() == 0 ||
+ 939     total_size() != 0, "_total_size shouldn't be 0?");
+ 940   guarantee(root() == NULL || root()-&gt;parent() == NULL, "_root shouldn't have parent");
+ 941   verify_tree_helper(root());
+ 942 }
+ 943 
+ 944 template &lt;class Chunk_t, class FreeList_t&gt;
+ 945 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::verify_prev_free_ptrs(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) {
+ 946   size_t ct = 0;
+ 947   for (Chunk_t* curFC = tl-&gt;head(); curFC != NULL; curFC = curFC-&gt;next()) {
+ 948     ct++;
+ 949     assert(curFC-&gt;prev() == NULL || curFC-&gt;prev()-&gt;is_free(),
+ 950       "Chunk should be free");
+ 951   }
+ 952   return ct;
+ 953 }
+ 954 
+ 955 // Note: this helper is recursive rather than iterative, so use with
+ 956 // caution on very deep trees; and watch out for stack overflow errors;
+ 957 // In general, to be used only for debugging.
+ 958 template &lt;class Chunk_t, class FreeList_t&gt;
+ 959 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::verify_tree_helper(TreeList&lt;Chunk_t, FreeList_t&gt;* tl) const {
+ 960   if (tl == NULL)
+ 961     return;
+ 962   guarantee(tl-&gt;size() != 0, "A list must has a size");
+ 963   guarantee(tl-&gt;left()  == NULL || tl-&gt;left()-&gt;parent()  == tl,
+ 964          "parent&lt;-/-&gt;left");
+ 965   guarantee(tl-&gt;right() == NULL || tl-&gt;right()-&gt;parent() == tl,
+ 966          "parent&lt;-/-&gt;right");;
+ 967   guarantee(tl-&gt;left() == NULL  || tl-&gt;left()-&gt;size()    &lt;  tl-&gt;size(),
+ 968          "parent !&gt; left");
+ 969   guarantee(tl-&gt;right() == NULL || tl-&gt;right()-&gt;size()   &gt;  tl-&gt;size(),
+ 970          "parent !&lt; left");
+ 971   guarantee(tl-&gt;head() == NULL || tl-&gt;head()-&gt;is_free(), "!Free");
+ 972   guarantee(tl-&gt;head() == NULL || tl-&gt;head_as_TreeChunk()-&gt;list() == tl,
+ 973     "list inconsistency");
+ 974   guarantee(tl-&gt;count() &gt; 0 || (tl-&gt;head() == NULL &amp;&amp; tl-&gt;tail() == NULL),
+ 975     "list count is inconsistent");
+ 976   guarantee(tl-&gt;count() &gt; 1 || tl-&gt;head() == tl-&gt;tail(),
+ 977     "list is incorrectly constructed");
+ 978   size_t count = verify_prev_free_ptrs(tl);
+ 979   guarantee(count == (size_t)tl-&gt;count(), "Node count is incorrect");
+ 980   if (tl-&gt;head() != NULL) {
+ 981     tl-&gt;head_as_TreeChunk()-&gt;verify_tree_chunk_list();
+ 982   }
+ 983   verify_tree_helper(tl-&gt;left());
+ 984   verify_tree_helper(tl-&gt;right());
+ 985 }
+ 986 
+ 987 template &lt;class Chunk_t, class FreeList_t&gt;
+ 988 void BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::verify() const {
+ 989   verify_tree();
+ 990   guarantee(total_size() == total_size_in_tree(root()), "Total Size inconsistency");
+ 991 }
+ 992 
+ 993 template &lt;class Chunk_t, class FreeList_t&gt;
+ 994 size_t BinaryTreeDictionary&lt;Chunk_t, FreeList_t&gt;::total_chunk_size(debug_only(const Mutex* lock)) const {
+ 995   debug_only(
+ 996     if (lock != NULL &amp;&amp; lock-&gt;owned_by_self()) {
+ 997       assert(total_size_in_tree(root()) == total_size(),
+ 998              "_total_size inconsistency");
+ 999     }
+1000   )
+1001   return total_size();
+1002 }
+1003 
+1004 #endif // SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
+</pre></body></html>

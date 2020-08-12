@@ -1,0 +1,211 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/arenaGrowthPolicy.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "memory/metaspace/arenaGrowthPolicy.hpp"
+  29 #include "memory/metaspace/chunkLevel.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 
+  32 namespace metaspace {
+  33 
+  34 // hard-coded chunk allocation sequences for various space types
+  35 //  (Note: when modifying this, don't add jumps of more than double the
+  36 //   last chunk size. There is a gtest testing this, see test_arenagrowthpolicy.cpp)
+  37 
+  38 static const chunklevel_t g_sequ_standard_non_class[] = {
+  39     chunklevel::CHUNK_LEVEL_4K,
+  40     chunklevel::CHUNK_LEVEL_4K,
+  41     chunklevel::CHUNK_LEVEL_4K,
+  42     chunklevel::CHUNK_LEVEL_8K,
+  43     chunklevel::CHUNK_LEVEL_16K
+  44     // .. repeat last
+  45 };
+  46 
+  47 static const chunklevel_t g_sequ_standard_class[] = {
+  48     chunklevel::CHUNK_LEVEL_2K,
+  49     chunklevel::CHUNK_LEVEL_2K,
+  50     chunklevel::CHUNK_LEVEL_4K,
+  51     chunklevel::CHUNK_LEVEL_8K,
+  52     chunklevel::CHUNK_LEVEL_16K
+  53     // .. repeat last
+  54 };
+  55 
+  56 static const chunklevel_t g_sequ_anon_non_class[] = {
+  57    chunklevel::CHUNK_LEVEL_1K,
+  58    // .. repeat last
+  59 };
+  60 
+  61 static const chunklevel_t g_sequ_anon_class[] = {
+  62     chunklevel::CHUNK_LEVEL_1K,
+  63     // .. repeat last
+  64 };
+  65 
+  66 static const chunklevel_t g_sequ_refl_non_class[] = {
+  67     chunklevel::CHUNK_LEVEL_2K,
+  68     chunklevel::CHUNK_LEVEL_1K
+  69     // .. repeat last
+  70 };
+  71 
+  72 static const chunklevel_t g_sequ_refl_class[] = {
+  73     chunklevel::CHUNK_LEVEL_1K,
+  74     // .. repeat last
+  75 };
+  76 
+  77 // Boot class loader: give it large chunks: beyond commit granule size
+  78 // (typically 64K) the costs for large chunks largely diminishes since
+  79 // they are committed on the fly.
+  80 static const chunklevel_t g_sequ_boot_non_class[] = {
+  81     chunklevel::CHUNK_LEVEL_4M,
+  82     chunklevel::CHUNK_LEVEL_1M
+  83     // .. repeat last
+  84 };
+  85 
+  86 static const chunklevel_t g_sequ_boot_class[] = {
+  87     chunklevel::CHUNK_LEVEL_256K
+  88     // .. repeat last
+  89 };
+  90 
+  91 const ArenaGrowthPolicy* ArenaGrowthPolicy::policy_for_space_type(Metaspace::MetaspaceType space_type, bool is_class) {
+  92 
+  93 #define DEFINE_CLASS_FOR_ARRAY(what) \
+  94   static ArenaGrowthPolicy chunk_alloc_sequence_##what (g_sequ_##what, sizeof(g_sequ_##what)/sizeof(chunklevel_t));
+  95 
+  96   DEFINE_CLASS_FOR_ARRAY(standard_non_class)
+  97   DEFINE_CLASS_FOR_ARRAY(standard_class)
+  98   DEFINE_CLASS_FOR_ARRAY(anon_non_class)
+  99   DEFINE_CLASS_FOR_ARRAY(anon_class)
+ 100   DEFINE_CLASS_FOR_ARRAY(refl_non_class)
+ 101   DEFINE_CLASS_FOR_ARRAY(refl_class)
+ 102   DEFINE_CLASS_FOR_ARRAY(boot_non_class)
+ 103   DEFINE_CLASS_FOR_ARRAY(boot_class)
+ 104 
+ 105   if (is_class) {
+ 106     switch(space_type) {
+ 107     case Metaspace::StandardMetaspaceType:          return &amp;chunk_alloc_sequence_standard_class;
+ 108     case Metaspace::ReflectionMetaspaceType:        return &amp;chunk_alloc_sequence_refl_class;
+ 109     case Metaspace::ClassMirrorHolderMetaspaceType: return &amp;chunk_alloc_sequence_anon_class;
+ 110     case Metaspace::BootMetaspaceType:              return &amp;chunk_alloc_sequence_boot_class;
+ 111     default: ShouldNotReachHere();
+ 112     }
+ 113   } else {
+ 114     switch(space_type) {
+ 115     case Metaspace::StandardMetaspaceType:          return &amp;chunk_alloc_sequence_standard_non_class;
+ 116     case Metaspace::ReflectionMetaspaceType:        return &amp;chunk_alloc_sequence_refl_non_class;
+ 117     case Metaspace::ClassMirrorHolderMetaspaceType: return &amp;chunk_alloc_sequence_anon_non_class;
+ 118     case Metaspace::BootMetaspaceType:              return &amp;chunk_alloc_sequence_boot_non_class;
+ 119     default: ShouldNotReachHere();
+ 120     }
+ 121   }
+ 122 
+ 123   return NULL;
+ 124 
+ 125 }
+ 126 
+ 127 } // namespace
+ 128 
+</pre></body></html>

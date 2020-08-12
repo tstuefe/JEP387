@@ -1,0 +1,193 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff test/hotspot/jtreg/runtime/CompressedOops </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java.sdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/jtreg/runtime/CompressedOops/CompressedClassSpaceSize.java</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  47         output.shouldContain("outside the allowed range")
+  48               .shouldHaveExitValue(1);
+  49 
+  50         // Invalid size of -1 should be handled correctly
+  51         pb = ProcessTools.createJavaProcessBuilder("-XX:CompressedClassSpaceSize=-1",
+  52                                                    "-version");
+  53         output = new OutputAnalyzer(pb.start());
+  54         output.shouldContain("Improperly specified VM option 'CompressedClassSpaceSize=-1'")
+  55               .shouldHaveExitValue(1);
+  56 
+  57 
+  58         // Maximum size is 3GB
+  59         pb = ProcessTools.createJavaProcessBuilder("-XX:CompressedClassSpaceSize=4g",
+  60                                                    "-version");
+  61         output = new OutputAnalyzer(pb.start());
+  62         output.shouldContain("outside the allowed range")
+  63               .shouldHaveExitValue(1);
+  64 
+  65 
+  66         // Make sure the minimum size is set correctly and printed
+
+
+  67         pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockDiagnosticVMOptions",
+  68                                                    "-XX:CompressedClassSpaceSize=1m",
+  69                                                    "-Xlog:gc+metaspace=trace",
+  70                                                    "-version");
+  71         output = new OutputAnalyzer(pb.start());
+<span class="changed">  72         output.shouldMatch("Compressed class space.*1048576")</span>
+  73               .shouldHaveExitValue(0);
+  74 
+  75 
+  76         // Make sure the maximum size is set correctly and printed
+  77         pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockDiagnosticVMOptions",
+  78                                                    "-XX:CompressedClassSpaceSize=3g",
+  79                                                    "-Xlog:gc+metaspace=trace",
+  80                                                    "-version");
+  81         output = new OutputAnalyzer(pb.start());
+  82         output.shouldMatch("Compressed class space.*3221225472")
+  83               .shouldHaveExitValue(0);
+  84 
+  85 
+  86         pb = ProcessTools.createJavaProcessBuilder("-XX:-UseCompressedClassPointers",
+  87                                                    "-XX:CompressedClassSpaceSize=1m",
+  88                                                    "-version");
+  89         output = new OutputAnalyzer(pb.start());
+  90         output.shouldContain("Setting CompressedClassSpaceSize has no effect when compressed class pointers are not used")
+  91               .shouldHaveExitValue(0);
+  92     }
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  47         output.shouldContain("outside the allowed range")
+  48               .shouldHaveExitValue(1);
+  49 
+  50         // Invalid size of -1 should be handled correctly
+  51         pb = ProcessTools.createJavaProcessBuilder("-XX:CompressedClassSpaceSize=-1",
+  52                                                    "-version");
+  53         output = new OutputAnalyzer(pb.start());
+  54         output.shouldContain("Improperly specified VM option 'CompressedClassSpaceSize=-1'")
+  55               .shouldHaveExitValue(1);
+  56 
+  57 
+  58         // Maximum size is 3GB
+  59         pb = ProcessTools.createJavaProcessBuilder("-XX:CompressedClassSpaceSize=4g",
+  60                                                    "-version");
+  61         output = new OutputAnalyzer(pb.start());
+  62         output.shouldContain("outside the allowed range")
+  63               .shouldHaveExitValue(1);
+  64 
+  65 
+  66         // Make sure the minimum size is set correctly and printed
+<span class="new">  67         // (Note: ccs size shall be rounded up to the minimum size of 4m since metaspace reservations</span>
+<span class="new">  68         //  are done in a 4m granularity. Note that this is **reserved** size and does not affect rss.</span>
+  69         pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockDiagnosticVMOptions",
+  70                                                    "-XX:CompressedClassSpaceSize=1m",
+  71                                                    "-Xlog:gc+metaspace=trace",
+  72                                                    "-version");
+  73         output = new OutputAnalyzer(pb.start());
+<span class="changed">  74         output.shouldMatch("Compressed class space.*4194304")</span>
+  75               .shouldHaveExitValue(0);
+  76 
+  77 
+  78         // Make sure the maximum size is set correctly and printed
+  79         pb = ProcessTools.createJavaProcessBuilder("-XX:+UnlockDiagnosticVMOptions",
+  80                                                    "-XX:CompressedClassSpaceSize=3g",
+  81                                                    "-Xlog:gc+metaspace=trace",
+  82                                                    "-version");
+  83         output = new OutputAnalyzer(pb.start());
+  84         output.shouldMatch("Compressed class space.*3221225472")
+  85               .shouldHaveExitValue(0);
+  86 
+  87 
+  88         pb = ProcessTools.createJavaProcessBuilder("-XX:-UseCompressedClassPointers",
+  89                                                    "-XX:CompressedClassSpaceSize=1m",
+  90                                                    "-version");
+  91         output = new OutputAnalyzer(pb.start());
+  92         output.shouldContain("Setting CompressedClassSpaceSize has no effect when compressed class pointers are not used")
+  93               .shouldHaveExitValue(0);
+  94     }
+</pre></td>
+</tr></table>
+<center><a href='../../../../../test/hotspot/jtreg/runtime/CommandLine/OptionsValidation/TestOptionsWithRanges.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

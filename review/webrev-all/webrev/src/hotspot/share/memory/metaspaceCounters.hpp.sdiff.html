@@ -1,0 +1,179 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/memory </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/metaspaceCounters.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspaceTracer.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspaceCounters.hpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACECOUNTERS_HPP
+  26 #define SHARE_MEMORY_METASPACECOUNTERS_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 
+  30 class MetaspacePerfCounters;
+  31 
+
+  32 class MetaspaceCounters: public AllStatic {
+  33   static MetaspacePerfCounters* _perf_counters;
+  34   static size_t used();
+  35   static size_t capacity();
+  36   static size_t max_capacity();
+  37 
+  38  public:
+  39   static void initialize_performance_counters();
+  40   static void update_performance_counters();
+  41 };
+  42 
+  43 class CompressedClassSpaceCounters: public AllStatic {
+  44   static MetaspacePerfCounters* _perf_counters;
+  45   static size_t used();
+  46   static size_t capacity();
+  47   static size_t max_capacity();
+  48 
+  49  public:
+  50   static void initialize_performance_counters();
+  51   static void update_performance_counters();
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_MEMORY_METASPACECOUNTERS_HPP
+  26 #define SHARE_MEMORY_METASPACECOUNTERS_HPP
+  27 
+  28 #include "memory/allocation.hpp"
+  29 
+  30 class MetaspacePerfCounters;
+  31 
+<span class="new">  32 // Todo: clean up after jep387, see JDK-8251392</span>
+  33 class MetaspaceCounters: public AllStatic {
+  34   static MetaspacePerfCounters* _perf_counters;
+  35   static size_t used();
+  36   static size_t capacity();
+  37   static size_t max_capacity();
+  38 
+  39  public:
+  40   static void initialize_performance_counters();
+  41   static void update_performance_counters();
+  42 };
+  43 
+  44 class CompressedClassSpaceCounters: public AllStatic {
+  45   static MetaspacePerfCounters* _perf_counters;
+  46   static size_t used();
+  47   static size_t capacity();
+  48   static size_t max_capacity();
+  49 
+  50  public:
+  51   static void initialize_performance_counters();
+  52   static void update_performance_counters();
+</pre></td>
+</tr></table>
+<center><a href='../../../../src/hotspot/share/memory/metaspaceCounters.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspaceTracer.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

@@ -1,0 +1,2885 @@
+# HG changeset patch
+# User stuefe
+# Date 1597217766 -7200
+#      Wed Aug 12 09:36:06 2020 +0200
+# Node ID f2c90ee1ff9bf1535bac0d6e46375f5d53b3b509
+# Parent  0d7947ba53894681c9bf55759d9c20ee3859e7bd
+imported patch jep387-misc.patch
+
+diff --git a/src/hotspot/share/classfile/classLoaderData.cpp b/src/hotspot/share/classfile/classLoaderData.cpp
+--- a/src/hotspot/share/classfile/classLoaderData.cpp
++++ b/src/hotspot/share/classfile/classLoaderData.cpp
+@@ -59,6 +59,7 @@
+ #include "logging/logStream.hpp"
+ #include "memory/allocation.inline.hpp"
+ #include "memory/metadataFactory.hpp"
++#include "memory/metaspace.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/access.inline.hpp"
+@@ -950,9 +951,11 @@
+   guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
+ 
+   // Verify the integrity of the allocated space.
++#ifdef ASSERT
+   if (metaspace_or_null() != NULL) {
+     metaspace_or_null()->verify();
+   }
++#endif
+ 
+   for (Klass* k = _klasses; k != NULL; k = k->next_link()) {
+     guarantee(k->class_loader_data() == this, "Must be the same");
+diff --git a/src/hotspot/share/classfile/classLoaderData.hpp b/src/hotspot/share/classfile/classLoaderData.hpp
+--- a/src/hotspot/share/classfile/classLoaderData.hpp
++++ b/src/hotspot/share/classfile/classLoaderData.hpp
+@@ -62,6 +62,7 @@
+ class PackageEntryTable;
+ class DictionaryEntry;
+ class Dictionary;
++class ClassLoaderMetaspace;
+ 
+ // ClassLoaderData class
+ 
+diff --git a/src/hotspot/share/classfile/classLoaderDataGraph.cpp b/src/hotspot/share/classfile/classLoaderDataGraph.cpp
+--- a/src/hotspot/share/classfile/classLoaderDataGraph.cpp
++++ b/src/hotspot/share/classfile/classLoaderDataGraph.cpp
+@@ -648,24 +648,6 @@
+   return NULL;
+ }
+ 
+-ClassLoaderDataGraphMetaspaceIterator::ClassLoaderDataGraphMetaspaceIterator() {
+-  assert(SafepointSynchronize::is_at_safepoint(), "must be at safepoint!");
+-  _data = ClassLoaderDataGraph::_head;
+-}
+-
+-ClassLoaderDataGraphMetaspaceIterator::~ClassLoaderDataGraphMetaspaceIterator() {}
+-
+-ClassLoaderMetaspace* ClassLoaderDataGraphMetaspaceIterator::get_next() {
+-  assert(_data != NULL, "Should not be NULL in call to the iterator");
+-  ClassLoaderMetaspace* result = _data->metaspace_or_null();
+-  _data = _data->next();
+-  // This result might be NULL for class loaders without metaspace
+-  // yet.  It would be nice to return only non-null results but
+-  // there is no guarantee that there will be a non-null result
+-  // down the list so the caller is going to have to check.
+-  return result;
+-}
+-
+ void ClassLoaderDataGraph::verify() {
+   ClassLoaderDataGraphIterator iter;
+   while (ClassLoaderData* cld = iter.get_next()) {
+diff --git a/src/hotspot/share/classfile/classLoaderDataGraph.hpp b/src/hotspot/share/classfile/classLoaderDataGraph.hpp
+--- a/src/hotspot/share/classfile/classLoaderDataGraph.hpp
++++ b/src/hotspot/share/classfile/classLoaderDataGraph.hpp
+@@ -161,12 +161,4 @@
+   static Klass* next_klass_in_cldg(Klass* klass);
+ };
+ 
+-class ClassLoaderDataGraphMetaspaceIterator : public StackObj {
+-  ClassLoaderData* _data;
+- public:
+-  ClassLoaderDataGraphMetaspaceIterator();
+-  ~ClassLoaderDataGraphMetaspaceIterator();
+-  bool repeat() { return _data != NULL; }
+-  ClassLoaderMetaspace* get_next();
+-};
+ #endif // SHARE_CLASSFILE_CLASSLOADERDATAGRAPH_HPP
+diff --git a/src/hotspot/share/classfile/classLoaderStats.cpp b/src/hotspot/share/classfile/classLoaderStats.cpp
+--- a/src/hotspot/share/classfile/classLoaderStats.cpp
++++ b/src/hotspot/share/classfile/classLoaderStats.cpp
+@@ -26,6 +26,7 @@
+ #include "classfile/classLoaderData.inline.hpp"
+ #include "classfile/classLoaderDataGraph.hpp"
+ #include "classfile/classLoaderStats.hpp"
++#include "memory/metaspace.hpp"
+ #include "oops/objArrayKlass.hpp"
+ #include "oops/oop.inline.hpp"
+ #include "utilities/globalDefinitions.hpp"
+@@ -80,15 +81,17 @@
+ 
+   ClassLoaderMetaspace* ms = cld->metaspace_or_null();
+   if (ms != NULL) {
++    size_t used_bytes, capacity_bytes;
++    ms->calculate_jfr_stats(&used_bytes, &capacity_bytes);
+     if(cld->has_class_mirror_holder()) {
+-      cls->_hidden_chunk_sz += ms->allocated_chunks_bytes();
+-      cls->_hidden_block_sz += ms->allocated_blocks_bytes();
++      cls->_hidden_chunk_sz += capacity_bytes;
++      cls->_hidden_block_sz += used_bytes;
+     } else {
+-      cls->_chunk_sz = ms->allocated_chunks_bytes();
+-      cls->_block_sz = ms->allocated_blocks_bytes();
++      cls->_chunk_sz = capacity_bytes;
++      cls->_block_sz = used_bytes;
+     }
+-    _total_chunk_sz += ms->allocated_chunks_bytes();
+-    _total_block_sz += ms->allocated_blocks_bytes();
++    _total_chunk_sz += capacity_bytes;
++    _total_block_sz += used_bytes;
+   }
+ }
+ 
+diff --git a/src/hotspot/share/gc/g1/g1CollectedHeap.cpp b/src/hotspot/share/gc/g1/g1CollectedHeap.cpp
+--- a/src/hotspot/share/gc/g1/g1CollectedHeap.cpp
++++ b/src/hotspot/share/gc/g1/g1CollectedHeap.cpp
+@@ -1029,7 +1029,7 @@
+ 
+   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+   ClassLoaderDataGraph::purge();
+-  MetaspaceUtils::verify_metrics();
++  DEBUG_ONLY(MetaspaceUtils::verify(false);)
+ 
+   // Prepare heap for normal collections.
+   assert(num_free_regions() == 0, "we should not have added any free regions");
+diff --git a/src/hotspot/share/gc/parallel/psParallelCompact.cpp b/src/hotspot/share/gc/parallel/psParallelCompact.cpp
+--- a/src/hotspot/share/gc/parallel/psParallelCompact.cpp
++++ b/src/hotspot/share/gc/parallel/psParallelCompact.cpp
+@@ -1057,7 +1057,7 @@
+ 
+   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+   ClassLoaderDataGraph::purge();
+-  MetaspaceUtils::verify_metrics();
++  DEBUG_ONLY(MetaspaceUtils::verify(false);)
+ 
+   heap->prune_scavengable_nmethods();
+ 
+diff --git a/src/hotspot/share/gc/shared/collectedHeap.hpp b/src/hotspot/share/gc/shared/collectedHeap.hpp
+--- a/src/hotspot/share/gc/shared/collectedHeap.hpp
++++ b/src/hotspot/share/gc/shared/collectedHeap.hpp
+@@ -29,6 +29,7 @@
+ #include "gc/shared/gcWhen.hpp"
+ #include "gc/shared/verifyOption.hpp"
+ #include "memory/allocation.hpp"
++#include "memory/metaspace.hpp"
+ #include "memory/universe.hpp"
+ #include "runtime/handles.hpp"
+ #include "runtime/perfData.hpp"
+diff --git a/src/hotspot/share/gc/shared/gcTrace.cpp b/src/hotspot/share/gc/shared/gcTrace.cpp
+--- a/src/hotspot/share/gc/shared/gcTrace.cpp
++++ b/src/hotspot/share/gc/shared/gcTrace.cpp
+@@ -30,6 +30,7 @@
+ #include "gc/shared/gcTrace.hpp"
+ #include "gc/shared/objectCountEventSender.hpp"
+ #include "gc/shared/referenceProcessorStats.hpp"
++#include "memory/metaspace.hpp"
+ #include "memory/heapInspection.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "runtime/os.hpp"
+diff --git a/src/hotspot/share/gc/shared/gcVMOperations.hpp b/src/hotspot/share/gc/shared/gcVMOperations.hpp
+--- a/src/hotspot/share/gc/shared/gcVMOperations.hpp
++++ b/src/hotspot/share/gc/shared/gcVMOperations.hpp
+@@ -28,6 +28,7 @@
+ #include "gc/shared/collectedHeap.hpp"
+ #include "gc/shared/genCollectedHeap.hpp"
+ #include "memory/heapInspection.hpp"
++#include "memory/metaspace.hpp"
+ #include "prims/jvmtiExport.hpp"
+ #include "runtime/handles.hpp"
+ #include "runtime/jniHandles.hpp"
+diff --git a/src/hotspot/share/gc/shared/genCollectedHeap.cpp b/src/hotspot/share/gc/shared/genCollectedHeap.cpp
+--- a/src/hotspot/share/gc/shared/genCollectedHeap.cpp
++++ b/src/hotspot/share/gc/shared/genCollectedHeap.cpp
+@@ -59,6 +59,7 @@
+ #include "memory/filemap.hpp"
+ #include "memory/iterator.hpp"
+ #include "memory/metaspaceCounters.hpp"
++#include "memory/metaspace/metaspaceSizesSnapshot.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/oop.inline.hpp"
+@@ -662,7 +663,7 @@
+ 
+     // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+     ClassLoaderDataGraph::purge();
+-    MetaspaceUtils::verify_metrics();
++    DEBUG_ONLY(MetaspaceUtils::verify(false);)
+     // Resize the metaspace capacity after full collections
+     MetaspaceGC::compute_new_size();
+     update_full_collections_completed();
+diff --git a/src/hotspot/share/gc/shared/generationSpec.cpp b/src/hotspot/share/gc/shared/generationSpec.cpp
+--- a/src/hotspot/share/gc/shared/generationSpec.cpp
++++ b/src/hotspot/share/gc/shared/generationSpec.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2001, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2001, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -25,7 +25,6 @@
+ #include "precompiled.hpp"
+ #include "gc/shared/cardTableRS.hpp"
+ #include "gc/shared/generationSpec.hpp"
+-#include "memory/binaryTreeDictionary.hpp"
+ #include "memory/filemap.hpp"
+ #include "runtime/java.hpp"
+ #include "utilities/macros.hpp"
+diff --git a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp
+--- a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp
++++ b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2015, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2015, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -262,18 +262,6 @@
+   return JVMFlag::SUCCESS;
+ }
+ 
+-JVMFlag::Error InitialBootClassLoaderMetaspaceSizeConstraintFunc(size_t value, bool verbose) {
+-  size_t aligned_max = align_down(max_uintx/2, Metaspace::reserve_alignment_words());
+-  if (value > aligned_max) {
+-    JVMFlag::printError(verbose,
+-                        "InitialBootClassLoaderMetaspaceSize (" SIZE_FORMAT ") must be "
+-                        "less than or equal to aligned maximum value (" SIZE_FORMAT ")\n",
+-                        value, aligned_max);
+-    return JVMFlag::VIOLATES_CONSTRAINT;
+-  }
+-  return JVMFlag::SUCCESS;
+-}
+-
+ // To avoid an overflow by 'align_up(value, alignment)'.
+ static JVMFlag::Error MaxSizeForAlignment(const char* name, size_t value, size_t alignment, bool verbose) {
+   size_t aligned_max = ((max_uintx - alignment) & ~(alignment-1));
+diff --git a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp
+--- a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp
++++ b/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2015, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2015, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -56,7 +56,6 @@
+ 
+ JVMFlag::Error MaxGCPauseMillisConstraintFunc(uintx value, bool verbose);
+ JVMFlag::Error GCPauseIntervalMillisConstraintFunc(uintx value, bool verbose);
+-JVMFlag::Error InitialBootClassLoaderMetaspaceSizeConstraintFunc(size_t value, bool verbose);
+ JVMFlag::Error MinHeapSizeConstraintFunc(size_t value, bool verbose);
+ JVMFlag::Error InitialHeapSizeConstraintFunc(size_t value, bool verbose);
+ JVMFlag::Error MaxHeapSizeConstraintFunc(size_t value, bool verbose);
+diff --git a/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp b/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
+--- a/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
++++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
+@@ -2202,7 +2202,7 @@
+   }
+   // Resize and verify metaspace
+   MetaspaceGC::compute_new_size();
+-  MetaspaceUtils::verify_metrics();
++  DEBUG_ONLY(MetaspaceUtils::verify(false);)
+ }
+ 
+ // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
+diff --git a/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp b/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp
+--- a/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp
++++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp
+@@ -35,6 +35,7 @@
+ #include "gc/shenandoah/shenandoahPadding.hpp"
+ #include "gc/shenandoah/shenandoahSharedVariables.hpp"
+ #include "gc/shenandoah/shenandoahUnload.hpp"
++#include "memory/metaspace.hpp"
+ #include "services/memoryManager.hpp"
+ #include "utilities/globalDefinitions.hpp"
+ 
+diff --git a/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp b/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp
+--- a/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp
++++ b/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp
+@@ -197,5 +197,5 @@
+ 
+ void ShenandoahUnload::finish() {
+   MetaspaceGC::compute_new_size();
+-  MetaspaceUtils::verify_metrics();
++  DEBUG_ONLY(MetaspaceUtils::verify(false);)
+ }
+diff --git a/src/hotspot/share/gc/z/zCollectedHeap.hpp b/src/hotspot/share/gc/z/zCollectedHeap.hpp
+--- a/src/hotspot/share/gc/z/zCollectedHeap.hpp
++++ b/src/hotspot/share/gc/z/zCollectedHeap.hpp
+@@ -30,6 +30,7 @@
+ #include "gc/z/zHeap.hpp"
+ #include "gc/z/zInitialize.hpp"
+ #include "gc/z/zRuntimeWorkers.hpp"
++#include "memory/metaspace.hpp"
+ 
+ class ZDirector;
+ class ZDriver;
+diff --git a/src/hotspot/share/gc/z/zStat.cpp b/src/hotspot/share/gc/z/zStat.cpp
+--- a/src/hotspot/share/gc/z/zStat.cpp
++++ b/src/hotspot/share/gc/z/zStat.cpp
+@@ -1175,10 +1175,9 @@
+ //
+ void ZStatMetaspace::print() {
+   log_info(gc, metaspace)("Metaspace: "
+-                          SIZE_FORMAT "M used, " SIZE_FORMAT "M capacity, "
++                          SIZE_FORMAT "M used, "
+                           SIZE_FORMAT "M committed, " SIZE_FORMAT "M reserved",
+                           MetaspaceUtils::used_bytes() / M,
+-                          MetaspaceUtils::capacity_bytes() / M,
+                           MetaspaceUtils::committed_bytes() / M,
+                           MetaspaceUtils::reserved_bytes() / M);
+ }
+diff --git a/src/hotspot/share/gc/z/zUnload.cpp b/src/hotspot/share/gc/z/zUnload.cpp
+--- a/src/hotspot/share/gc/z/zUnload.cpp
++++ b/src/hotspot/share/gc/z/zUnload.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -164,5 +164,5 @@
+ void ZUnload::finish() {
+   // Resize and verify metaspace
+   MetaspaceGC::compute_new_size();
+-  MetaspaceUtils::verify_metrics();
++  DEBUG_ONLY(MetaspaceUtils::verify(false);)
+ }
+diff --git a/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp b/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
+--- a/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
++++ b/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
+@@ -39,9 +39,10 @@
+ #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
+ #include "jfr/support/jfrThreadLocal.hpp"
+ #include "jfr/writers/jfrJavaEventWriter.hpp"
++#include "memory/metaspace.hpp"
++#include "memory/metaspace/metaspaceEnums.hpp"
+ #include "jfr/utilities/jfrThreadIterator.hpp"
+ #include "memory/iterator.hpp"
+-#include "memory/metaspaceGCThresholdUpdater.hpp"
+ #include "memory/referenceType.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/compressedOops.hpp"
+@@ -196,7 +197,7 @@
+   writer.write_count(nof_entries);
+   for (u4 i = 0; i < nof_entries; ++i) {
+     writer.write_key(i);
+-    writer.write(Metaspace::metadata_type_name((Metaspace::MetadataType)i));
++    writer.write(metaspace::describe_mdtype((Metaspace::MetadataType)i));
+   }
+ }
+ 
+diff --git a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp b/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
+--- a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
++++ b/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
+@@ -25,6 +25,7 @@
+ #define SHARE_JVMCI_JVMCICOMPILERTOVM_HPP
+ 
+ #include "gc/shared/cardTable.hpp"
++#include "gc/shared/collectedHeap.hpp"
+ #include "jvmci/jvmciExceptions.hpp"
+ #include "runtime/javaCalls.hpp"
+ #include "runtime/signature.hpp"
+diff --git a/src/hotspot/share/memory/allocation.hpp b/src/hotspot/share/memory/allocation.hpp
+--- a/src/hotspot/share/memory/allocation.hpp
++++ b/src/hotspot/share/memory/allocation.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 1997, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -142,6 +142,7 @@
+   f(mtSafepoint,      "Safepoint")                                                   \
+   f(mtSynchronizer,   "Synchronization")                                             \
+   f(mtServiceability, "Serviceability")                                              \
++  f(mtMetaspace,      "Metaspace")                                                   \
+   f(mtNone,           "Unknown")                                                     \
+   //end
+ 
+diff --git a/src/hotspot/share/memory/binaryTreeDictionary.hpp b/src/hotspot/share/memory/binaryTreeDictionary.hpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/binaryTreeDictionary.hpp
++++ /dev/null
+@@ -1,393 +0,0 @@
+-/*
+- * Copyright (c) 2001, 2020, Oracle and/or its affiliates. All rights reserved.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_BINARYTREEDICTIONARY_HPP
+-#define SHARE_MEMORY_BINARYTREEDICTIONARY_HPP
+-
+-#include "memory/freeList.hpp"
+-#include "memory/memRegion.hpp"
+-
+-class Mutex;
+-
+-/*
+- * A binary tree based search structure for free blocks.
+- * This is currently used in the Concurrent Mark&Sweep implementation, but
+- * will be used for free block management for metadata.
+- */
+-
+-// A TreeList is a FreeList which can be used to maintain a
+-// binary tree of free lists.
+-
+-template <class Chunk_t, class FreeList_t> class TreeChunk;
+-template <class Chunk_t, class FreeList_t> class BinaryTreeDictionary;
+-template <class Chunk_t, class FreeList_t> class AscendTreeCensusClosure;
+-template <class Chunk_t, class FreeList_t> class DescendTreeCensusClosure;
+-template <class Chunk_t, class FreeList_t> class DescendTreeSearchClosure;
+-
+-template <class Chunk_t, class FreeList_t>
+-class TreeList : public FreeList_t {
+-  friend class TreeChunk<Chunk_t, FreeList_t>;
+-  friend class BinaryTreeDictionary<Chunk_t, FreeList_t>;
+-  friend class AscendTreeCensusClosure<Chunk_t, FreeList_t>;
+-  friend class DescendTreeCensusClosure<Chunk_t, FreeList_t>;
+-  friend class DescendTreeSearchClosure<Chunk_t, FreeList_t>;
+-
+-  TreeList<Chunk_t, FreeList_t>* _parent;
+-  TreeList<Chunk_t, FreeList_t>* _left;
+-  TreeList<Chunk_t, FreeList_t>* _right;
+-
+- protected:
+-
+-  TreeList<Chunk_t, FreeList_t>* parent() const { return _parent; }
+-  TreeList<Chunk_t, FreeList_t>* left()   const { return _left;   }
+-  TreeList<Chunk_t, FreeList_t>* right()  const { return _right;  }
+-
+-  // Wrapper on call to base class, to get the template to compile.
+-  Chunk_t* head() const { return FreeList_t::head(); }
+-  Chunk_t* tail() const { return FreeList_t::tail(); }
+-  void set_head(Chunk_t* head) { FreeList_t::set_head(head); }
+-  void set_tail(Chunk_t* tail) { FreeList_t::set_tail(tail); }
+-
+-  size_t size() const { return FreeList_t::size(); }
+-
+-  // Accessors for links in tree.
+-
+-  void set_left(TreeList<Chunk_t, FreeList_t>* tl) {
+-    _left   = tl;
+-    if (tl != NULL)
+-      tl->set_parent(this);
+-  }
+-  void set_right(TreeList<Chunk_t, FreeList_t>* tl) {
+-    _right  = tl;
+-    if (tl != NULL)
+-      tl->set_parent(this);
+-  }
+-  void set_parent(TreeList<Chunk_t, FreeList_t>* tl)  { _parent = tl;   }
+-
+-  void clear_left()               { _left = NULL;   }
+-  void clear_right()              { _right = NULL;  }
+-  void clear_parent()             { _parent = NULL; }
+-  void initialize()               { clear_left(); clear_right(), clear_parent(); FreeList_t::initialize(); }
+-
+-  // For constructing a TreeList from a Tree chunk or
+-  // address and size.
+-  TreeList();
+-  static TreeList<Chunk_t, FreeList_t>*
+-          as_TreeList(TreeChunk<Chunk_t, FreeList_t>* tc);
+-  static TreeList<Chunk_t, FreeList_t>* as_TreeList(HeapWord* addr, size_t size);
+-
+-  // Returns the head of the free list as a pointer to a TreeChunk.
+-  TreeChunk<Chunk_t, FreeList_t>* head_as_TreeChunk();
+-
+-  // Returns the first available chunk in the free list as a pointer
+-  // to a TreeChunk.
+-  TreeChunk<Chunk_t, FreeList_t>* first_available();
+-
+-  // Returns the block with the largest heap address amongst
+-  // those in the list for this size; potentially slow and expensive,
+-  // use with caution!
+-  TreeChunk<Chunk_t, FreeList_t>* largest_address();
+-
+-  TreeList<Chunk_t, FreeList_t>* get_better_list(
+-    BinaryTreeDictionary<Chunk_t, FreeList_t>* dictionary);
+-
+-  // remove_chunk_replace_if_needed() removes the given "tc" from the TreeList.
+-  // If "tc" is the first chunk in the list, it is also the
+-  // TreeList that is the node in the tree.  remove_chunk_replace_if_needed()
+-  // returns the possibly replaced TreeList* for the node in
+-  // the tree.  It also updates the parent of the original
+-  // node to point to the new node.
+-  TreeList<Chunk_t, FreeList_t>* remove_chunk_replace_if_needed(TreeChunk<Chunk_t, FreeList_t>* tc);
+-  // See FreeList.
+-  void return_chunk_at_tail(TreeChunk<Chunk_t, FreeList_t>* tc);
+-};
+-
+-// A TreeChunk is a subclass of a Chunk that additionally
+-// maintains a pointer to the free list on which it is currently
+-// linked.
+-// A TreeChunk is also used as a node in the binary tree.  This
+-// allows the binary tree to be maintained without any additional
+-// storage (the free chunks are used).  In a binary tree the first
+-// chunk in the free list is also the tree node.  Note that the
+-// TreeChunk has an embedded TreeList for this purpose.  Because
+-// the first chunk in the list is distinguished in this fashion
+-// (also is the node in the tree), it is the last chunk to be found
+-// on the free list for a node in the tree and is only removed if
+-// it is the last chunk on the free list.
+-
+-template <class Chunk_t, class FreeList_t>
+-class TreeChunk : public Chunk_t {
+-  friend class TreeList<Chunk_t, FreeList_t>;
+-  TreeList<Chunk_t, FreeList_t>* _list;
+-  TreeList<Chunk_t, FreeList_t> _embedded_list;  // if non-null, this chunk is on _list
+-
+-  static size_t _min_tree_chunk_size;
+-
+- protected:
+-  TreeList<Chunk_t, FreeList_t>* embedded_list() const { return (TreeList<Chunk_t, FreeList_t>*) &_embedded_list; }
+-  void set_embedded_list(TreeList<Chunk_t, FreeList_t>* v) { _embedded_list = *v; }
+- public:
+-  TreeList<Chunk_t, FreeList_t>* list() { return _list; }
+-  void set_list(TreeList<Chunk_t, FreeList_t>* v) { _list = v; }
+-  static TreeChunk<Chunk_t, FreeList_t>* as_TreeChunk(Chunk_t* fc);
+-  // Initialize fields in a TreeChunk that should be
+-  // initialized when the TreeChunk is being added to
+-  // a free list in the tree.
+-  void initialize() { embedded_list()->initialize(); }
+-
+-  Chunk_t* next() const { return Chunk_t::next(); }
+-  Chunk_t* prev() const { return Chunk_t::prev(); }
+-  size_t size() const { return Chunk_t::size(); }
+-
+-  static size_t min_size();
+-
+-  // debugging
+-  void verify_tree_chunk_list() const;
+-  void assert_is_mangled() const;
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t TreeChunk<Chunk_t, FreeList_t>::_min_tree_chunk_size = sizeof(TreeChunk<Chunk_t, FreeList_t>)/HeapWordSize;
+-template <class Chunk_t, class FreeList_t>
+-size_t TreeChunk<Chunk_t, FreeList_t>::min_size() { return _min_tree_chunk_size; }
+-
+-template <class Chunk_t, class FreeList_t>
+-class BinaryTreeDictionary: public CHeapObj<mtGC> {
+-  friend class VMStructs;
+-
+- protected:
+-  size_t     _total_size;
+-  size_t     _total_free_blocks;
+-  TreeList<Chunk_t, FreeList_t>* _root;
+-
+-  // private accessors
+-  void set_total_size(size_t v) { _total_size = v; }
+-  void inc_total_size(size_t v);
+-  void dec_total_size(size_t v);
+-  void set_total_free_blocks(size_t v) { _total_free_blocks = v; }
+-  TreeList<Chunk_t, FreeList_t>* root() const { return _root; }
+-  void set_root(TreeList<Chunk_t, FreeList_t>* v) { _root = v; }
+-
+-  // This field is added and can be set to point to the
+-  // the Mutex used to synchronize access to the
+-  // dictionary so that assertion checking can be done.
+-  // For example it is set to point to _parDictionaryAllocLock.
+-  NOT_PRODUCT(Mutex* _lock;)
+-
+-  // Remove a chunk of size "size" or larger from the tree and
+-  // return it.  If the chunk
+-  // is the last chunk of that size, remove the node for that size
+-  // from the tree.
+-  TreeChunk<Chunk_t, FreeList_t>* get_chunk_from_tree(size_t size);
+-  // Remove this chunk from the tree.  If the removal results
+-  // in an empty list in the tree, remove the empty list.
+-  TreeChunk<Chunk_t, FreeList_t>* remove_chunk_from_tree(TreeChunk<Chunk_t, FreeList_t>* tc);
+-  // Remove the node in the trees starting at tl that has the
+-  // minimum value and return it.  Repair the tree as needed.
+-  TreeList<Chunk_t, FreeList_t>* remove_tree_minimum(TreeList<Chunk_t, FreeList_t>* tl);
+-  // Add this free chunk to the tree.
+-  void       insert_chunk_in_tree(Chunk_t* freeChunk);
+- public:
+-
+-  // Return a list of the specified size or NULL from the tree.
+-  // The list is not removed from the tree.
+-  TreeList<Chunk_t, FreeList_t>* find_list (size_t size) const;
+-
+-  void       verify_tree() const;
+-  // verify that the given chunk is in the tree.
+-  bool       verify_chunk_in_free_list(Chunk_t* tc) const;
+- private:
+-  void          verify_tree_helper(TreeList<Chunk_t, FreeList_t>* tl) const;
+-  static size_t verify_prev_free_ptrs(TreeList<Chunk_t, FreeList_t>* tl);
+-
+-  // Returns the total number of chunks in the list.
+-  size_t     total_list_length(TreeList<Chunk_t, FreeList_t>* tl) const;
+-  // Returns the total number of words in the chunks in the tree
+-  // starting at "tl".
+-  size_t     total_size_in_tree(TreeList<Chunk_t, FreeList_t>* tl) const;
+-  // Returns the sum of the square of the size of each block
+-  // in the tree starting at "tl".
+-  double     sum_of_squared_block_sizes(TreeList<Chunk_t, FreeList_t>* const tl) const;
+-  // Returns the total number of free blocks in the tree starting
+-  // at "tl".
+-  size_t     total_free_blocks_in_tree(TreeList<Chunk_t, FreeList_t>* tl) const;
+-  size_t     num_free_blocks()  const;
+-  size_t     tree_height() const;
+-  size_t     tree_height_helper(TreeList<Chunk_t, FreeList_t>* tl) const;
+-  size_t     total_nodes_helper(TreeList<Chunk_t, FreeList_t>* tl) const;
+-
+- public:
+-  // Constructor
+-  BinaryTreeDictionary() :
+-    _total_size(0), _total_free_blocks(0), _root(0) {}
+-
+-  BinaryTreeDictionary(MemRegion mr);
+-
+-  // Public accessors
+-  size_t total_size() const { return _total_size; }
+-  size_t total_free_blocks() const { return _total_free_blocks; }
+-
+-  // Reset the dictionary to the initial conditions with
+-  // a single free chunk.
+-  void       reset(MemRegion mr);
+-  void       reset(HeapWord* addr, size_t size);
+-  // Reset the dictionary to be empty.
+-  void       reset();
+-
+-  // Return a chunk of size "size" or greater from
+-  // the tree.
+-  Chunk_t* get_chunk(size_t size) {
+-    verify_par_locked();
+-    Chunk_t* res = get_chunk_from_tree(size);
+-    assert(res == NULL || res->is_free(),
+-           "Should be returning a free chunk");
+-    return res;
+-  }
+-
+-  void return_chunk(Chunk_t* chunk) {
+-    verify_par_locked();
+-    insert_chunk_in_tree(chunk);
+-  }
+-
+-  void remove_chunk(Chunk_t* chunk) {
+-    verify_par_locked();
+-    remove_chunk_from_tree((TreeChunk<Chunk_t, FreeList_t>*)chunk);
+-    assert(chunk->is_free(), "Should still be a free chunk");
+-  }
+-
+-  size_t     max_chunk_size() const;
+-  inline size_t total_chunk_size(debug_only(const Mutex* lock)) const;
+-
+-  size_t     min_size() const {
+-    return TreeChunk<Chunk_t, FreeList_t>::min_size();
+-  }
+-
+-  double     sum_of_squared_block_sizes() const {
+-    return sum_of_squared_block_sizes(root());
+-  }
+-
+-  Chunk_t* find_chunk_ends_at(HeapWord* target) const;
+-
+-  // Return the largest free chunk in the tree.
+-  Chunk_t* find_largest_dict() const;
+-
+-  void       print_free_lists(outputStream* st) const;
+-
+-  // For debugging.  Returns the sum of the _returned_bytes for
+-  // all lists in the tree.
+-  size_t     sum_dict_returned_bytes()     PRODUCT_RETURN0;
+-  // Sets the _returned_bytes for all the lists in the tree to zero.
+-  void       initialize_dict_returned_bytes()      PRODUCT_RETURN;
+-  // For debugging.  Return the total number of chunks in the dictionary.
+-  size_t     total_count()       PRODUCT_RETURN0;
+-
+-  void       report_statistics(outputStream* st) const;
+-
+-  void       verify() const;
+-
+-  Mutex*     par_lock()                const PRODUCT_RETURN0;
+-  void       set_par_lock(Mutex* lock)       PRODUCT_RETURN;
+-  void       verify_par_locked()       const PRODUCT_RETURN;
+-};
+-
+-
+-// Closures for walking the binary tree.
+-//   do_list() walks the free list in a node applying the closure
+-//     to each free chunk in the list
+-//   do_tree() walks the nodes in the binary tree applying do_list()
+-//     to each list at each node.
+-
+-template <class Chunk_t, class FreeList_t>
+-class TreeCensusClosure : public StackObj {
+- protected:
+-  virtual void do_list(FreeList_t* fl) = 0;
+- public:
+-  virtual void do_tree(TreeList<Chunk_t, FreeList_t>* tl) = 0;
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-class AscendTreeCensusClosure : public TreeCensusClosure<Chunk_t, FreeList_t> {
+- public:
+-  void do_tree(TreeList<Chunk_t, FreeList_t>* tl) {
+-    if (tl != NULL) {
+-      do_tree(tl->left());
+-      this->do_list(tl);
+-      do_tree(tl->right());
+-    }
+-  }
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-class DescendTreeCensusClosure : public TreeCensusClosure<Chunk_t, FreeList_t> {
+- public:
+-  void do_tree(TreeList<Chunk_t, FreeList_t>* tl) {
+-    if (tl != NULL) {
+-      do_tree(tl->right());
+-      this->do_list(tl);
+-      do_tree(tl->left());
+-    }
+-  }
+-};
+-
+-// Used to search the tree until a condition is met.
+-// Similar to TreeCensusClosure but searches the
+-// tree and returns promptly when found.
+-
+-template <class Chunk_t, class FreeList_t>
+-class TreeSearchClosure : public StackObj {
+- protected:
+-  virtual bool do_list(FreeList_t* fl) = 0;
+- public:
+-  virtual bool do_tree(TreeList<Chunk_t, FreeList_t>* tl) = 0;
+-};
+-
+-#if 0 //  Don't need this yet but here for symmetry.
+-template <class Chunk_t, class FreeList_t>
+-class AscendTreeSearchClosure : public TreeSearchClosure<Chunk_t> {
+- public:
+-  bool do_tree(TreeList<Chunk_t, FreeList_t>* tl) {
+-    if (tl != NULL) {
+-      if (do_tree(tl->left())) return true;
+-      if (do_list(tl)) return true;
+-      if (do_tree(tl->right())) return true;
+-    }
+-    return false;
+-  }
+-};
+-#endif
+-
+-template <class Chunk_t, class FreeList_t>
+-class DescendTreeSearchClosure : public TreeSearchClosure<Chunk_t, FreeList_t> {
+- public:
+-  bool do_tree(TreeList<Chunk_t, FreeList_t>* tl) {
+-    if (tl != NULL) {
+-      if (do_tree(tl->right())) return true;
+-      if (this->do_list(tl)) return true;
+-      if (do_tree(tl->left())) return true;
+-    }
+-    return false;
+-  }
+-};
+-
+-#endif // SHARE_MEMORY_BINARYTREEDICTIONARY_HPP
+diff --git a/src/hotspot/share/memory/binaryTreeDictionary.inline.hpp b/src/hotspot/share/memory/binaryTreeDictionary.inline.hpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/binaryTreeDictionary.inline.hpp
++++ /dev/null
+@@ -1,1004 +0,0 @@
+-/*
+- * Copyright (c) 2001, 2019, Oracle and/or its affiliates. All rights reserved.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
+-#define SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
+-
+-#include "gc/shared/spaceDecorator.hpp"
+-#include "logging/log.hpp"
+-#include "logging/logStream.hpp"
+-#include "memory/binaryTreeDictionary.hpp"
+-#include "memory/freeList.inline.hpp"
+-#include "memory/resourceArea.hpp"
+-#include "runtime/mutex.hpp"
+-#include "runtime/globals.hpp"
+-#include "utilities/macros.hpp"
+-#include "utilities/ostream.hpp"
+-
+-////////////////////////////////////////////////////////////////////////////////
+-// A binary tree based search structure for free blocks.
+-// This is currently used in the Concurrent Mark&Sweep implementation.
+-////////////////////////////////////////////////////////////////////////////////
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeChunk<Chunk_t, FreeList_t>* TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(Chunk_t* fc) {
+-  // Do some assertion checking here.
+-  return (TreeChunk<Chunk_t, FreeList_t>*) fc;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void TreeChunk<Chunk_t, FreeList_t>::verify_tree_chunk_list() const {
+-  TreeChunk<Chunk_t, FreeList_t>* nextTC = (TreeChunk<Chunk_t, FreeList_t>*)next();
+-  if (prev() != NULL) { // interior list node shouldn't have tree fields
+-    guarantee(embedded_list()->parent() == NULL && embedded_list()->left() == NULL &&
+-              embedded_list()->right()  == NULL, "should be clear");
+-  }
+-  if (nextTC != NULL) {
+-    guarantee(as_TreeChunk(nextTC->prev()) == this, "broken chain");
+-    guarantee(nextTC->size() == size(), "wrong size");
+-    nextTC->verify_tree_chunk_list();
+-  }
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>::TreeList() : _parent(NULL),
+-  _left(NULL), _right(NULL) {}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>*
+-TreeList<Chunk_t, FreeList_t>::as_TreeList(TreeChunk<Chunk_t,FreeList_t>* tc) {
+-  // This first free chunk in the list will be the tree list.
+-  assert((tc->size() >= (TreeChunk<Chunk_t, FreeList_t>::min_size())),
+-    "Chunk is too small for a TreeChunk");
+-  TreeList<Chunk_t, FreeList_t>* tl = tc->embedded_list();
+-  tl->initialize();
+-  tc->set_list(tl);
+-  tl->set_size(tc->size());
+-  tl->link_head(tc);
+-  tl->link_tail(tc);
+-  tl->set_count(1);
+-  assert(tl->parent() == NULL, "Should be clear");
+-  return tl;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>*
+-TreeList<Chunk_t, FreeList_t>::as_TreeList(HeapWord* addr, size_t size) {
+-  TreeChunk<Chunk_t, FreeList_t>* tc = (TreeChunk<Chunk_t, FreeList_t>*) addr;
+-  assert((size >= TreeChunk<Chunk_t, FreeList_t>::min_size()),
+-    "Chunk is too small for a TreeChunk");
+-  // The space will have been mangled initially but
+-  // is not remangled when a Chunk_t is returned to the free list
+-  // (since it is used to maintain the chunk on the free list).
+-  tc->assert_is_mangled();
+-  tc->set_size(size);
+-  tc->link_prev(NULL);
+-  tc->link_next(NULL);
+-  TreeList<Chunk_t, FreeList_t>* tl = TreeList<Chunk_t, FreeList_t>::as_TreeList(tc);
+-  return tl;
+-}
+-
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>*
+-TreeList<Chunk_t, FreeList_t>::get_better_list(
+-  BinaryTreeDictionary<Chunk_t, FreeList_t>* dictionary) {
+-  return this;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>* TreeList<Chunk_t, FreeList_t>::remove_chunk_replace_if_needed(TreeChunk<Chunk_t, FreeList_t>* tc) {
+-
+-  TreeList<Chunk_t, FreeList_t>* retTL = this;
+-  Chunk_t* list = head();
+-  assert(!list || list != list->next(), "Chunk on list twice");
+-  assert(tc != NULL, "Chunk being removed is NULL");
+-  assert(parent() == NULL || this == parent()->left() ||
+-    this == parent()->right(), "list is inconsistent");
+-  assert(tc->is_free(), "Header is not marked correctly");
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-
+-  Chunk_t* prevFC = tc->prev();
+-  TreeChunk<Chunk_t, FreeList_t>* nextTC = TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(tc->next());
+-  assert(list != NULL, "should have at least the target chunk");
+-
+-  // Is this the first item on the list?
+-  if (tc == list) {
+-    // The "getChunk..." functions for a TreeList<Chunk_t, FreeList_t> will not return the
+-    // first chunk in the list unless it is the last chunk in the list
+-    // because the first chunk is also acting as the tree node.
+-    // When coalescing happens, however, the first chunk in the a tree
+-    // list can be the start of a free range.  Free ranges are removed
+-    // from the free lists so that they are not available to be
+-    // allocated when the sweeper yields (giving up the free list lock)
+-    // to allow mutator activity.  If this chunk is the first in the
+-    // list and is not the last in the list, do the work to copy the
+-    // TreeList<Chunk_t, FreeList_t> from the first chunk to the next chunk and update all
+-    // the TreeList<Chunk_t, FreeList_t> pointers in the chunks in the list.
+-    if (nextTC == NULL) {
+-      assert(prevFC == NULL, "Not last chunk in the list");
+-      set_tail(NULL);
+-      set_head(NULL);
+-    } else {
+-      // copy embedded list.
+-      nextTC->set_embedded_list(tc->embedded_list());
+-      retTL = nextTC->embedded_list();
+-      // Fix the pointer to the list in each chunk in the list.
+-      // This can be slow for a long list.  Consider having
+-      // an option that does not allow the first chunk on the
+-      // list to be coalesced.
+-      for (TreeChunk<Chunk_t, FreeList_t>* curTC = nextTC; curTC != NULL;
+-          curTC = TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(curTC->next())) {
+-        curTC->set_list(retTL);
+-      }
+-      // Fix the parent to point to the new TreeList<Chunk_t, FreeList_t>.
+-      if (retTL->parent() != NULL) {
+-        if (this == retTL->parent()->left()) {
+-          retTL->parent()->set_left(retTL);
+-        } else {
+-          assert(this == retTL->parent()->right(), "Parent is incorrect");
+-          retTL->parent()->set_right(retTL);
+-        }
+-      }
+-      // Fix the children's parent pointers to point to the
+-      // new list.
+-      assert(right() == retTL->right(), "Should have been copied");
+-      if (retTL->right() != NULL) {
+-        retTL->right()->set_parent(retTL);
+-      }
+-      assert(left() == retTL->left(), "Should have been copied");
+-      if (retTL->left() != NULL) {
+-        retTL->left()->set_parent(retTL);
+-      }
+-      retTL->link_head(nextTC);
+-      assert(nextTC->is_free(), "Should be a free chunk");
+-    }
+-  } else {
+-    if (nextTC == NULL) {
+-      // Removing chunk at tail of list
+-      this->link_tail(prevFC);
+-    }
+-    // Chunk is interior to the list
+-    prevFC->link_after(nextTC);
+-  }
+-
+-  // Below this point the embedded TreeList<Chunk_t, FreeList_t> being used for the
+-  // tree node may have changed. Don't use "this"
+-  // TreeList<Chunk_t, FreeList_t>*.
+-  // chunk should still be a free chunk (bit set in _prev)
+-  assert(!retTL->head() || retTL->size() == retTL->head()->size(),
+-    "Wrong sized chunk in list");
+-  debug_only(
+-    tc->link_prev(NULL);
+-    tc->link_next(NULL);
+-    tc->set_list(NULL);
+-    bool prev_found = false;
+-    bool next_found = false;
+-    for (Chunk_t* curFC = retTL->head();
+-         curFC != NULL; curFC = curFC->next()) {
+-      assert(curFC != tc, "Chunk is still in list");
+-      if (curFC == prevFC) {
+-        prev_found = true;
+-      }
+-      if (curFC == nextTC) {
+-        next_found = true;
+-      }
+-    }
+-    assert(prevFC == NULL || prev_found, "Chunk was lost from list");
+-    assert(nextTC == NULL || next_found, "Chunk was lost from list");
+-    assert(retTL->parent() == NULL ||
+-           retTL == retTL->parent()->left() ||
+-           retTL == retTL->parent()->right(),
+-           "list is inconsistent");
+-  )
+-  retTL->decrement_count();
+-
+-  assert(tc->is_free(), "Should still be a free chunk");
+-  assert(retTL->head() == NULL || retTL->head()->prev() == NULL,
+-    "list invariant");
+-  assert(retTL->tail() == NULL || retTL->tail()->next() == NULL,
+-    "list invariant");
+-  return retTL;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void TreeList<Chunk_t, FreeList_t>::return_chunk_at_tail(TreeChunk<Chunk_t, FreeList_t>* chunk) {
+-  assert(chunk != NULL, "returning NULL chunk");
+-  assert(chunk->list() == this, "list should be set for chunk");
+-  assert(tail() != NULL, "The tree list is embedded in the first chunk");
+-  // which means that the list can never be empty.
+-  // This is expensive for metaspace
+-  assert(!FLSVerifyDictionary || !this->verify_chunk_in_free_list(chunk), "Double entry");
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-
+-  Chunk_t* fc = tail();
+-  fc->link_after(chunk);
+-  this->link_tail(chunk);
+-
+-  assert(!tail() || size() == tail()->size(), "Wrong sized chunk in list");
+-  FreeList_t::increment_count();
+-  debug_only(this->increment_returned_bytes_by(chunk->size()*sizeof(HeapWord));)
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void TreeChunk<Chunk_t, FreeList_t>::assert_is_mangled() const {
+-  assert((ZapUnusedHeapArea &&
+-          SpaceMangler::is_mangled((HeapWord*) Chunk_t::size_addr()) &&
+-          SpaceMangler::is_mangled((HeapWord*) Chunk_t::prev_addr()) &&
+-          SpaceMangler::is_mangled((HeapWord*) Chunk_t::next_addr())) ||
+-          (size() == 0 && prev() == NULL && next() == NULL),
+-    "Space should be clear or mangled");
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeChunk<Chunk_t, FreeList_t>* TreeList<Chunk_t, FreeList_t>::head_as_TreeChunk() {
+-  assert(head() == NULL || (TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(head())->list() == this),
+-    "Wrong type of chunk?");
+-  return TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(head());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeChunk<Chunk_t, FreeList_t>* TreeList<Chunk_t, FreeList_t>::first_available() {
+-  assert(head() != NULL, "The head of the list cannot be NULL");
+-  Chunk_t* fc = head()->next();
+-  TreeChunk<Chunk_t, FreeList_t>* retTC;
+-  if (fc == NULL) {
+-    retTC = head_as_TreeChunk();
+-  } else {
+-    retTC = TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(fc);
+-  }
+-  assert(retTC->list() == this, "Wrong type of chunk.");
+-  return retTC;
+-}
+-
+-// Returns the block with the largest heap address amongst
+-// those in the list for this size; potentially slow and expensive,
+-// use with caution!
+-template <class Chunk_t, class FreeList_t>
+-TreeChunk<Chunk_t, FreeList_t>* TreeList<Chunk_t, FreeList_t>::largest_address() {
+-  assert(head() != NULL, "The head of the list cannot be NULL");
+-  Chunk_t* fc = head()->next();
+-  TreeChunk<Chunk_t, FreeList_t>* retTC;
+-  if (fc == NULL) {
+-    retTC = head_as_TreeChunk();
+-  } else {
+-    // walk down the list and return the one with the highest
+-    // heap address among chunks of this size.
+-    Chunk_t* last = fc;
+-    while (fc->next() != NULL) {
+-      if ((HeapWord*)last < (HeapWord*)fc) {
+-        last = fc;
+-      }
+-      fc = fc->next();
+-    }
+-    retTC = TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(last);
+-  }
+-  assert(retTC->list() == this, "Wrong type of chunk.");
+-  return retTC;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-BinaryTreeDictionary<Chunk_t, FreeList_t>::BinaryTreeDictionary(MemRegion mr) {
+-  assert((mr.byte_size() > min_size()), "minimum chunk size");
+-
+-  reset(mr);
+-  assert(root()->left() == NULL, "reset check failed");
+-  assert(root()->right() == NULL, "reset check failed");
+-  assert(root()->head()->next() == NULL, "reset check failed");
+-  assert(root()->head()->prev() == NULL, "reset check failed");
+-  assert(total_size() == root()->size(), "reset check failed");
+-  assert(total_free_blocks() == 1, "reset check failed");
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::inc_total_size(size_t inc) {
+-  _total_size = _total_size + inc;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::dec_total_size(size_t dec) {
+-  _total_size = _total_size - dec;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::reset(MemRegion mr) {
+-  assert((mr.byte_size() > min_size()), "minimum chunk size");
+-  set_root(TreeList<Chunk_t, FreeList_t>::as_TreeList(mr.start(), mr.word_size()));
+-  set_total_size(mr.word_size());
+-  set_total_free_blocks(1);
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::reset(HeapWord* addr, size_t byte_size) {
+-  MemRegion mr(addr, heap_word_size(byte_size));
+-  reset(mr);
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::reset() {
+-  set_root(NULL);
+-  set_total_size(0);
+-  set_total_free_blocks(0);
+-}
+-
+-// Get a free block of size at least size from tree, or NULL.
+-template <class Chunk_t, class FreeList_t>
+-TreeChunk<Chunk_t, FreeList_t>*
+-BinaryTreeDictionary<Chunk_t, FreeList_t>::get_chunk_from_tree(size_t size)
+-{
+-  TreeList<Chunk_t, FreeList_t> *curTL, *prevTL;
+-  TreeChunk<Chunk_t, FreeList_t>* retTC = NULL;
+-
+-  assert((size >= min_size()), "minimum chunk size");
+-  if (FLSVerifyDictionary) {
+-    verify_tree();
+-  }
+-  // starting at the root, work downwards trying to find match.
+-  // Remember the last node of size too great or too small.
+-  for (prevTL = curTL = root(); curTL != NULL;) {
+-    if (curTL->size() == size) {        // exact match
+-      break;
+-    }
+-    prevTL = curTL;
+-    if (curTL->size() < size) {        // proceed to right sub-tree
+-      curTL = curTL->right();
+-    } else {                           // proceed to left sub-tree
+-      assert(curTL->size() > size, "size inconsistency");
+-      curTL = curTL->left();
+-    }
+-  }
+-  if (curTL == NULL) { // couldn't find exact match
+-
+-    // try and find the next larger size by walking back up the search path
+-    for (curTL = prevTL; curTL != NULL;) {
+-      if (curTL->size() >= size) break;
+-      else curTL = curTL->parent();
+-    }
+-    assert(curTL == NULL || curTL->count() > 0,
+-      "An empty list should not be in the tree");
+-  }
+-  if (curTL != NULL) {
+-    assert(curTL->size() >= size, "size inconsistency");
+-
+-    curTL = curTL->get_better_list(this);
+-
+-    retTC = curTL->first_available();
+-    assert((retTC != NULL) && (curTL->count() > 0),
+-      "A list in the binary tree should not be NULL");
+-    assert(retTC->size() >= size,
+-      "A chunk of the wrong size was found");
+-    remove_chunk_from_tree(retTC);
+-    assert(retTC->is_free(), "Header is not marked correctly");
+-  }
+-
+-  if (FLSVerifyDictionary) {
+-    verify();
+-  }
+-  return retTC;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>* BinaryTreeDictionary<Chunk_t, FreeList_t>::find_list(size_t size) const {
+-  TreeList<Chunk_t, FreeList_t>* curTL;
+-  for (curTL = root(); curTL != NULL;) {
+-    if (curTL->size() == size) {        // exact match
+-      break;
+-    }
+-
+-    if (curTL->size() < size) {        // proceed to right sub-tree
+-      curTL = curTL->right();
+-    } else {                           // proceed to left sub-tree
+-      assert(curTL->size() > size, "size inconsistency");
+-      curTL = curTL->left();
+-    }
+-  }
+-  return curTL;
+-}
+-
+-
+-template <class Chunk_t, class FreeList_t>
+-bool BinaryTreeDictionary<Chunk_t, FreeList_t>::verify_chunk_in_free_list(Chunk_t* tc) const {
+-  size_t size = tc->size();
+-  TreeList<Chunk_t, FreeList_t>* tl = find_list(size);
+-  if (tl == NULL) {
+-    return false;
+-  } else {
+-    return tl->verify_chunk_in_free_list(tc);
+-  }
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-Chunk_t* BinaryTreeDictionary<Chunk_t, FreeList_t>::find_largest_dict() const {
+-  TreeList<Chunk_t, FreeList_t> *curTL = root();
+-  if (curTL != NULL) {
+-    while(curTL->right() != NULL) curTL = curTL->right();
+-    return curTL->largest_address();
+-  } else {
+-    return NULL;
+-  }
+-}
+-
+-// Remove the current chunk from the tree.  If it is not the last
+-// chunk in a list on a tree node, just unlink it.
+-// If it is the last chunk in the list (the next link is NULL),
+-// remove the node and repair the tree.
+-template <class Chunk_t, class FreeList_t>
+-TreeChunk<Chunk_t, FreeList_t>*
+-BinaryTreeDictionary<Chunk_t, FreeList_t>::remove_chunk_from_tree(TreeChunk<Chunk_t, FreeList_t>* tc) {
+-  assert(tc != NULL, "Should not call with a NULL chunk");
+-  assert(tc->is_free(), "Header is not marked correctly");
+-
+-  TreeList<Chunk_t, FreeList_t> *newTL, *parentTL;
+-  TreeChunk<Chunk_t, FreeList_t>* retTC;
+-  TreeList<Chunk_t, FreeList_t>* tl = tc->list();
+-  debug_only(
+-    bool removing_only_chunk = false;
+-    if (tl == _root) {
+-      if ((_root->left() == NULL) && (_root->right() == NULL)) {
+-        if (_root->count() == 1) {
+-          assert(_root->head() == tc, "Should only be this one chunk");
+-          removing_only_chunk = true;
+-        }
+-      }
+-    }
+-  )
+-  assert(tl != NULL, "List should be set");
+-  assert(tl->parent() == NULL || tl == tl->parent()->left() ||
+-         tl == tl->parent()->right(), "list is inconsistent");
+-
+-  bool complicated_splice = false;
+-
+-  retTC = tc;
+-  // Removing this chunk can have the side effect of changing the node
+-  // (TreeList<Chunk_t, FreeList_t>*) in the tree.  If the node is the root, update it.
+-  TreeList<Chunk_t, FreeList_t>* replacementTL = tl->remove_chunk_replace_if_needed(tc);
+-  assert(tc->is_free(), "Chunk should still be free");
+-  assert(replacementTL->parent() == NULL ||
+-         replacementTL == replacementTL->parent()->left() ||
+-         replacementTL == replacementTL->parent()->right(),
+-         "list is inconsistent");
+-  if (tl == root()) {
+-    assert(replacementTL->parent() == NULL, "Incorrectly replacing root");
+-    set_root(replacementTL);
+-  }
+-#ifdef ASSERT
+-    if (tl != replacementTL) {
+-      assert(replacementTL->head() != NULL,
+-        "If the tree list was replaced, it should not be a NULL list");
+-      TreeList<Chunk_t, FreeList_t>* rhl = replacementTL->head_as_TreeChunk()->list();
+-      TreeList<Chunk_t, FreeList_t>* rtl =
+-        TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(replacementTL->tail())->list();
+-      assert(rhl == replacementTL, "Broken head");
+-      assert(rtl == replacementTL, "Broken tail");
+-      assert(replacementTL->size() == tc->size(),  "Broken size");
+-    }
+-#endif
+-
+-  // Does the tree need to be repaired?
+-  if (replacementTL->count() == 0) {
+-    assert(replacementTL->head() == NULL &&
+-           replacementTL->tail() == NULL, "list count is incorrect");
+-    // Find the replacement node for the (soon to be empty) node being removed.
+-    // if we have a single (or no) child, splice child in our stead
+-    if (replacementTL->left() == NULL) {
+-      // left is NULL so pick right.  right may also be NULL.
+-      newTL = replacementTL->right();
+-      debug_only(replacementTL->clear_right();)
+-    } else if (replacementTL->right() == NULL) {
+-      // right is NULL
+-      newTL = replacementTL->left();
+-      debug_only(replacementTL->clear_left();)
+-    } else {  // we have both children, so, by patriarchal convention,
+-              // my replacement is least node in right sub-tree
+-      complicated_splice = true;
+-      newTL = remove_tree_minimum(replacementTL->right());
+-      assert(newTL != NULL && newTL->left() == NULL &&
+-             newTL->right() == NULL, "sub-tree minimum exists");
+-    }
+-    // newTL is the replacement for the (soon to be empty) node.
+-    // newTL may be NULL.
+-    // should verify; we just cleanly excised our replacement
+-    if (FLSVerifyDictionary) {
+-      verify_tree();
+-    }
+-    // first make newTL my parent's child
+-    if ((parentTL = replacementTL->parent()) == NULL) {
+-      // newTL should be root
+-      assert(tl == root(), "Incorrectly replacing root");
+-      set_root(newTL);
+-      if (newTL != NULL) {
+-        newTL->clear_parent();
+-      }
+-    } else if (parentTL->right() == replacementTL) {
+-      // replacementTL is a right child
+-      parentTL->set_right(newTL);
+-    } else {                                // replacementTL is a left child
+-      assert(parentTL->left() == replacementTL, "should be left child");
+-      parentTL->set_left(newTL);
+-    }
+-    debug_only(replacementTL->clear_parent();)
+-    if (complicated_splice) {  // we need newTL to get replacementTL's
+-                              // two children
+-      assert(newTL != NULL &&
+-             newTL->left() == NULL && newTL->right() == NULL,
+-            "newTL should not have encumbrances from the past");
+-      // we'd like to assert as below:
+-      // assert(replacementTL->left() != NULL && replacementTL->right() != NULL,
+-      //       "else !complicated_splice");
+-      // ... however, the above assertion is too strong because we aren't
+-      // guaranteed that replacementTL->right() is still NULL.
+-      // Recall that we removed
+-      // the right sub-tree minimum from replacementTL.
+-      // That may well have been its right
+-      // child! So we'll just assert half of the above:
+-      assert(replacementTL->left() != NULL, "else !complicated_splice");
+-      newTL->set_left(replacementTL->left());
+-      newTL->set_right(replacementTL->right());
+-      debug_only(
+-        replacementTL->clear_right();
+-        replacementTL->clear_left();
+-      )
+-    }
+-    assert(replacementTL->right() == NULL &&
+-           replacementTL->left() == NULL &&
+-           replacementTL->parent() == NULL,
+-        "delete without encumbrances");
+-  }
+-
+-  assert(total_size() >= retTC->size(), "Incorrect total size");
+-  dec_total_size(retTC->size());     // size book-keeping
+-  assert(total_free_blocks() > 0, "Incorrect total count");
+-  set_total_free_blocks(total_free_blocks() - 1);
+-
+-  assert(retTC != NULL, "null chunk?");
+-  assert(retTC->prev() == NULL && retTC->next() == NULL,
+-         "should return without encumbrances");
+-  if (FLSVerifyDictionary) {
+-    verify_tree();
+-  }
+-  assert(!removing_only_chunk || _root == NULL, "root should be NULL");
+-  return TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(retTC);
+-}
+-
+-// Remove the leftmost node (lm) in the tree and return it.
+-// If lm has a right child, link it to the left node of
+-// the parent of lm.
+-template <class Chunk_t, class FreeList_t>
+-TreeList<Chunk_t, FreeList_t>* BinaryTreeDictionary<Chunk_t, FreeList_t>::remove_tree_minimum(TreeList<Chunk_t, FreeList_t>* tl) {
+-  assert(tl != NULL && tl->parent() != NULL, "really need a proper sub-tree");
+-  // locate the subtree minimum by walking down left branches
+-  TreeList<Chunk_t, FreeList_t>* curTL = tl;
+-  for (; curTL->left() != NULL; curTL = curTL->left());
+-  // obviously curTL now has at most one child, a right child
+-  if (curTL != root()) {  // Should this test just be removed?
+-    TreeList<Chunk_t, FreeList_t>* parentTL = curTL->parent();
+-    if (parentTL->left() == curTL) { // curTL is a left child
+-      parentTL->set_left(curTL->right());
+-    } else {
+-      // If the list tl has no left child, then curTL may be
+-      // the right child of parentTL.
+-      assert(parentTL->right() == curTL, "should be a right child");
+-      parentTL->set_right(curTL->right());
+-    }
+-  } else {
+-    // The only use of this method would not pass the root of the
+-    // tree (as indicated by the assertion above that the tree list
+-    // has a parent) but the specification does not explicitly exclude the
+-    // passing of the root so accommodate it.
+-    set_root(NULL);
+-  }
+-  debug_only(
+-    curTL->clear_parent();  // Test if this needs to be cleared
+-    curTL->clear_right();    // recall, above, left child is already null
+-  )
+-  // we just excised a (non-root) node, we should still verify all tree invariants
+-  if (FLSVerifyDictionary) {
+-    verify_tree();
+-  }
+-  return curTL;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::insert_chunk_in_tree(Chunk_t* fc) {
+-  TreeList<Chunk_t, FreeList_t> *curTL, *prevTL;
+-  size_t size = fc->size();
+-
+-  assert((size >= min_size()),
+-         SIZE_FORMAT " is too small to be a TreeChunk<Chunk_t, FreeList_t> " SIZE_FORMAT,
+-         size, min_size());
+-  if (FLSVerifyDictionary) {
+-    verify_tree();
+-  }
+-
+-  fc->clear_next();
+-  fc->link_prev(NULL);
+-
+-  // work down from the _root, looking for insertion point
+-  for (prevTL = curTL = root(); curTL != NULL;) {
+-    if (curTL->size() == size)  // exact match
+-      break;
+-    prevTL = curTL;
+-    if (curTL->size() > size) { // follow left branch
+-      curTL = curTL->left();
+-    } else {                    // follow right branch
+-      assert(curTL->size() < size, "size inconsistency");
+-      curTL = curTL->right();
+-    }
+-  }
+-  TreeChunk<Chunk_t, FreeList_t>* tc = TreeChunk<Chunk_t, FreeList_t>::as_TreeChunk(fc);
+-  // This chunk is being returned to the binary tree.  Its embedded
+-  // TreeList<Chunk_t, FreeList_t> should be unused at this point.
+-  tc->initialize();
+-  if (curTL != NULL) {          // exact match
+-    tc->set_list(curTL);
+-    curTL->return_chunk_at_tail(tc);
+-  } else {                     // need a new node in tree
+-    tc->clear_next();
+-    tc->link_prev(NULL);
+-    TreeList<Chunk_t, FreeList_t>* newTL = TreeList<Chunk_t, FreeList_t>::as_TreeList(tc);
+-    assert(((TreeChunk<Chunk_t, FreeList_t>*)tc)->list() == newTL,
+-      "List was not initialized correctly");
+-    if (prevTL == NULL) {      // we are the only tree node
+-      assert(root() == NULL, "control point invariant");
+-      set_root(newTL);
+-    } else {                   // insert under prevTL ...
+-      if (prevTL->size() < size) {   // am right child
+-        assert(prevTL->right() == NULL, "control point invariant");
+-        prevTL->set_right(newTL);
+-      } else {                       // am left child
+-        assert(prevTL->size() > size && prevTL->left() == NULL, "cpt pt inv");
+-        prevTL->set_left(newTL);
+-      }
+-    }
+-  }
+-  assert(tc->list() != NULL, "Tree list should be set");
+-
+-  inc_total_size(size);
+-  // Method 'total_size_in_tree' walks through the every block in the
+-  // tree, so it can cause significant performance loss if there are
+-  // many blocks in the tree
+-  assert(!FLSVerifyDictionary || total_size_in_tree(root()) == total_size(), "_total_size inconsistency");
+-  set_total_free_blocks(total_free_blocks() + 1);
+-  if (FLSVerifyDictionary) {
+-    verify_tree();
+-  }
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::max_chunk_size() const {
+-  verify_par_locked();
+-  TreeList<Chunk_t, FreeList_t>* tc = root();
+-  if (tc == NULL) return 0;
+-  for (; tc->right() != NULL; tc = tc->right());
+-  return tc->size();
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::total_list_length(TreeList<Chunk_t, FreeList_t>* tl) const {
+-  size_t res;
+-  res = tl->count();
+-#ifdef ASSERT
+-  size_t cnt;
+-  Chunk_t* tc = tl->head();
+-  for (cnt = 0; tc != NULL; tc = tc->next(), cnt++);
+-  assert(res == cnt, "The count is not being maintained correctly");
+-#endif
+-  return res;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::total_size_in_tree(TreeList<Chunk_t, FreeList_t>* tl) const {
+-  if (tl == NULL)
+-    return 0;
+-  return (tl->size() * total_list_length(tl)) +
+-         total_size_in_tree(tl->left())    +
+-         total_size_in_tree(tl->right());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-double BinaryTreeDictionary<Chunk_t, FreeList_t>::sum_of_squared_block_sizes(TreeList<Chunk_t, FreeList_t>* const tl) const {
+-  if (tl == NULL) {
+-    return 0.0;
+-  }
+-  double size = (double)(tl->size());
+-  double curr = size * size * total_list_length(tl);
+-  curr += sum_of_squared_block_sizes(tl->left());
+-  curr += sum_of_squared_block_sizes(tl->right());
+-  return curr;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::total_free_blocks_in_tree(TreeList<Chunk_t, FreeList_t>* tl) const {
+-  if (tl == NULL)
+-    return 0;
+-  return total_list_length(tl) +
+-         total_free_blocks_in_tree(tl->left()) +
+-         total_free_blocks_in_tree(tl->right());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::num_free_blocks() const {
+-  assert(total_free_blocks_in_tree(root()) == total_free_blocks(),
+-         "_total_free_blocks inconsistency");
+-  return total_free_blocks();
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::tree_height_helper(TreeList<Chunk_t, FreeList_t>* tl) const {
+-  if (tl == NULL)
+-    return 0;
+-  return 1 + MAX2(tree_height_helper(tl->left()),
+-                  tree_height_helper(tl->right()));
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::tree_height() const {
+-  return tree_height_helper(root());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::total_nodes_helper(TreeList<Chunk_t, FreeList_t>* tl) const {
+-  if (tl == NULL) {
+-    return 0;
+-  }
+-  return 1 + total_nodes_helper(tl->left()) +
+-    total_nodes_helper(tl->right());
+-}
+-
+-// Searches the tree for a chunk that ends at the
+-// specified address.
+-template <class Chunk_t, class FreeList_t>
+-class EndTreeSearchClosure : public DescendTreeSearchClosure<Chunk_t, FreeList_t> {
+-  HeapWord* _target;
+-  Chunk_t* _found;
+-
+- public:
+-  EndTreeSearchClosure(HeapWord* target) : _target(target), _found(NULL) {}
+-  bool do_list(FreeList_t* fl) {
+-    Chunk_t* item = fl->head();
+-    while (item != NULL) {
+-      if (item->end() == (uintptr_t*) _target) {
+-        _found = item;
+-        return true;
+-      }
+-      item = item->next();
+-    }
+-    return false;
+-  }
+-  Chunk_t* found() { return _found; }
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-Chunk_t* BinaryTreeDictionary<Chunk_t, FreeList_t>::find_chunk_ends_at(HeapWord* target) const {
+-  EndTreeSearchClosure<Chunk_t, FreeList_t> etsc(target);
+-  bool found_target = etsc.do_tree(root());
+-  assert(found_target || etsc.found() == NULL, "Consistency check");
+-  assert(!found_target || etsc.found() != NULL, "Consistency check");
+-  return etsc.found();
+-}
+-
+-// Closures and methods for calculating total bytes returned to the
+-// free lists in the tree.
+-#ifndef PRODUCT
+-template <class Chunk_t, class FreeList_t>
+-class InitializeDictReturnedBytesClosure : public AscendTreeCensusClosure<Chunk_t, FreeList_t> {
+-   public:
+-  void do_list(FreeList_t* fl) {
+-    fl->set_returned_bytes(0);
+-  }
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::initialize_dict_returned_bytes() {
+-  InitializeDictReturnedBytesClosure<Chunk_t, FreeList_t> idrb;
+-  idrb.do_tree(root());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-class ReturnedBytesClosure : public AscendTreeCensusClosure<Chunk_t, FreeList_t> {
+-  size_t _dict_returned_bytes;
+- public:
+-  ReturnedBytesClosure() { _dict_returned_bytes = 0; }
+-  void do_list(FreeList_t* fl) {
+-    _dict_returned_bytes += fl->returned_bytes();
+-  }
+-  size_t dict_returned_bytes() { return _dict_returned_bytes; }
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::sum_dict_returned_bytes() {
+-  ReturnedBytesClosure<Chunk_t, FreeList_t> rbc;
+-  rbc.do_tree(root());
+-
+-  return rbc.dict_returned_bytes();
+-}
+-
+-// Count the number of entries in the tree.
+-template <class Chunk_t, class FreeList_t>
+-class treeCountClosure : public DescendTreeCensusClosure<Chunk_t, FreeList_t> {
+- public:
+-  uint count;
+-  treeCountClosure(uint c) { count = c; }
+-  void do_list(FreeList_t* fl) {
+-    count++;
+-  }
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::total_count() {
+-  treeCountClosure<Chunk_t, FreeList_t> ctc(0);
+-  ctc.do_tree(root());
+-  return ctc.count;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-Mutex* BinaryTreeDictionary<Chunk_t, FreeList_t>::par_lock() const {
+-  return _lock;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::set_par_lock(Mutex* lock) {
+-  _lock = lock;
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::verify_par_locked() const {
+-#ifdef ASSERT
+-  Thread* my_thread = Thread::current();
+-  if (my_thread->is_GC_task_thread()) {
+-    assert(par_lock() != NULL, "Should be using locking?");
+-    assert_lock_strong(par_lock());
+-  }
+-#endif // ASSERT
+-}
+-#endif // PRODUCT
+-
+-// Print summary statistics
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::report_statistics(outputStream* st) const {
+-  verify_par_locked();
+-  st->print_cr("Statistics for BinaryTreeDictionary:");
+-  st->print_cr("------------------------------------");
+-  size_t total_size = total_chunk_size(debug_only(NULL));
+-  size_t free_blocks = num_free_blocks();
+-  st->print_cr("Total Free Space: " SIZE_FORMAT, total_size);
+-  st->print_cr("Max   Chunk Size: " SIZE_FORMAT, max_chunk_size());
+-  st->print_cr("Number of Blocks: " SIZE_FORMAT, free_blocks);
+-  if (free_blocks > 0) {
+-    st->print_cr("Av.  Block  Size: " SIZE_FORMAT, total_size/free_blocks);
+-  }
+-  st->print_cr("Tree      Height: " SIZE_FORMAT, tree_height());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-class PrintFreeListsClosure : public AscendTreeCensusClosure<Chunk_t, FreeList_t> {
+-  outputStream* _st;
+-  int _print_line;
+-
+- public:
+-  PrintFreeListsClosure(outputStream* st) {
+-    _st = st;
+-    _print_line = 0;
+-  }
+-  void do_list(FreeList_t* fl) {
+-    if (++_print_line >= 40) {
+-      FreeList_t::print_labels_on(_st, "size");
+-      _print_line = 0;
+-    }
+-    fl->print_on(_st);
+-    size_t sz = fl->size();
+-    for (Chunk_t* fc = fl->head(); fc != NULL;
+-         fc = fc->next()) {
+-      _st->print_cr("\t[" PTR_FORMAT "," PTR_FORMAT ")  %s",
+-                    p2i(fc), p2i((HeapWord*)fc + sz),
+-                    fc->cantCoalesce() ? "\t CC" : "");
+-    }
+-  }
+-};
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::print_free_lists(outputStream* st) const {
+-
+-  FreeList_t::print_labels_on(st, "size");
+-  PrintFreeListsClosure<Chunk_t, FreeList_t> pflc(st);
+-  pflc.do_tree(root());
+-}
+-
+-// Verify the following tree invariants:
+-// . _root has no parent
+-// . parent and child point to each other
+-// . each node's key correctly related to that of its child(ren)
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::verify_tree() const {
+-  guarantee(root() == NULL || total_free_blocks() == 0 ||
+-    total_size() != 0, "_total_size shouldn't be 0?");
+-  guarantee(root() == NULL || root()->parent() == NULL, "_root shouldn't have parent");
+-  verify_tree_helper(root());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::verify_prev_free_ptrs(TreeList<Chunk_t, FreeList_t>* tl) {
+-  size_t ct = 0;
+-  for (Chunk_t* curFC = tl->head(); curFC != NULL; curFC = curFC->next()) {
+-    ct++;
+-    assert(curFC->prev() == NULL || curFC->prev()->is_free(),
+-      "Chunk should be free");
+-  }
+-  return ct;
+-}
+-
+-// Note: this helper is recursive rather than iterative, so use with
+-// caution on very deep trees; and watch out for stack overflow errors;
+-// In general, to be used only for debugging.
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::verify_tree_helper(TreeList<Chunk_t, FreeList_t>* tl) const {
+-  if (tl == NULL)
+-    return;
+-  guarantee(tl->size() != 0, "A list must has a size");
+-  guarantee(tl->left()  == NULL || tl->left()->parent()  == tl,
+-         "parent<-/->left");
+-  guarantee(tl->right() == NULL || tl->right()->parent() == tl,
+-         "parent<-/->right");;
+-  guarantee(tl->left() == NULL  || tl->left()->size()    <  tl->size(),
+-         "parent !> left");
+-  guarantee(tl->right() == NULL || tl->right()->size()   >  tl->size(),
+-         "parent !< left");
+-  guarantee(tl->head() == NULL || tl->head()->is_free(), "!Free");
+-  guarantee(tl->head() == NULL || tl->head_as_TreeChunk()->list() == tl,
+-    "list inconsistency");
+-  guarantee(tl->count() > 0 || (tl->head() == NULL && tl->tail() == NULL),
+-    "list count is inconsistent");
+-  guarantee(tl->count() > 1 || tl->head() == tl->tail(),
+-    "list is incorrectly constructed");
+-  size_t count = verify_prev_free_ptrs(tl);
+-  guarantee(count == (size_t)tl->count(), "Node count is incorrect");
+-  if (tl->head() != NULL) {
+-    tl->head_as_TreeChunk()->verify_tree_chunk_list();
+-  }
+-  verify_tree_helper(tl->left());
+-  verify_tree_helper(tl->right());
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-void BinaryTreeDictionary<Chunk_t, FreeList_t>::verify() const {
+-  verify_tree();
+-  guarantee(total_size() == total_size_in_tree(root()), "Total Size inconsistency");
+-}
+-
+-template <class Chunk_t, class FreeList_t>
+-size_t BinaryTreeDictionary<Chunk_t, FreeList_t>::total_chunk_size(debug_only(const Mutex* lock)) const {
+-  debug_only(
+-    if (lock != NULL && lock->owned_by_self()) {
+-      assert(total_size_in_tree(root()) == total_size(),
+-             "_total_size inconsistency");
+-    }
+-  )
+-  return total_size();
+-}
+-
+-#endif // SHARE_MEMORY_BINARYTREEDICTIONARY_INLINE_HPP
+diff --git a/src/hotspot/share/memory/freeList.hpp b/src/hotspot/share/memory/freeList.hpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/freeList.hpp
++++ /dev/null
+@@ -1,175 +0,0 @@
+-/*
+- * Copyright (c) 2001, 2019, Oracle and/or its affiliates. All rights reserved.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_FREELIST_HPP
+-#define SHARE_MEMORY_FREELIST_HPP
+-
+-// A class for maintaining a free list of Chunk's.  The FreeList
+-// maintains a the structure of the list (head, tail, etc.) plus
+-// statistics for allocations from the list.  The links between items
+-// are not part of FreeList.  The statistics are
+-// used to make decisions about coalescing Chunk's when they
+-// are swept during collection.
+-//
+-// See the corresponding .cpp file for a description of the specifics
+-// for that implementation.
+-
+-class Mutex;
+-
+-template <class Chunk_t>
+-class FreeList {
+-  friend class VMStructs;
+-
+- private:
+-  Chunk_t*      _head;          // Head of list of free chunks
+-  Chunk_t*      _tail;          // Tail of list of free chunks
+-  size_t        _size;          // Size in Heap words of each chunk
+-  ssize_t       _count;         // Number of entries in list
+-
+- protected:
+-
+-#ifdef ASSERT
+-  Mutex*        _protecting_lock;
+-  void assert_proper_lock_protection_work() const;
+-#endif
+-
+-  // Asserts false if the protecting lock (if any) is not held.
+-  void assert_proper_lock_protection() const {
+-    DEBUG_ONLY(assert_proper_lock_protection_work());
+-  }
+-
+-  void increment_count()    {
+-    _count++;
+-  }
+-
+-  void decrement_count() {
+-    _count--;
+-    assert(_count >= 0, "Count should not be negative");
+-  }
+-
+- public:
+-  // Constructor
+-  // Construct a list without any entries.
+-  FreeList();
+-
+-  // Do initialization
+-  void initialize();
+-
+-  // Reset the head, tail, and count of a free list.
+-  void reset();
+-
+-  // Declare the current free list to be protected by the given lock.
+-#ifdef ASSERT
+-  Mutex* protecting_lock() const { return _protecting_lock; }
+-  void set_protecting_lock(Mutex* v) {
+-    _protecting_lock = v;
+-  }
+-#endif
+-
+-  // Accessors.
+-  Chunk_t* head() const {
+-    assert_proper_lock_protection();
+-    return _head;
+-  }
+-  void set_head(Chunk_t* v) {
+-    assert_proper_lock_protection();
+-    _head = v;
+-    assert(!_head || _head->size() == _size, "bad chunk size");
+-  }
+-  // Set the head of the list and set the prev field of non-null
+-  // values to NULL.
+-  void link_head(Chunk_t* v);
+-
+-  Chunk_t* tail() const {
+-    assert_proper_lock_protection();
+-    return _tail;
+-  }
+-  void set_tail(Chunk_t* v) {
+-    assert_proper_lock_protection();
+-    _tail = v;
+-    assert(!_tail || _tail->size() == _size, "bad chunk size");
+-  }
+-  // Set the tail of the list and set the next field of non-null
+-  // values to NULL.
+-  void link_tail(Chunk_t* v) {
+-    assert_proper_lock_protection();
+-    set_tail(v);
+-    if (v != NULL) {
+-      v->clear_next();
+-    }
+-  }
+-
+-  // No locking checks in read-accessors: lock-free reads (only) are benign.
+-  // Readers are expected to have the lock if they are doing work that
+-  // requires atomicity guarantees in sections of code.
+-  size_t size() const {
+-    return _size;
+-  }
+-  void set_size(size_t v) {
+-    assert_proper_lock_protection();
+-    _size = v;
+-  }
+-  ssize_t count() const { return _count; }
+-  void set_count(ssize_t v) { _count = v;}
+-
+-  size_t get_better_size() { return size(); }
+-
+-  size_t returned_bytes() const { ShouldNotReachHere(); return 0; }
+-  void set_returned_bytes(size_t v) {}
+-  void increment_returned_bytes_by(size_t v) {}
+-
+-  // Unlink head of list and return it.  Returns NULL if
+-  // the list is empty.
+-  Chunk_t* get_chunk_at_head();
+-
+-  // Remove the first "n" or "count", whichever is smaller, chunks from the
+-  // list, setting "fl", which is required to be empty, to point to them.
+-  void getFirstNChunksFromList(size_t n, FreeList<Chunk_t>* fl);
+-
+-  // Unlink this chunk from it's free list
+-  void remove_chunk(Chunk_t* fc);
+-
+-  // Add this chunk to this free list.
+-  void return_chunk_at_head(Chunk_t* fc);
+-  void return_chunk_at_tail(Chunk_t* fc);
+-
+-  // Similar to returnChunk* but also records some diagnostic
+-  // information.
+-  void return_chunk_at_head(Chunk_t* fc, bool record_return);
+-  void return_chunk_at_tail(Chunk_t* fc, bool record_return);
+-
+-  // Prepend "fl" (whose size is required to be the same as that of "this")
+-  // to the front of "this" list.
+-  void prepend(FreeList<Chunk_t>* fl);
+-
+-  // Verify that the chunk is in the list.
+-  // found.  Return NULL if "fc" is not found.
+-  bool verify_chunk_in_free_list(Chunk_t* fc) const;
+-
+-  // Printing support
+-  static void print_labels_on(outputStream* st, const char* c);
+-  void print_on(outputStream* st, const char* c = NULL) const;
+-};
+-
+-#endif // SHARE_MEMORY_FREELIST_HPP
+diff --git a/src/hotspot/share/memory/freeList.inline.hpp b/src/hotspot/share/memory/freeList.inline.hpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/freeList.inline.hpp
++++ /dev/null
+@@ -1,330 +0,0 @@
+-/*
+- * Copyright (c) 2001, 2017, Oracle and/or its affiliates. All rights reserved.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_FREELIST_INLINE_HPP
+-#define SHARE_MEMORY_FREELIST_INLINE_HPP
+-
+-#include "gc/shared/collectedHeap.hpp"
+-#include "memory/freeList.hpp"
+-#include "runtime/globals.hpp"
+-#include "runtime/mutex.hpp"
+-#include "runtime/vmThread.hpp"
+-#include "utilities/macros.hpp"
+-
+-// Free list.  A FreeList is used to access a linked list of chunks
+-// of space in the heap.  The head and tail are maintained so that
+-// items can be (as in the current implementation) added at the
+-// at the tail of the list and removed from the head of the list to
+-// maintain a FIFO queue.
+-
+-template <class Chunk>
+-FreeList<Chunk>::FreeList() :
+-  _head(NULL), _tail(NULL)
+-#ifdef ASSERT
+-  , _protecting_lock(NULL)
+-#endif
+-{
+-  _size         = 0;
+-  _count        = 0;
+-}
+-
+-template <class Chunk>
+-void FreeList<Chunk>::link_head(Chunk* v) {
+-  assert_proper_lock_protection();
+-  set_head(v);
+-  // If this method is not used (just set the head instead),
+-  // this check can be avoided.
+-  if (v != NULL) {
+-    v->link_prev(NULL);
+-  }
+-}
+-
+-
+-
+-template <class Chunk>
+-void FreeList<Chunk>::reset() {
+-  // Don't set the _size to 0 because this method is
+-  // used with a existing list that has a size but which has
+-  // been emptied.
+-  // Don't clear the _protecting_lock of an existing list.
+-  set_count(0);
+-  set_head(NULL);
+-  set_tail(NULL);
+-}
+-
+-template <class Chunk>
+-void FreeList<Chunk>::initialize() {
+-#ifdef ASSERT
+-  // Needed early because it might be checked in other initializing code.
+-  set_protecting_lock(NULL);
+-#endif
+-  reset();
+-  set_size(0);
+-}
+-
+-template <class Chunk_t>
+-Chunk_t* FreeList<Chunk_t>::get_chunk_at_head() {
+-  assert_proper_lock_protection();
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-  Chunk_t* fc = head();
+-  if (fc != NULL) {
+-    Chunk_t* nextFC = fc->next();
+-    if (nextFC != NULL) {
+-      // The chunk fc being removed has a "next".  Set the "next" to the
+-      // "prev" of fc.
+-      nextFC->link_prev(NULL);
+-    } else { // removed tail of list
+-      link_tail(NULL);
+-    }
+-    link_head(nextFC);
+-    decrement_count();
+-  }
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-  return fc;
+-}
+-
+-
+-template <class Chunk>
+-void FreeList<Chunk>::getFirstNChunksFromList(size_t n, FreeList<Chunk>* fl) {
+-  assert_proper_lock_protection();
+-  assert(fl->count() == 0, "Precondition");
+-  if (count() > 0) {
+-    int k = 1;
+-    fl->set_head(head()); n--;
+-    Chunk* tl = head();
+-    while (tl->next() != NULL && n > 0) {
+-      tl = tl->next(); n--; k++;
+-    }
+-    assert(tl != NULL, "Loop Inv.");
+-
+-    // First, fix up the list we took from.
+-    Chunk* new_head = tl->next();
+-    set_head(new_head);
+-    set_count(count() - k);
+-    if (new_head == NULL) {
+-      set_tail(NULL);
+-    } else {
+-      new_head->link_prev(NULL);
+-    }
+-    // Now we can fix up the tail.
+-    tl->link_next(NULL);
+-    // And return the result.
+-    fl->set_tail(tl);
+-    fl->set_count(k);
+-  }
+-}
+-
+-// Remove this chunk from the list
+-template <class Chunk>
+-void FreeList<Chunk>::remove_chunk(Chunk*fc) {
+-   assert_proper_lock_protection();
+-   assert(head() != NULL, "Remove from empty list");
+-   assert(fc != NULL, "Remove a NULL chunk");
+-   assert(size() == fc->size(), "Wrong list");
+-   assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-   assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-
+-   Chunk* prevFC = fc->prev();
+-   Chunk* nextFC = fc->next();
+-   if (nextFC != NULL) {
+-     // The chunk fc being removed has a "next".  Set the "next" to the
+-     // "prev" of fc.
+-     nextFC->link_prev(prevFC);
+-   } else { // removed tail of list
+-     link_tail(prevFC);
+-   }
+-   if (prevFC == NULL) { // removed head of list
+-     link_head(nextFC);
+-     assert(nextFC == NULL || nextFC->prev() == NULL,
+-       "Prev of head should be NULL");
+-   } else {
+-     prevFC->link_next(nextFC);
+-     assert(tail() != prevFC || prevFC->next() == NULL,
+-       "Next of tail should be NULL");
+-   }
+-   decrement_count();
+-   assert(((head() == NULL) + (tail() == NULL) + (count() == 0)) % 3 == 0,
+-          "H/T/C Inconsistency");
+-   // clear next and prev fields of fc, debug only
+-   NOT_PRODUCT(
+-     fc->link_prev(NULL);
+-     fc->link_next(NULL);
+-   )
+-   assert(fc->is_free(), "Should still be a free chunk");
+-   assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-   assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-   assert(head() == NULL || head()->size() == size(), "wrong item on list");
+-   assert(tail() == NULL || tail()->size() == size(), "wrong item on list");
+-}
+-
+-// Add this chunk at the head of the list.
+-template <class Chunk>
+-void FreeList<Chunk>::return_chunk_at_head(Chunk* chunk, bool record_return) {
+-  assert_proper_lock_protection();
+-  assert(chunk != NULL, "insert a NULL chunk");
+-  assert(size() == chunk->size(), "Wrong size");
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-
+-  Chunk* oldHead = head();
+-  assert(chunk != oldHead, "double insertion");
+-  chunk->link_after(oldHead);
+-  link_head(chunk);
+-  if (oldHead == NULL) { // only chunk in list
+-    assert(tail() == NULL, "inconsistent FreeList");
+-    link_tail(chunk);
+-  }
+-  increment_count(); // of # of chunks in list
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-  assert(head() == NULL || head()->size() == size(), "wrong item on list");
+-  assert(tail() == NULL || tail()->size() == size(), "wrong item on list");
+-}
+-
+-template <class Chunk>
+-void FreeList<Chunk>::return_chunk_at_head(Chunk* chunk) {
+-  assert_proper_lock_protection();
+-  return_chunk_at_head(chunk, true);
+-}
+-
+-// Add this chunk at the tail of the list.
+-template <class Chunk>
+-void FreeList<Chunk>::return_chunk_at_tail(Chunk* chunk, bool record_return) {
+-  assert_proper_lock_protection();
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-  assert(chunk != NULL, "insert a NULL chunk");
+-  assert(size() == chunk->size(), "wrong size");
+-
+-  Chunk* oldTail = tail();
+-  assert(chunk != oldTail, "double insertion");
+-  if (oldTail != NULL) {
+-    oldTail->link_after(chunk);
+-  } else { // only chunk in list
+-    assert(head() == NULL, "inconsistent FreeList");
+-    link_head(chunk);
+-  }
+-  link_tail(chunk);
+-  increment_count();  // of # of chunks in list
+-  assert(head() == NULL || head()->prev() == NULL, "list invariant");
+-  assert(tail() == NULL || tail()->next() == NULL, "list invariant");
+-  assert(head() == NULL || head()->size() == size(), "wrong item on list");
+-  assert(tail() == NULL || tail()->size() == size(), "wrong item on list");
+-}
+-
+-template <class Chunk>
+-void FreeList<Chunk>::return_chunk_at_tail(Chunk* chunk) {
+-  return_chunk_at_tail(chunk, true);
+-}
+-
+-template <class Chunk>
+-void FreeList<Chunk>::prepend(FreeList<Chunk>* fl) {
+-  assert_proper_lock_protection();
+-  if (fl->count() > 0) {
+-    if (count() == 0) {
+-      set_head(fl->head());
+-      set_tail(fl->tail());
+-      set_count(fl->count());
+-    } else {
+-      // Both are non-empty.
+-      Chunk* fl_tail = fl->tail();
+-      Chunk* this_head = head();
+-      assert(fl_tail->next() == NULL, "Well-formedness of fl");
+-      fl_tail->link_next(this_head);
+-      this_head->link_prev(fl_tail);
+-      set_head(fl->head());
+-      set_count(count() + fl->count());
+-    }
+-    fl->set_head(NULL);
+-    fl->set_tail(NULL);
+-    fl->set_count(0);
+-  }
+-}
+-
+-// verify_chunk_in_free_lists() is used to verify that an item is in this free list.
+-// It is used as a debugging aid.
+-template <class Chunk>
+-bool FreeList<Chunk>::verify_chunk_in_free_list(Chunk* fc) const {
+-  // This is an internal consistency check, not part of the check that the
+-  // chunk is in the free lists.
+-  guarantee(fc->size() == size(), "Wrong list is being searched");
+-  Chunk* curFC = head();
+-  while (curFC) {
+-    // This is an internal consistency check.
+-    guarantee(size() == curFC->size(), "Chunk is in wrong list.");
+-    if (fc == curFC) {
+-      return true;
+-    }
+-    curFC = curFC->next();
+-  }
+-  return false;
+-}
+-
+-#ifdef ASSERT
+-template <class Chunk>
+-void FreeList<Chunk>::assert_proper_lock_protection_work() const {
+-  // Nothing to do if the list has no assigned protecting lock
+-  if (protecting_lock() == NULL) {
+-    return;
+-  }
+-
+-  Thread* thr = Thread::current();
+-  if (thr->is_VM_thread() || thr->is_ConcurrentGC_thread()) {
+-    // assert that we are holding the freelist lock
+-  } else if (thr->is_GC_task_thread()) {
+-    assert(protecting_lock()->owned_by_self(), "FreeList RACE DETECTED");
+-  } else if (thr->is_Java_thread()) {
+-    assert(!SafepointSynchronize::is_at_safepoint(), "Should not be executing");
+-  } else {
+-    ShouldNotReachHere();  // unaccounted thread type?
+-  }
+-}
+-#endif
+-
+-// Print the "label line" for free list stats.
+-template <class Chunk>
+-void FreeList<Chunk>::print_labels_on(outputStream* st, const char* c) {
+-  st->print("%16s\t", c);
+-  st->print("%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"
+-            "%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"    "%14s\t"    "\n",
+-            "bfrsurp", "surplus", "desired", "prvSwep", "bfrSwep",
+-            "count",   "cBirths", "cDeaths", "sBirths", "sDeaths");
+-}
+-
+-// Print the AllocationStats for the given free list. If the second argument
+-// to the call is a non-null string, it is printed in the first column;
+-// otherwise, if the argument is null (the default), then the size of the
+-// (free list) block is printed in the first column.
+-template <class Chunk_t>
+-void FreeList<Chunk_t>::print_on(outputStream* st, const char* c) const {
+-  if (c != NULL) {
+-    st->print("%16s", c);
+-  } else {
+-    st->print(SIZE_FORMAT_W(16), size());
+-  }
+-}
+-
+-#endif // SHARE_MEMORY_FREELIST_INLINE_HPP
+diff --git a/src/hotspot/share/memory/metadataFactory.hpp b/src/hotspot/share/memory/metadataFactory.hpp
+--- a/src/hotspot/share/memory/metadataFactory.hpp
++++ b/src/hotspot/share/memory/metadataFactory.hpp
+@@ -26,6 +26,7 @@
+ #define SHARE_MEMORY_METADATAFACTORY_HPP
+ 
+ #include "classfile/classLoaderData.hpp"
++#include "memory/metaspace.hpp"
+ #include "oops/array.hpp"
+ #include "utilities/exceptions.hpp"
+ #include "utilities/globalDefinitions.hpp"
+diff --git a/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp b/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
+--- a/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
++++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, SAP and/or its affiliates.
++ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -22,8 +22,9 @@
+  * questions.
+  *
+  */
++
+ #include "precompiled.hpp"
+-#include "memory/metaspace.hpp"
++#include "memory/metaspace/metaspaceReport.hpp"
+ #include "memory/metaspace/metaspaceDCmd.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "services/diagnosticCommand.hpp"
+@@ -38,7 +39,6 @@
+   , _by_spacetype("by-spacetype", "Break down numbers by loader type.", "BOOLEAN", false, "false")
+   , _by_chunktype("by-chunktype", "Break down numbers by chunk type.", "BOOLEAN", false, "false")
+   , _show_vslist("vslist", "Shows details about the underlying virtual space.", "BOOLEAN", false, "false")
+-  , _show_vsmap("vsmap", "Shows chunk composition of the underlying virtual spaces", "BOOLEAN", false, "false")
+   , _scale("scale", "Memory usage in which to scale. Valid values are: 1, KB, MB or GB (fixed scale) "
+            "or \"dynamic\" for a dynamically choosen scale.",
+            "STRING", false, "dynamic")
+@@ -50,7 +50,6 @@
+   _dcmdparser.add_dcmd_option(&_by_chunktype);
+   _dcmdparser.add_dcmd_option(&_by_spacetype);
+   _dcmdparser.add_dcmd_option(&_show_vslist);
+-  _dcmdparser.add_dcmd_option(&_show_vsmap);
+   _dcmdparser.add_dcmd_option(&_scale);
+ }
+ 
+@@ -81,7 +80,7 @@
+   }
+   if (_basic.value() == true) {
+     if (_show_loaders.value() || _by_chunktype.value() || _by_spacetype.value() ||
+-        _show_vslist.value() || _show_vsmap.value()) {
++        _show_vslist.value()) {
+       // Basic mode. Just print essentials. Does not need to be at a safepoint.
+       output()->print_cr("In basic mode, additional arguments are ignored.");
+     }
+@@ -89,12 +88,11 @@
+   } else {
+     // Full mode. Requires safepoint.
+     int flags = 0;
+-    if (_show_loaders.value())         flags |= MetaspaceUtils::rf_show_loaders;
+-    if (_show_classes.value())         flags |= MetaspaceUtils::rf_show_classes;
+-    if (_by_chunktype.value())         flags |= MetaspaceUtils::rf_break_down_by_chunktype;
+-    if (_by_spacetype.value())         flags |= MetaspaceUtils::rf_break_down_by_spacetype;
+-    if (_show_vslist.value())          flags |= MetaspaceUtils::rf_show_vslist;
+-    if (_show_vsmap.value())           flags |= MetaspaceUtils::rf_show_vsmap;
++    if (_show_loaders.value())         flags |= MetaspaceReporter::rf_show_loaders;
++    if (_show_classes.value())         flags |= MetaspaceReporter::rf_show_classes;
++    if (_by_chunktype.value())         flags |= MetaspaceReporter::rf_break_down_by_chunktype;
++    if (_by_spacetype.value())         flags |= MetaspaceReporter::rf_break_down_by_spacetype;
++    if (_show_vslist.value())          flags |= MetaspaceReporter::rf_show_vslist;
+     VM_PrintMetadata op(output(), scale, flags);
+     VMThread::execute(&op);
+   }
+diff --git a/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp b/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
+--- a/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
++++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, SAP and/or its affiliates.
++ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -38,7 +38,6 @@
+   DCmdArgument<bool> _by_spacetype;
+   DCmdArgument<bool> _by_chunktype;
+   DCmdArgument<bool> _show_vslist;
+-  DCmdArgument<bool> _show_vsmap;
+   DCmdArgument<char*> _scale;
+   DCmdArgument<bool> _show_classes;
+ public:
+diff --git a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
+--- a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
++++ b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
+@@ -26,6 +26,7 @@
+ #include "precompiled.hpp"
+ 
+ #include "memory/metaspace.hpp"
++#include "memory/metaspace.hpp"
+ #include "memory/metaspace/metaspaceSizesSnapshot.hpp"
+ 
+ namespace metaspace {
+diff --git a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp
+--- a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp
++++ b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp
+@@ -28,6 +28,7 @@
+ 
+ namespace metaspace {
+ 
++// Todo: clean up after jep387, see JDK-8251392
+ class MetaspaceSizesSnapshot {
+ public:
+   MetaspaceSizesSnapshot();
+diff --git a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
+--- a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
++++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
+@@ -1,5 +1,6 @@
+ /*
+  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -21,12 +22,14 @@
+  * questions.
+  *
+  */
++
+ #include "precompiled.hpp"
+ #include "classfile/classLoaderData.inline.hpp"
+ #include "classfile/javaClasses.hpp"
++#include "memory/metaspace.hpp"
+ #include "memory/metaspace/printCLDMetaspaceInfoClosure.hpp"
+ #include "memory/metaspace/printMetaspaceInfoKlassClosure.hpp"
+-#include "memory/metaspaceShared.hpp"
++#include "memory/metaspace/metaspaceCommon.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "runtime/safepoint.hpp"
+ #include "utilities/globalDefinitions.hpp"
+@@ -80,7 +83,7 @@
+   }
+ 
+   // Collect statistics for this class loader metaspace
+-  ClassLoaderMetaspaceStatistics this_cld_stat;
++  clms_stats_t this_cld_stat;
+   msp->add_to_statistics(&this_cld_stat);
+ 
+   // And add it to the running totals
+diff --git a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
+--- a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
++++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
+@@ -1,5 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -28,6 +29,7 @@
+ #include "memory/iterator.hpp"
+ #include "memory/metaspace.hpp"
+ #include "memory/metaspace/metaspaceStatistics.hpp"
++#include "memory/metaspace/metaspaceEnums.hpp"
+ #include "utilities/globalDefinitions.hpp"
+ 
+ class outputStream;
+@@ -47,10 +49,10 @@
+   uintx                           _num_loaders;
+   uintx                           _num_loaders_without_metaspace;
+   uintx                           _num_loaders_unloading;
+-  ClassLoaderMetaspaceStatistics  _stats_total;
++  clms_stats_t                    _stats_total;
+ 
+   uintx                           _num_loaders_by_spacetype [Metaspace::MetaspaceTypeCount];
+-  ClassLoaderMetaspaceStatistics  _stats_by_spacetype [Metaspace::MetaspaceTypeCount];
++  clms_stats_t                    _stats_by_spacetype [Metaspace::MetaspaceTypeCount];
+ 
+   uintx                           _num_classes_by_spacetype [Metaspace::MetaspaceTypeCount];
+   uintx                           _num_classes_shared_by_spacetype [Metaspace::MetaspaceTypeCount];
+diff --git a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
+--- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
++++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, SAP and/or its affiliates.
++ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -22,6 +22,7 @@
+  * questions.
+  *
+  */
++
+ #include "precompiled.hpp"
+ 
+ #include "memory/metaspaceShared.hpp"
+diff --git a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
+--- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
++++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, SAP and/or its affiliates.
++ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+diff --git a/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp b/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
+--- a/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
++++ b/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
+@@ -25,7 +25,9 @@
+ #ifndef SHARE_MEMORY_METASPACECHUNKFREELISTSUMMARY_HPP
+ #define SHARE_MEMORY_METASPACECHUNKFREELISTSUMMARY_HPP
+ 
++#include "utilities/globalDefinitions.hpp"
+ 
++// Todo: will need to rework this, see JDK-8251342
+ class MetaspaceChunkFreeListSummary {
+   size_t _num_specialized_chunks;
+   size_t _num_small_chunks;
+diff --git a/src/hotspot/share/memory/metaspaceClosure.hpp b/src/hotspot/share/memory/metaspaceClosure.hpp
+--- a/src/hotspot/share/memory/metaspaceClosure.hpp
++++ b/src/hotspot/share/memory/metaspaceClosure.hpp
+@@ -106,7 +106,7 @@
+   //         Symbol*     bar() { return (Symbol*)    _obj; }
+   //
+   // [2] All Array<T> dimensions are statically declared.
+-  class Ref : public CHeapObj<mtInternal> {
++  class Ref : public CHeapObj<mtMetaspace> {
+     Writability _writability;
+     Ref* _next;
+     NONCOPYABLE(Ref);
+diff --git a/src/hotspot/share/memory/metaspaceCounters.cpp b/src/hotspot/share/memory/metaspaceCounters.cpp
+--- a/src/hotspot/share/memory/metaspaceCounters.cpp
++++ b/src/hotspot/share/memory/metaspaceCounters.cpp
+@@ -29,7 +29,7 @@
+ #include "runtime/perfData.hpp"
+ #include "utilities/exceptions.hpp"
+ 
+-class MetaspacePerfCounters: public CHeapObj<mtInternal> {
++class MetaspacePerfCounters: public CHeapObj<mtMetaspace> {
+   friend class VMStructs;
+   PerfVariable*      _capacity;
+   PerfVariable*      _used;
+diff --git a/src/hotspot/share/memory/metaspaceCounters.hpp b/src/hotspot/share/memory/metaspaceCounters.hpp
+--- a/src/hotspot/share/memory/metaspaceCounters.hpp
++++ b/src/hotspot/share/memory/metaspaceCounters.hpp
+@@ -29,6 +29,7 @@
+ 
+ class MetaspacePerfCounters;
+ 
++// Todo: clean up after jep387, see JDK-8251392
+ class MetaspaceCounters: public AllStatic {
+   static MetaspacePerfCounters* _perf_counters;
+   static size_t used();
+diff --git a/src/hotspot/share/memory/metaspaceGCThresholdUpdater.hpp b/src/hotspot/share/memory/metaspaceGCThresholdUpdater.hpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/metaspaceGCThresholdUpdater.hpp
++++ /dev/null
+@@ -1,52 +0,0 @@
+-/*
+- * Copyright (c) 2014, 2019, Oracle and/or its affiliates. All rights reserved.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_METASPACEGCTHRESHOLDUPDATER_HPP
+-#define SHARE_MEMORY_METASPACEGCTHRESHOLDUPDATER_HPP
+-
+-#include "memory/allocation.hpp"
+-#include "utilities/debug.hpp"
+-
+-class MetaspaceGCThresholdUpdater : public AllStatic {
+- public:
+-  enum Type {
+-    ComputeNewSize,
+-    ExpandAndAllocate,
+-    Last
+-  };
+-
+-  static const char* to_string(MetaspaceGCThresholdUpdater::Type updater) {
+-    switch (updater) {
+-      case ComputeNewSize:
+-        return "compute_new_size";
+-      case ExpandAndAllocate:
+-        return "expand_and_allocate";
+-      default:
+-        assert(false, "Got bad updater: %d", (int) updater);
+-        return NULL;
+-    };
+-  }
+-};
+-
+-#endif // SHARE_MEMORY_METASPACEGCTHRESHOLDUPDATER_HPP
+diff --git a/src/hotspot/share/memory/metaspaceTracer.hpp b/src/hotspot/share/memory/metaspaceTracer.hpp
+--- a/src/hotspot/share/memory/metaspaceTracer.hpp
++++ b/src/hotspot/share/memory/metaspaceTracer.hpp
+@@ -27,7 +27,6 @@
+ 
+ #include "memory/allocation.hpp"
+ #include "memory/metaspace.hpp"
+-#include "memory/metaspaceGCThresholdUpdater.hpp"
+ 
+ class ClassLoaderData;
+ 
+diff --git a/src/hotspot/share/memory/universe.cpp b/src/hotspot/share/memory/universe.cpp
+--- a/src/hotspot/share/memory/universe.cpp
++++ b/src/hotspot/share/memory/universe.cpp
+@@ -1177,7 +1177,7 @@
+   }
+   if (should_verify_subset(Verify_MetaspaceUtils)) {
+     log_debug(gc, verify)("MetaspaceUtils");
+-    MetaspaceUtils::verify_free_chunks();
++    DEBUG_ONLY(MetaspaceUtils::verify(true);)
+   }
+   if (should_verify_subset(Verify_JNIHandles)) {
+     log_debug(gc, verify)("JNIHandles");
+diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/globals.hpp
+--- a/src/hotspot/share/runtime/globals.hpp
++++ b/src/hotspot/share/runtime/globals.hpp
+@@ -900,7 +900,6 @@
+           NOT_LP64(2200*K) LP64_ONLY(4*M),                                  \
+           "(Deprecated) Initial size of the boot class loader data metaspace") \
+           range(30*K, max_uintx/BytesPerWord)                               \
+-          constraint(InitialBootClassLoaderMetaspaceSizeConstraintFunc, AfterErgo)\
+                                                                             \
+   product(bool, PrintHeapAtSIGBREAK, true,                                  \
+           "Print heap layout in response to SIGBREAK")                      \
+@@ -1551,6 +1550,18 @@
+           "class pointers are used")                                        \
+           range(1*M, 3*G)                                                   \
+                                                                             \
++  experimental(uintx, ForceCompressedClassSpaceStartAddress, 0,             \
++          "Force class space start address to a given value.")              \
++                                                                            \
++  product(ccstr, MetaspaceReclaimPolicy, "balanced",                        \
++          "options: balanced, aggressive, none")                            \
++                                                                            \
++  develop(bool, MetaspaceGuardAllocations, false,                           \
++          "Metapace allocations are guarded.")                              \
++                                                                            \
++  develop(bool, MetaspaceHandleDeallocations, true,                         \
++	        "Switch off Metapace deallocation handling.")                     \
++																		                                        \
+   manageable(uintx, MinHeapFreeRatio, 40,                                   \
+           "The minimum percentage of heap free after GC to avoid expansion."\
+           " For most GCs this applies to the old generation. In G1 and"     \
+diff --git a/src/hotspot/share/runtime/os.hpp b/src/hotspot/share/runtime/os.hpp
+--- a/src/hotspot/share/runtime/os.hpp
++++ b/src/hotspot/share/runtime/os.hpp
+@@ -405,6 +405,8 @@
+   static bool   can_execute_large_page_memory();
+ 
+   // Check if pointer points to readable memory (by 4-byte read access)
++  // !! Unreliable before VM initialization! Use CanUseSafeFetch32() to test
++  //    if this function is reliable !!
+   static bool    is_readable_pointer(const void* p);
+   static bool    is_readable_range(const void* from, const void* to);
+ 
+diff --git a/src/hotspot/share/runtime/vmOperations.cpp b/src/hotspot/share/runtime/vmOperations.cpp
+--- a/src/hotspot/share/runtime/vmOperations.cpp
++++ b/src/hotspot/share/runtime/vmOperations.cpp
+@@ -33,6 +33,7 @@
+ #include "logging/logStream.hpp"
+ #include "logging/logConfiguration.hpp"
+ #include "memory/heapInspection.hpp"
++#include "memory/metaspace/metaspaceReport.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/symbol.hpp"
+@@ -183,7 +184,7 @@
+ }
+ 
+ void VM_PrintMetadata::doit() {
+-  MetaspaceUtils::print_report(_out, _scale, _flags);
++  metaspace::MetaspaceReporter::print_report(_out, _scale, _flags);
+ }
+ 
+ VM_FindDeadlocks::~VM_FindDeadlocks() {
+diff --git a/src/hotspot/share/runtime/vmStructs.cpp b/src/hotspot/share/runtime/vmStructs.cpp
+--- a/src/hotspot/share/runtime/vmStructs.cpp
++++ b/src/hotspot/share/runtime/vmStructs.cpp
+@@ -51,7 +51,6 @@
+ #include "memory/allocation.hpp"
+ #include "memory/allocation.inline.hpp"
+ #include "memory/heap.hpp"
+-#include "memory/metaspace/metablock.hpp"
+ #include "memory/padded.hpp"
+ #include "memory/referenceType.hpp"
+ #include "memory/universe.hpp"
+diff --git a/src/hotspot/share/services/memReporter.cpp b/src/hotspot/share/services/memReporter.cpp
+--- a/src/hotspot/share/services/memReporter.cpp
++++ b/src/hotspot/share/services/memReporter.cpp
+@@ -23,7 +23,10 @@
+  */
+ #include "precompiled.hpp"
+ 
++
+ #include "memory/allocation.hpp"
++#include "memory/metaspace.hpp"
++#include "memory/metaspace/metaspaceEnums.hpp"
+ #include "services/mallocTracker.hpp"
+ #include "services/memReporter.hpp"
+ #include "services/threadStackTracker.hpp"
+@@ -209,26 +212,26 @@
+   }
+ }
+ 
+-void MemSummaryReporter::report_metadata(Metaspace::MetadataType type) const {
+-  assert(type == Metaspace::NonClassType || type == Metaspace::ClassType,
+-    "Invalid metadata type");
+-  const char* name = (type == Metaspace::NonClassType) ?
+-    "Metadata:   " : "Class space:";
++void MemSummaryReporter::report_metadata(Metaspace::MetadataType mdType) const {
++  DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));
++  const char* const name = metaspace::describe_mdtype(mdType);
+ 
+   outputStream* out = output();
+   const char* scale = current_scale();
+-  size_t committed   = MetaspaceUtils::committed_bytes(type);
+-  size_t used = MetaspaceUtils::used_bytes(type);
+-  size_t free = (MetaspaceUtils::capacity_bytes(type) - used)
+-              + MetaspaceUtils::free_chunks_total_bytes(type)
+-              + MetaspaceUtils::free_in_vs_bytes(type);
++  size_t committed   = MetaspaceUtils::committed_bytes(mdType);
++  size_t used = MetaspaceUtils::used_bytes(mdType);
++  size_t free = 0; //
++      // TODO think this thru. What is free in this context?
++      // (MetaspaceUtils::capacity_bytes(type) - used)
++  //         + MetaspaceUtils::free_chunks_total_bytes(type)
++  //          + MetaspaceUtils::free_in_vs_bytes(type);
+ 
+   assert(committed >= used + free, "Sanity");
+   size_t waste = committed - (used + free);
+ 
+   out->print_cr("%27s (  %s)", " ", name);
+   out->print("%27s (    ", " ");
+-  print_total(MetaspaceUtils::reserved_bytes(type), committed);
++  print_total(MetaspaceUtils::reserved_bytes(mdType), committed);
+   out->print_cr(")");
+   out->print_cr("%27s (    used=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(used), scale);
+   out->print_cr("%27s (    free=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(free), scale);
+@@ -599,37 +602,37 @@
+   }
+ }
+ 
+-void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType type,
++void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType mdType,
+                                                   const MetaspaceSnapshot* current_ms,
+                                                   const MetaspaceSnapshot* early_ms) const {
+-  const char* name = (type == Metaspace::NonClassType) ?
+-    "Metadata:   " : "Class space:";
++  DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));
++  const char* const name = metaspace::describe_mdtype(mdType);
+ 
+   outputStream* out = output();
+   const char* scale = current_scale();
+ 
+   out->print_cr("%27s (  %s)", " ", name);
+   out->print("%27s (    ", " ");
+-  print_virtual_memory_diff(current_ms->reserved_in_bytes(type),
+-                            current_ms->committed_in_bytes(type),
+-                            early_ms->reserved_in_bytes(type),
+-                            early_ms->committed_in_bytes(type));
++  print_virtual_memory_diff(current_ms->reserved_in_bytes(mdType),
++                            current_ms->committed_in_bytes(mdType),
++                            early_ms->reserved_in_bytes(mdType),
++                            early_ms->committed_in_bytes(mdType));
+   out->print_cr(")");
+ 
+-  long diff_used = diff_in_current_scale(current_ms->used_in_bytes(type),
+-                                         early_ms->used_in_bytes(type));
+-  long diff_free = diff_in_current_scale(current_ms->free_in_bytes(type),
+-                                         early_ms->free_in_bytes(type));
++  long diff_used = diff_in_current_scale(current_ms->used_in_bytes(mdType),
++                                         early_ms->used_in_bytes(mdType));
++  long diff_free = diff_in_current_scale(current_ms->free_in_bytes(mdType),
++                                         early_ms->free_in_bytes(mdType));
+ 
+-  size_t current_waste = current_ms->committed_in_bytes(type)
+-    - (current_ms->used_in_bytes(type) + current_ms->free_in_bytes(type));
+-  size_t early_waste = early_ms->committed_in_bytes(type)
+-    - (early_ms->used_in_bytes(type) + early_ms->free_in_bytes(type));
++  size_t current_waste = current_ms->committed_in_bytes(mdType)
++    - (current_ms->used_in_bytes(mdType) + current_ms->free_in_bytes(mdType));
++  size_t early_waste = early_ms->committed_in_bytes(mdType)
++    - (early_ms->used_in_bytes(mdType) + early_ms->free_in_bytes(mdType));
+   long diff_waste = diff_in_current_scale(current_waste, early_waste);
+ 
+   // Diff used
+   out->print("%27s (    used=" SIZE_FORMAT "%s", " ",
+-    amount_in_current_scale(current_ms->used_in_bytes(type)), scale);
++    amount_in_current_scale(current_ms->used_in_bytes(mdType)), scale);
+   if (diff_used != 0) {
+     out->print(" %+ld%s", diff_used, scale);
+   }
+@@ -637,7 +640,7 @@
+ 
+   // Diff free
+   out->print("%27s (    free=" SIZE_FORMAT "%s", " ",
+-    amount_in_current_scale(current_ms->free_in_bytes(type)), scale);
++    amount_in_current_scale(current_ms->free_in_bytes(mdType)), scale);
+   if (diff_free != 0) {
+     out->print(" %+ld%s", diff_free, scale);
+   }
+@@ -647,7 +650,7 @@
+   // Diff waste
+   out->print("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%", " ",
+     amount_in_current_scale(current_waste), scale,
+-    ((float)current_waste * 100) / current_ms->committed_in_bytes(type));
++    ((float)current_waste * 100) / current_ms->committed_in_bytes(mdType));
+   if (diff_waste != 0) {
+     out->print(" %+ld%s", diff_waste, scale);
+   }
+diff --git a/src/hotspot/share/services/virtualMemoryTracker.cpp b/src/hotspot/share/services/virtualMemoryTracker.cpp
+--- a/src/hotspot/share/services/virtualMemoryTracker.cpp
++++ b/src/hotspot/share/services/virtualMemoryTracker.cpp
+@@ -667,9 +667,9 @@
+   mss._committed_in_bytes[type]  = MetaspaceUtils::committed_bytes(type);
+   mss._used_in_bytes[type]       = MetaspaceUtils::used_bytes(type);
+ 
+-  size_t free_in_bytes = (MetaspaceUtils::capacity_bytes(type) - MetaspaceUtils::used_bytes(type))
+-                       + MetaspaceUtils::free_chunks_total_bytes(type)
+-                       + MetaspaceUtils::free_in_vs_bytes(type);
++  size_t free_in_bytes = 0;// TODO fix(MetaspaceUtils::capacity_bytes(type) - MetaspaceUtils::used_bytes(type))
++                     //  + MetaspaceUtils::free_chunks_total_bytes(type)
++                     //  + MetaspaceUtils::free_in_vs_bytes(type);
+   mss._free_in_bytes[type] = free_in_bytes;
+ }
+ 
+diff --git a/src/hotspot/share/services/virtualMemoryTracker.hpp b/src/hotspot/share/services/virtualMemoryTracker.hpp
+--- a/src/hotspot/share/services/virtualMemoryTracker.hpp
++++ b/src/hotspot/share/services/virtualMemoryTracker.hpp
+@@ -402,7 +402,7 @@
+   static SortedLinkedList<ReservedMemoryRegion, compare_reserved_region_base>* _reserved_regions;
+ };
+ 
+-
++// Todo: clean up after jep387, see JDK-8251392
+ class MetaspaceSnapshot : public ResourceObj {
+ private:
+   size_t  _reserved_in_bytes[Metaspace::MetadataTypeCount];

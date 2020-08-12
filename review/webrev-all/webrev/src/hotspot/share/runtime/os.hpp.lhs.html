@@ -1,0 +1,1149 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-all.patch</pre><hr></hr>
+<pre>
+   1 /*
+   2  * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_RUNTIME_OS_HPP
+  26 #define SHARE_RUNTIME_OS_HPP
+  27 
+  28 #include "jvm.h"
+  29 #include "jvmtifiles/jvmti.h"
+  30 #include "metaprogramming/integralConstant.hpp"
+  31 #include "utilities/exceptions.hpp"
+  32 #include "utilities/ostream.hpp"
+  33 #include "utilities/macros.hpp"
+  34 #ifndef _WINDOWS
+  35 # include &lt;setjmp.h&gt;
+  36 #endif
+  37 #ifdef __APPLE__
+  38 # include &lt;mach/mach_time.h&gt;
+  39 #endif
+  40 
+  41 class AgentLibrary;
+  42 class frame;
+  43 
+  44 // os defines the interface to operating system; this includes traditional
+  45 // OS services (time, I/O) as well as other functionality with system-
+  46 // dependent code.
+  47 
+  48 class Thread;
+  49 class JavaThread;
+  50 class NativeCallStack;
+  51 class methodHandle;
+  52 class OSThread;
+  53 class Mutex;
+  54 
+  55 template&lt;class E&gt; class GrowableArray;
+  56 
+  57 // %%%%% Moved ThreadState, START_FN, OSThread to new osThread.hpp. -- Rose
+  58 
+  59 // Platform-independent error return values from OS functions
+  60 enum OSReturn {
+  61   OS_OK         =  0,        // Operation was successful
+  62   OS_ERR        = -1,        // Operation failed
+  63   OS_INTRPT     = -2,        // Operation was interrupted
+  64   OS_TIMEOUT    = -3,        // Operation timed out
+  65   OS_NOMEM      = -5,        // Operation failed for lack of memory
+  66   OS_NORESOURCE = -6         // Operation failed for lack of nonmemory resource
+  67 };
+  68 
+  69 enum ThreadPriority {        // JLS 20.20.1-3
+  70   NoPriority       = -1,     // Initial non-priority value
+  71   MinPriority      =  1,     // Minimum priority
+  72   NormPriority     =  5,     // Normal (non-daemon) priority
+  73   NearMaxPriority  =  9,     // High priority, used for VMThread
+  74   MaxPriority      = 10,     // Highest priority, used for WatcherThread
+  75                              // ensures that VMThread doesn't starve profiler
+  76   CriticalPriority = 11      // Critical thread priority
+  77 };
+  78 
+  79 // Executable parameter flag for os::commit_memory() and
+  80 // os::commit_memory_or_exit().
+  81 const bool ExecMem = true;
+  82 
+  83 // Typedef for structured exception handling support
+  84 typedef void (*java_call_t)(JavaValue* value, const methodHandle&amp; method, JavaCallArguments* args, Thread* thread);
+  85 
+  86 class MallocTracker;
+  87 
+  88 class os: AllStatic {
+  89   friend class VMStructs;
+  90   friend class JVMCIVMStructs;
+  91   friend class MallocTracker;
+  92 
+  93 #ifdef ASSERT
+  94  private:
+  95   static bool _mutex_init_done;
+  96  public:
+  97   static void set_mutex_init_done() { _mutex_init_done = true; }
+  98   static bool mutex_init_done() { return _mutex_init_done; }
+  99 #endif
+ 100 
+ 101  public:
+ 102   enum { page_sizes_max = 9 }; // Size of _page_sizes array (8 plus a sentinel)
+ 103 
+ 104  private:
+ 105   static OSThread*          _starting_thread;
+ 106   static address            _polling_page;
+ 107  public:
+ 108   static size_t             _page_sizes[page_sizes_max];
+ 109 
+ 110  private:
+ 111   static void init_page_sizes(size_t default_page_size) {
+ 112     _page_sizes[0] = default_page_size;
+ 113     _page_sizes[1] = 0; // sentinel
+ 114   }
+ 115 
+ 116   static char*  pd_reserve_memory(size_t bytes, char* addr = 0,
+ 117                                   size_t alignment_hint = 0);
+ 118   static char*  pd_attempt_reserve_memory_at(size_t bytes, char* addr);
+ 119   static char*  pd_attempt_reserve_memory_at(size_t bytes, char* addr, int file_desc);
+ 120   static bool   pd_commit_memory(char* addr, size_t bytes, bool executable);
+ 121   static bool   pd_commit_memory(char* addr, size_t size, size_t alignment_hint,
+ 122                                  bool executable);
+ 123   // Same as pd_commit_memory() that either succeeds or calls
+ 124   // vm_exit_out_of_memory() with the specified mesg.
+ 125   static void   pd_commit_memory_or_exit(char* addr, size_t bytes,
+ 126                                          bool executable, const char* mesg);
+ 127   static void   pd_commit_memory_or_exit(char* addr, size_t size,
+ 128                                          size_t alignment_hint,
+ 129                                          bool executable, const char* mesg);
+ 130   static bool   pd_uncommit_memory(char* addr, size_t bytes);
+ 131   static bool   pd_release_memory(char* addr, size_t bytes);
+ 132 
+ 133   static char*  pd_map_memory(int fd, const char* file_name, size_t file_offset,
+ 134                            char *addr, size_t bytes, bool read_only = false,
+ 135                            bool allow_exec = false);
+ 136   static char*  pd_remap_memory(int fd, const char* file_name, size_t file_offset,
+ 137                              char *addr, size_t bytes, bool read_only,
+ 138                              bool allow_exec);
+ 139   static bool   pd_unmap_memory(char *addr, size_t bytes);
+ 140   static void   pd_free_memory(char *addr, size_t bytes, size_t alignment_hint);
+ 141   static void   pd_realign_memory(char *addr, size_t bytes, size_t alignment_hint);
+ 142 
+ 143   static char*  pd_reserve_memory_special(size_t size, size_t alignment,
+ 144                                           char* addr, bool executable);
+ 145   static bool   pd_release_memory_special(char* addr, size_t bytes);
+ 146 
+ 147   static size_t page_size_for_region(size_t region_size, size_t min_pages, bool must_be_aligned);
+ 148 
+ 149   // Get summary strings for system information in buffer provided
+ 150   static void  get_summary_cpu_info(char* buf, size_t buflen);
+ 151   static void  get_summary_os_info(char* buf, size_t buflen);
+ 152 
+ 153   static void initialize_initial_active_processor_count();
+ 154 
+ 155   LINUX_ONLY(static void pd_init_container_support();)
+ 156 
+ 157  public:
+ 158   static void init(void);                      // Called before command line parsing
+ 159 
+ 160   static void init_container_support() {       // Called during command line parsing.
+ 161      LINUX_ONLY(pd_init_container_support();)
+ 162   }
+ 163 
+ 164   static void init_before_ergo(void);          // Called after command line parsing
+ 165                                                // before VM ergonomics processing.
+ 166   static jint init_2(void);                    // Called after command line parsing
+ 167                                                // and VM ergonomics processing
+ 168 
+ 169   // unset environment variable
+ 170   static bool unsetenv(const char* name);
+ 171 
+ 172   static bool have_special_privileges();
+ 173 
+ 174   static jlong  javaTimeMillis();
+ 175   static jlong  javaTimeNanos();
+ 176   static void   javaTimeNanos_info(jvmtiTimerInfo *info_ptr);
+ 177   static void   javaTimeSystemUTC(jlong &amp;seconds, jlong &amp;nanos);
+ 178   static void   run_periodic_checks();
+ 179   static bool   supports_monotonic_clock();
+ 180 
+ 181   // Returns the elapsed time in seconds since the vm started.
+ 182   static double elapsedTime();
+ 183 
+ 184   // Returns real time in seconds since an arbitrary point
+ 185   // in the past.
+ 186   static bool getTimesSecs(double* process_real_time,
+ 187                            double* process_user_time,
+ 188                            double* process_system_time);
+ 189 
+ 190   // Interface to the performance counter
+ 191   static jlong elapsed_counter();
+ 192   static jlong elapsed_frequency();
+ 193 
+ 194   // The "virtual time" of a thread is the amount of time a thread has
+ 195   // actually run.  The first function indicates whether the OS supports
+ 196   // this functionality for the current thread, and if so the second
+ 197   // returns the elapsed virtual time for the current thread.
+ 198   static bool supports_vtime();
+ 199   static double elapsedVTime();
+ 200 
+ 201   // Return current local time in a string (YYYY-MM-DD HH:MM:SS).
+ 202   // It is MT safe, but not async-safe, as reading time zone
+ 203   // information may require a lock on some platforms.
+ 204   static char*      local_time_string(char *buf, size_t buflen);
+ 205   static struct tm* localtime_pd     (const time_t* clock, struct tm*  res);
+ 206   static struct tm* gmtime_pd        (const time_t* clock, struct tm*  res);
+ 207   // Fill in buffer with current local time as an ISO-8601 string.
+ 208   // E.g., YYYY-MM-DDThh:mm:ss.mmm+zzzz.
+ 209   // Returns buffer, or NULL if it failed.
+ 210   static char* iso8601_time(char* buffer, size_t buffer_length, bool utc = false);
+ 211 
+ 212   // Interface for detecting multiprocessor system
+ 213   static inline bool is_MP() {
+ 214     // During bootstrap if _processor_count is not yet initialized
+ 215     // we claim to be MP as that is safest. If any platform has a
+ 216     // stub generator that might be triggered in this phase and for
+ 217     // which being declared MP when in fact not, is a problem - then
+ 218     // the bootstrap routine for the stub generator needs to check
+ 219     // the processor count directly and leave the bootstrap routine
+ 220     // in place until called after initialization has ocurred.
+ 221     return (_processor_count != 1);
+ 222   }
+ 223 
+ 224   static julong available_memory();
+ 225   static julong physical_memory();
+ 226   static bool has_allocatable_memory_limit(julong* limit);
+ 227   static bool is_server_class_machine();
+ 228 
+ 229   // Returns the id of the processor on which the calling thread is currently executing.
+ 230   // The returned value is guaranteed to be between 0 and (os::processor_count() - 1).
+ 231   static uint processor_id();
+ 232 
+ 233   // number of CPUs
+ 234   static int processor_count() {
+ 235     return _processor_count;
+ 236   }
+ 237   static void set_processor_count(int count) { _processor_count = count; }
+ 238 
+ 239   // Returns the number of CPUs this process is currently allowed to run on.
+ 240   // Note that on some OSes this can change dynamically.
+ 241   static int active_processor_count();
+ 242 
+ 243   // At startup the number of active CPUs this process is allowed to run on.
+ 244   // This value does not change dynamically. May be different from active_processor_count().
+ 245   static int initial_active_processor_count() {
+ 246     assert(_initial_active_processor_count &gt; 0, "Initial active processor count not set yet.");
+ 247     return _initial_active_processor_count;
+ 248   }
+ 249 
+ 250   // Binds the current process to a processor.
+ 251   //    Returns true if it worked, false if it didn't.
+ 252   static bool bind_to_processor(uint processor_id);
+ 253 
+ 254   // Give a name to the current thread.
+ 255   static void set_native_thread_name(const char *name);
+ 256 
+ 257   // Interface for stack banging (predetect possible stack overflow for
+ 258   // exception processing)  There are guard pages, and above that shadow
+ 259   // pages for stack overflow checking.
+ 260   static bool uses_stack_guard_pages();
+ 261   static bool must_commit_stack_guard_pages();
+ 262   static void map_stack_shadow_pages(address sp);
+ 263   static bool stack_shadow_pages_available(Thread *thread, const methodHandle&amp; method, address sp);
+ 264 
+ 265   // Find committed memory region within specified range (start, start + size),
+ 266   // return true if found any
+ 267   static bool committed_in_range(address start, size_t size, address&amp; committed_start, size_t&amp; committed_size);
+ 268 
+ 269   // OS interface to Virtual Memory
+ 270 
+ 271   // Return the default page size.
+ 272   static int    vm_page_size();
+ 273 
+ 274   // Returns the page size to use for a region of memory.
+ 275   // region_size / min_pages will always be greater than or equal to the
+ 276   // returned value. The returned value will divide region_size.
+ 277   static size_t page_size_for_region_aligned(size_t region_size, size_t min_pages);
+ 278 
+ 279   // Returns the page size to use for a region of memory.
+ 280   // region_size / min_pages will always be greater than or equal to the
+ 281   // returned value. The returned value might not divide region_size.
+ 282   static size_t page_size_for_region_unaligned(size_t region_size, size_t min_pages);
+ 283 
+ 284   // Return the largest page size that can be used
+ 285   static size_t max_page_size() {
+ 286     // The _page_sizes array is sorted in descending order.
+ 287     return _page_sizes[0];
+ 288   }
+ 289 
+ 290   // Return a lower bound for page sizes. Also works before os::init completed.
+ 291   static size_t min_page_size() { return 4 * K; }
+ 292 
+ 293   // Methods for tracing page sizes returned by the above method.
+ 294   // The region_{min,max}_size parameters should be the values
+ 295   // passed to page_size_for_region() and page_size should be the result of that
+ 296   // call.  The (optional) base and size parameters should come from the
+ 297   // ReservedSpace base() and size() methods.
+ 298   static void trace_page_sizes(const char* str, const size_t* page_sizes, int count);
+ 299   static void trace_page_sizes(const char* str,
+ 300                                const size_t region_min_size,
+ 301                                const size_t region_max_size,
+ 302                                const size_t page_size,
+ 303                                const char* base,
+ 304                                const size_t size);
+ 305   static void trace_page_sizes_for_requested_size(const char* str,
+ 306                                                   const size_t requested_size,
+ 307                                                   const size_t page_size,
+ 308                                                   const size_t alignment,
+ 309                                                   const char* base,
+ 310                                                   const size_t size);
+ 311 
+ 312   static int    vm_allocation_granularity();
+ 313   static char*  reserve_memory(size_t bytes, char* addr = 0,
+ 314                                size_t alignment_hint = 0, int file_desc = -1);
+ 315   static char*  reserve_memory(size_t bytes, char* addr,
+ 316                                size_t alignment_hint, MEMFLAGS flags);
+ 317   static char*  reserve_memory_aligned(size_t size, size_t alignment, int file_desc = -1);
+ 318   static char*  attempt_reserve_memory_at(size_t bytes, char* addr, int file_desc = -1);
+ 319 
+ 320 
+ 321   // Split a reserved memory region [base, base+size) into two regions [base, base+split) and
+ 322   //  [base+split, base+size).
+ 323   //  This may remove the original mapping, so its content may be lost.
+ 324   // Both base and split point must be aligned to allocation granularity; split point shall
+ 325   //  be &gt;0 and &lt;size.
+ 326   // Splitting guarantees that the resulting two memory regions can be released independently
+ 327   //  from each other using os::release_memory(). It also means NMT will track these regions
+ 328   //  individually, allowing different tags to be set.
+ 329   static void   split_reserved_memory(char *base, size_t size, size_t split);
+ 330 
+ 331   static bool   commit_memory(char* addr, size_t bytes, bool executable);
+ 332   static bool   commit_memory(char* addr, size_t size, size_t alignment_hint,
+ 333                               bool executable);
+ 334   // Same as commit_memory() that either succeeds or calls
+ 335   // vm_exit_out_of_memory() with the specified mesg.
+ 336   static void   commit_memory_or_exit(char* addr, size_t bytes,
+ 337                                       bool executable, const char* mesg);
+ 338   static void   commit_memory_or_exit(char* addr, size_t size,
+ 339                                       size_t alignment_hint,
+ 340                                       bool executable, const char* mesg);
+ 341   static bool   uncommit_memory(char* addr, size_t bytes);
+ 342   static bool   release_memory(char* addr, size_t bytes);
+ 343 
+ 344   // Touch memory pages that cover the memory range from start to end (exclusive)
+ 345   // to make the OS back the memory range with actual memory.
+ 346   // Current implementation may not touch the last page if unaligned addresses
+ 347   // are passed.
+ 348   static void   pretouch_memory(void* start, void* end, size_t page_size = vm_page_size());
+ 349 
+ 350   enum ProtType { MEM_PROT_NONE, MEM_PROT_READ, MEM_PROT_RW, MEM_PROT_RWX };
+ 351   static bool   protect_memory(char* addr, size_t bytes, ProtType prot,
+ 352                                bool is_committed = true);
+ 353 
+ 354   static bool   guard_memory(char* addr, size_t bytes);
+ 355   static bool   unguard_memory(char* addr, size_t bytes);
+ 356   static bool   create_stack_guard_pages(char* addr, size_t bytes);
+ 357   static bool   pd_create_stack_guard_pages(char* addr, size_t bytes);
+ 358   static bool   remove_stack_guard_pages(char* addr, size_t bytes);
+ 359   // Helper function to create a new file with template jvmheap.XXXXXX.
+ 360   // Returns a valid fd on success or else returns -1
+ 361   static int create_file_for_heap(const char* dir);
+ 362   // Map memory to the file referred by fd. This function is slightly different from map_memory()
+ 363   // and is added to be used for implementation of -XX:AllocateHeapAt
+ 364   static char* map_memory_to_file(char* base, size_t size, int fd);
+ 365   // Replace existing reserved memory with file mapping
+ 366   static char* replace_existing_mapping_with_file_mapping(char* base, size_t size, int fd);
+ 367 
+ 368   static char*  map_memory(int fd, const char* file_name, size_t file_offset,
+ 369                            char *addr, size_t bytes, bool read_only = false,
+ 370                            bool allow_exec = false, MEMFLAGS flags = mtNone);
+ 371   static char*  remap_memory(int fd, const char* file_name, size_t file_offset,
+ 372                              char *addr, size_t bytes, bool read_only,
+ 373                              bool allow_exec);
+ 374   static bool   unmap_memory(char *addr, size_t bytes);
+ 375   static void   free_memory(char *addr, size_t bytes, size_t alignment_hint);
+ 376   static void   realign_memory(char *addr, size_t bytes, size_t alignment_hint);
+ 377 
+ 378   // NUMA-specific interface
+ 379   static bool   numa_has_static_binding();
+ 380   static bool   numa_has_group_homing();
+ 381   static void   numa_make_local(char *addr, size_t bytes, int lgrp_hint);
+ 382   static void   numa_make_global(char *addr, size_t bytes);
+ 383   static size_t numa_get_groups_num();
+ 384   static size_t numa_get_leaf_groups(int *ids, size_t size);
+ 385   static bool   numa_topology_changed();
+ 386   static int    numa_get_group_id();
+ 387   static int    numa_get_group_id_for_address(const void* address);
+ 388 
+ 389   // Page manipulation
+ 390   struct page_info {
+ 391     size_t size;
+ 392     int lgrp_id;
+ 393   };
+ 394   static bool   get_page_info(char *start, page_info* info);
+ 395   static char*  scan_pages(char *start, char* end, page_info* page_expected, page_info* page_found);
+ 396 
+ 397   static char*  non_memory_address_word();
+ 398   // reserve, commit and pin the entire memory region
+ 399   static char*  reserve_memory_special(size_t size, size_t alignment,
+ 400                                        char* addr, bool executable);
+ 401   static bool   release_memory_special(char* addr, size_t bytes);
+ 402   static void   large_page_init();
+ 403   static size_t large_page_size();
+ 404   static bool   can_commit_large_page_memory();
+ 405   static bool   can_execute_large_page_memory();
+ 406 
+ 407   // Check if pointer points to readable memory (by 4-byte read access)
+<a name="1" id="anc1"></a>
+
+ 408   static bool    is_readable_pointer(const void* p);
+ 409   static bool    is_readable_range(const void* from, const void* to);
+ 410 
+ 411   // threads
+ 412 
+ 413   enum ThreadType {
+ 414     vm_thread,
+ 415     cgc_thread,        // Concurrent GC thread
+ 416     pgc_thread,        // Parallel GC thread
+ 417     java_thread,       // Java, CodeCacheSweeper, JVMTIAgent and Service threads.
+ 418     compiler_thread,
+ 419     watcher_thread,
+ 420     os_thread
+ 421   };
+ 422 
+ 423   static bool create_thread(Thread* thread,
+ 424                             ThreadType thr_type,
+ 425                             size_t req_stack_size = 0);
+ 426 
+ 427   // The "main thread", also known as "starting thread", is the thread
+ 428   // that loads/creates the JVM via JNI_CreateJavaVM.
+ 429   static bool create_main_thread(JavaThread* thread);
+ 430 
+ 431   // The primordial thread is the initial process thread. The java
+ 432   // launcher never uses the primordial thread as the main thread, but
+ 433   // applications that host the JVM directly may do so. Some platforms
+ 434   // need special-case handling of the primordial thread if it attaches
+ 435   // to the VM.
+ 436   static bool is_primordial_thread(void)
+ 437 #if defined(_WINDOWS) || defined(BSD)
+ 438     // No way to identify the primordial thread.
+ 439     { return false; }
+ 440 #else
+ 441   ;
+ 442 #endif
+ 443 
+ 444   static bool create_attached_thread(JavaThread* thread);
+ 445   static void pd_start_thread(Thread* thread);
+ 446   static void start_thread(Thread* thread);
+ 447 
+ 448   // Returns true if successful.
+ 449   static bool signal_thread(Thread* thread, int sig, const char* reason);
+ 450 
+ 451   static void free_thread(OSThread* osthread);
+ 452 
+ 453   // thread id on Linux/64bit is 64bit, on Windows it's 32bit
+ 454   static intx current_thread_id();
+ 455   static int current_process_id();
+ 456 
+ 457   // Short standalone OS sleep routines suitable for slow path spin loop.
+ 458   // Ignores safepoints/suspension/Thread.interrupt() (so keep it short).
+ 459   // ms/ns = 0, will sleep for the least amount of time allowed by the OS.
+ 460   // Maximum sleep time is just under 1 second.
+ 461   static void naked_short_sleep(jlong ms);
+ 462   static void naked_short_nanosleep(jlong ns);
+ 463   // Longer standalone OS sleep routine - a convenience wrapper around
+ 464   // multiple calls to naked_short_sleep. Only for use by non-JavaThreads.
+ 465   static void naked_sleep(jlong millis);
+ 466   // Never returns, use with CAUTION
+ 467   static void infinite_sleep();
+ 468   static void naked_yield () ;
+ 469   static OSReturn set_priority(Thread* thread, ThreadPriority priority);
+ 470   static OSReturn get_priority(const Thread* const thread, ThreadPriority&amp; priority);
+ 471 
+ 472   static int pd_self_suspend_thread(Thread* thread);
+ 473 
+ 474   static address    fetch_frame_from_context(const void* ucVoid, intptr_t** sp, intptr_t** fp);
+ 475   static frame      fetch_frame_from_context(const void* ucVoid);
+ 476 
+ 477   static void breakpoint();
+ 478   static bool start_debugging(char *buf, int buflen);
+ 479 
+ 480   static address current_stack_pointer();
+ 481   static address current_stack_base();
+ 482   static size_t current_stack_size();
+ 483 
+ 484   static void verify_stack_alignment() PRODUCT_RETURN;
+ 485 
+ 486   static bool message_box(const char* title, const char* message);
+ 487 
+ 488   // run cmd in a separate process and return its exit code; or -1 on failures
+ 489   static int fork_and_exec(char *cmd, bool use_vfork_if_available = false);
+ 490 
+ 491   // Call ::exit() on all platforms but Windows
+ 492   static void exit(int num);
+ 493 
+ 494   // Terminate the VM, but don't exit the process
+ 495   static void shutdown();
+ 496 
+ 497   // Terminate with an error.  Default is to generate a core file on platforms
+ 498   // that support such things.  This calls shutdown() and then aborts.
+ 499   static void abort(bool dump_core, void *siginfo, const void *context);
+ 500   static void abort(bool dump_core = true);
+ 501 
+ 502   // Die immediately, no exit hook, no abort hook, no cleanup.
+ 503   // Dump a core file, if possible, for debugging. os::abort() is the
+ 504   // preferred means to abort the VM on error. os::die() should only
+ 505   // be called if something has gone badly wrong. CreateCoredumpOnCrash
+ 506   // is intentionally not honored by this function.
+ 507   static void die();
+ 508 
+ 509   // File i/o operations
+ 510   static int open(const char *path, int oflag, int mode);
+ 511   static FILE* open(int fd, const char* mode);
+ 512   static FILE* fopen(const char* path, const char* mode);
+ 513   static int close(int fd);
+ 514   static jlong lseek(int fd, jlong offset, int whence);
+ 515   // This function, on Windows, canonicalizes a given path (see os_windows.cpp for details).
+ 516   // On Posix, this function is a noop: it does not change anything and just returns
+ 517   // the input pointer.
+ 518   static char* native_path(char *path);
+ 519   static int ftruncate(int fd, jlong length);
+ 520   static int fsync(int fd);
+ 521   static int available(int fd, jlong *bytes);
+ 522   static int get_fileno(FILE* fp);
+ 523   static void flockfile(FILE* fp);
+ 524   static void funlockfile(FILE* fp);
+ 525 
+ 526   static int compare_file_modified_times(const char* file1, const char* file2);
+ 527 
+ 528   static bool same_files(const char* file1, const char* file2);
+ 529 
+ 530   //File i/o operations
+ 531 
+ 532   static ssize_t read(int fd, void *buf, unsigned int nBytes);
+ 533   static ssize_t read_at(int fd, void *buf, unsigned int nBytes, jlong offset);
+ 534   static size_t write(int fd, const void *buf, unsigned int nBytes);
+ 535 
+ 536   // Reading directories.
+ 537   static DIR*           opendir(const char* dirname);
+ 538   static struct dirent* readdir(DIR* dirp);
+ 539   static int            closedir(DIR* dirp);
+ 540 
+ 541   // Dynamic library extension
+ 542   static const char*    dll_file_extension();
+ 543 
+ 544   static const char*    get_temp_directory();
+ 545   static const char*    get_current_directory(char *buf, size_t buflen);
+ 546 
+ 547   // Builds the platform-specific name of a library.
+ 548   // Returns false if the buffer is too small.
+ 549   static bool           dll_build_name(char* buffer, size_t size,
+ 550                                        const char* fname);
+ 551 
+ 552   // Builds a platform-specific full library path given an ld path and
+ 553   // unadorned library name. Returns true if the buffer contains a full
+ 554   // path to an existing file, false otherwise. If pathname is empty,
+ 555   // uses the path to the current directory.
+ 556   static bool           dll_locate_lib(char* buffer, size_t size,
+ 557                                        const char* pathname, const char* fname);
+ 558 
+ 559   // Symbol lookup, find nearest function name; basically it implements
+ 560   // dladdr() for all platforms. Name of the nearest function is copied
+ 561   // to buf. Distance from its base address is optionally returned as offset.
+ 562   // If function name is not found, buf[0] is set to '\0' and offset is
+ 563   // set to -1 (if offset is non-NULL).
+ 564   static bool dll_address_to_function_name(address addr, char* buf,
+ 565                                            int buflen, int* offset,
+ 566                                            bool demangle = true);
+ 567 
+ 568   // Locate DLL/DSO. On success, full path of the library is copied to
+ 569   // buf, and offset is optionally set to be the distance between addr
+ 570   // and the library's base address. On failure, buf[0] is set to '\0'
+ 571   // and offset is set to -1 (if offset is non-NULL).
+ 572   static bool dll_address_to_library_name(address addr, char* buf,
+ 573                                           int buflen, int* offset);
+ 574 
+ 575   // Find out whether the pc is in the static code for jvm.dll/libjvm.so.
+ 576   static bool address_is_in_vm(address addr);
+ 577 
+ 578   // Loads .dll/.so and
+ 579   // in case of error it checks if .dll/.so was built for the
+ 580   // same architecture as HotSpot is running on
+ 581   // in case of an error NULL is returned and an error message is stored in ebuf
+ 582   static void* dll_load(const char *name, char *ebuf, int ebuflen);
+ 583 
+ 584   // lookup symbol in a shared library
+ 585   static void* dll_lookup(void* handle, const char* name);
+ 586 
+ 587   // Unload library
+ 588   static void  dll_unload(void *lib);
+ 589 
+ 590   // Callback for loaded module information
+ 591   // Input parameters:
+ 592   //    char*     module_file_name,
+ 593   //    address   module_base_addr,
+ 594   //    address   module_top_addr,
+ 595   //    void*     param
+ 596   typedef int (*LoadedModulesCallbackFunc)(const char *, address, address, void *);
+ 597 
+ 598   static int get_loaded_modules_info(LoadedModulesCallbackFunc callback, void *param);
+ 599 
+ 600   // Return the handle of this process
+ 601   static void* get_default_process_handle();
+ 602 
+ 603   // Check for static linked agent library
+ 604   static bool find_builtin_agent(AgentLibrary *agent_lib, const char *syms[],
+ 605                                  size_t syms_len);
+ 606 
+ 607   // Find agent entry point
+ 608   static void *find_agent_function(AgentLibrary *agent_lib, bool check_lib,
+ 609                                    const char *syms[], size_t syms_len);
+ 610 
+ 611   // Provide C99 compliant versions of these functions, since some versions
+ 612   // of some platforms don't.
+ 613   static int vsnprintf(char* buf, size_t len, const char* fmt, va_list args) ATTRIBUTE_PRINTF(3, 0);
+ 614   static int snprintf(char* buf, size_t len, const char* fmt, ...) ATTRIBUTE_PRINTF(3, 4);
+ 615 
+ 616   // Get host name in buffer provided
+ 617   static bool get_host_name(char* buf, size_t buflen);
+ 618 
+ 619   // Print out system information; they are called by fatal error handler.
+ 620   // Output format may be different on different platforms.
+ 621   static void print_os_info(outputStream* st);
+ 622   static void print_os_info_brief(outputStream* st);
+ 623   static void print_cpu_info(outputStream* st, char* buf, size_t buflen);
+ 624   static void pd_print_cpu_info(outputStream* st, char* buf, size_t buflen);
+ 625   static void print_summary_info(outputStream* st, char* buf, size_t buflen);
+ 626   static void print_memory_info(outputStream* st);
+ 627   static void print_dll_info(outputStream* st);
+ 628   static void print_environment_variables(outputStream* st, const char** env_list);
+ 629   static void print_context(outputStream* st, const void* context);
+ 630   static void print_register_info(outputStream* st, const void* context);
+ 631   static bool signal_sent_by_kill(const void* siginfo);
+ 632   static void print_siginfo(outputStream* st, const void* siginfo);
+ 633   static void print_signal_handlers(outputStream* st, char* buf, size_t buflen);
+ 634   static void print_date_and_time(outputStream* st, char* buf, size_t buflen);
+ 635   static void print_instructions(outputStream* st, address pc, int unitsize);
+ 636 
+ 637   // helper for output of seconds in days , hours and months
+ 638   static void print_dhm(outputStream* st, const char* startStr, long sec);
+ 639 
+ 640   static void print_location(outputStream* st, intptr_t x, bool verbose = false);
+ 641   static size_t lasterror(char *buf, size_t len);
+ 642   static int get_last_error();
+ 643 
+ 644   // Replacement for strerror().
+ 645   // Will return the english description of the error (e.g. "File not found", as
+ 646   //  suggested in the POSIX standard.
+ 647   // Will return "Unknown error" for an unknown errno value.
+ 648   // Will not attempt to localize the returned string.
+ 649   // Will always return a valid string which is a static constant.
+ 650   // Will not change the value of errno.
+ 651   static const char* strerror(int e);
+ 652 
+ 653   // Will return the literalized version of the given errno (e.g. "EINVAL"
+ 654   //  for EINVAL).
+ 655   // Will return "Unknown error" for an unknown errno value.
+ 656   // Will always return a valid string which is a static constant.
+ 657   // Will not change the value of errno.
+ 658   static const char* errno_name(int e);
+ 659 
+ 660   // wait for a key press if PauseAtExit is set
+ 661   static void wait_for_keypress_at_exit(void);
+ 662 
+ 663   // The following two functions are used by fatal error handler to trace
+ 664   // native (C) frames. They are not part of frame.hpp/frame.cpp because
+ 665   // frame.hpp/cpp assume thread is JavaThread, and also because different
+ 666   // OS/compiler may have different convention or provide different API to
+ 667   // walk C frames.
+ 668   //
+ 669   // We don't attempt to become a debugger, so we only follow frames if that
+ 670   // does not require a lookup in the unwind table, which is part of the binary
+ 671   // file but may be unsafe to read after a fatal error. So on x86, we can
+ 672   // only walk stack if %ebp is used as frame pointer; on ia64, it's not
+ 673   // possible to walk C stack without having the unwind table.
+ 674   static bool is_first_C_frame(frame *fr);
+ 675   static frame get_sender_for_C_frame(frame *fr);
+ 676 
+ 677   // return current frame. pc() and sp() are set to NULL on failure.
+ 678   static frame      current_frame();
+ 679 
+ 680   static void print_hex_dump(outputStream* st, address start, address end, int unitsize);
+ 681 
+ 682   // returns a string to describe the exception/signal;
+ 683   // returns NULL if exception_code is not an OS exception/signal.
+ 684   static const char* exception_name(int exception_code, char* buf, size_t buflen);
+ 685 
+ 686   // Returns the signal number (e.g. 11) for a given signal name (SIGSEGV).
+ 687   static int get_signal_number(const char* signal_name);
+ 688 
+ 689   // Returns native Java library, loads if necessary
+ 690   static void*    native_java_library();
+ 691 
+ 692   // Fills in path to jvm.dll/libjvm.so (used by the Disassembler)
+ 693   static void     jvm_path(char *buf, jint buflen);
+ 694 
+ 695   // JNI names
+ 696   static void     print_jni_name_prefix_on(outputStream* st, int args_size);
+ 697   static void     print_jni_name_suffix_on(outputStream* st, int args_size);
+ 698 
+ 699   // Init os specific system properties values
+ 700   static void init_system_properties_values();
+ 701 
+ 702   // IO operations, non-JVM_ version.
+ 703   static int stat(const char* path, struct stat* sbuf);
+ 704   static bool dir_is_empty(const char* path);
+ 705 
+ 706   // IO operations on binary files
+ 707   static int create_binary_file(const char* path, bool rewrite_existing);
+ 708   static jlong current_file_offset(int fd);
+ 709   static jlong seek_to_file_offset(int fd, jlong offset);
+ 710 
+ 711   // Retrieve native stack frames.
+ 712   // Parameter:
+ 713   //   stack:  an array to storage stack pointers.
+ 714   //   frames: size of above array.
+ 715   //   toSkip: number of stack frames to skip at the beginning.
+ 716   // Return: number of stack frames captured.
+ 717   static int get_native_stack(address* stack, int size, int toSkip = 0);
+ 718 
+ 719   // General allocation (must be MT-safe)
+ 720   static void* malloc  (size_t size, MEMFLAGS flags, const NativeCallStack&amp; stack);
+ 721   static void* malloc  (size_t size, MEMFLAGS flags);
+ 722   static void* realloc (void *memblock, size_t size, MEMFLAGS flag, const NativeCallStack&amp; stack);
+ 723   static void* realloc (void *memblock, size_t size, MEMFLAGS flag);
+ 724 
+ 725   // handles NULL pointers
+ 726   static void  free    (void *memblock);
+ 727   static char* strdup(const char *, MEMFLAGS flags = mtInternal);  // Like strdup
+ 728   // Like strdup, but exit VM when strdup() returns NULL
+ 729   static char* strdup_check_oom(const char*, MEMFLAGS flags = mtInternal);
+ 730 
+ 731 #ifndef PRODUCT
+ 732   static julong num_mallocs;         // # of calls to malloc/realloc
+ 733   static julong alloc_bytes;         // # of bytes allocated
+ 734   static julong num_frees;           // # of calls to free
+ 735   static julong free_bytes;          // # of bytes freed
+ 736 #endif
+ 737 
+ 738   // SocketInterface (ex HPI SocketInterface )
+ 739   static int socket(int domain, int type, int protocol);
+ 740   static int socket_close(int fd);
+ 741   static int recv(int fd, char* buf, size_t nBytes, uint flags);
+ 742   static int send(int fd, char* buf, size_t nBytes, uint flags);
+ 743   static int raw_send(int fd, char* buf, size_t nBytes, uint flags);
+ 744   static int connect(int fd, struct sockaddr* him, socklen_t len);
+ 745   static struct hostent* get_host_by_name(char* name);
+ 746 
+ 747   // Support for signals (see JVM_RaiseSignal, JVM_RegisterSignal)
+ 748   static void  initialize_jdk_signal_support(TRAPS);
+ 749   static void  signal_notify(int signal_number);
+ 750   static void* signal(int signal_number, void* handler);
+ 751   static void  signal_raise(int signal_number);
+ 752   static int   signal_wait();
+ 753   static void* user_handler();
+ 754   static void  terminate_signal_thread();
+ 755   static int   sigexitnum_pd();
+ 756 
+ 757   // random number generation
+ 758   static int random();                     // return 32bit pseudorandom number
+ 759   static void init_random(unsigned int initval);    // initialize random sequence
+ 760 
+ 761   // Structured OS Exception support
+ 762   static void os_exception_wrapper(java_call_t f, JavaValue* value, const methodHandle&amp; method, JavaCallArguments* args, Thread* thread);
+ 763 
+ 764   // On Posix compatible OS it will simply check core dump limits while on Windows
+ 765   // it will check if dump file can be created. Check or prepare a core dump to be
+ 766   // taken at a later point in the same thread in os::abort(). Use the caller
+ 767   // provided buffer as a scratch buffer. The status message which will be written
+ 768   // into the error log either is file location or a short error message, depending
+ 769   // on the checking result.
+ 770   static void check_dump_limit(char* buffer, size_t bufferSize);
+ 771 
+ 772   // Get the default path to the core file
+ 773   // Returns the length of the string
+ 774   static int get_core_path(char* buffer, size_t bufferSize);
+ 775 
+ 776   // JVMTI &amp; JVM monitoring and management support
+ 777   // The thread_cpu_time() and current_thread_cpu_time() are only
+ 778   // supported if is_thread_cpu_time_supported() returns true.
+ 779 
+ 780   // Thread CPU Time - return the fast estimate on a platform
+ 781   // On Linux   - fast clock_gettime where available - user+sys
+ 782   //            - otherwise: very slow /proc fs - user+sys
+ 783   // On Windows - GetThreadTimes - user+sys
+ 784   static jlong current_thread_cpu_time();
+ 785   static jlong thread_cpu_time(Thread* t);
+ 786 
+ 787   // Thread CPU Time with user_sys_cpu_time parameter.
+ 788   //
+ 789   // If user_sys_cpu_time is true, user+sys time is returned.
+ 790   // Otherwise, only user time is returned
+ 791   static jlong current_thread_cpu_time(bool user_sys_cpu_time);
+ 792   static jlong thread_cpu_time(Thread* t, bool user_sys_cpu_time);
+ 793 
+ 794   // Return a bunch of info about the timers.
+ 795   // Note that the returned info for these two functions may be different
+ 796   // on some platforms
+ 797   static void current_thread_cpu_time_info(jvmtiTimerInfo *info_ptr);
+ 798   static void thread_cpu_time_info(jvmtiTimerInfo *info_ptr);
+ 799 
+ 800   static bool is_thread_cpu_time_supported();
+ 801 
+ 802   // System loadavg support.  Returns -1 if load average cannot be obtained.
+ 803   static int loadavg(double loadavg[], int nelem);
+ 804 
+ 805   // Amount beyond the callee frame size that we bang the stack.
+ 806   static int extra_bang_size_in_bytes();
+ 807 
+ 808   static char** split_path(const char* path, size_t* elements, size_t file_name_length);
+ 809 
+ 810   // support for mapping non-volatile memory using MAP_SYNC
+ 811   static bool supports_map_sync();
+ 812 
+ 813  public:
+ 814   class CrashProtectionCallback : public StackObj {
+ 815   public:
+ 816     virtual void call() = 0;
+ 817   };
+ 818 
+ 819   // Platform dependent stuff
+ 820 #ifndef _WINDOWS
+ 821 # include "os_posix.hpp"
+ 822 #endif
+ 823 #include OS_CPU_HEADER(os)
+ 824 #include OS_HEADER(os)
+ 825 
+ 826 #ifndef OS_NATIVE_THREAD_CREATION_FAILED_MSG
+ 827 #define OS_NATIVE_THREAD_CREATION_FAILED_MSG "unable to create native thread: possibly out of memory or process/resource limits reached"
+ 828 #endif
+ 829 
+ 830  public:
+ 831 #ifndef PLATFORM_PRINT_NATIVE_STACK
+ 832   // No platform-specific code for printing the native stack.
+ 833   static bool platform_print_native_stack(outputStream* st, const void* context,
+ 834                                           char *buf, int buf_size) {
+ 835     return false;
+ 836   }
+ 837 #endif
+ 838 
+ 839   // debugging support (mostly used by debug.cpp but also fatal error handler)
+ 840   static bool find(address pc, outputStream* st = tty); // OS specific function to make sense out of an address
+ 841 
+ 842   static bool dont_yield();                     // when true, JVM_Yield() is nop
+ 843   static void print_statistics();
+ 844 
+ 845   // Thread priority helpers (implemented in OS-specific part)
+ 846   static OSReturn set_native_priority(Thread* thread, int native_prio);
+ 847   static OSReturn get_native_priority(const Thread* const thread, int* priority_ptr);
+ 848   static int java_to_os_priority[CriticalPriority + 1];
+ 849   // Hint to the underlying OS that a task switch would not be good.
+ 850   // Void return because it's a hint and can fail.
+ 851   static const char* native_thread_creation_failed_msg() {
+ 852     return OS_NATIVE_THREAD_CREATION_FAILED_MSG;
+ 853   }
+ 854 
+ 855   // Used at creation if requested by the diagnostic flag PauseAtStartup.
+ 856   // Causes the VM to wait until an external stimulus has been applied
+ 857   // (for Unix, that stimulus is a signal, for Windows, an external
+ 858   // ResumeThread call)
+ 859   static void pause();
+ 860 
+ 861   // Builds a platform dependent Agent_OnLoad_&lt;libname&gt; function name
+ 862   // which is used to find statically linked in agents.
+ 863   static char*  build_agent_function_name(const char *sym, const char *cname,
+ 864                                           bool is_absolute_path);
+ 865 
+ 866   class SuspendedThreadTaskContext {
+ 867   public:
+ 868     SuspendedThreadTaskContext(Thread* thread, void *ucontext) : _thread(thread), _ucontext(ucontext) {}
+ 869     Thread* thread() const { return _thread; }
+ 870     void* ucontext() const { return _ucontext; }
+ 871   private:
+ 872     Thread* _thread;
+ 873     void* _ucontext;
+ 874   };
+ 875 
+ 876   class SuspendedThreadTask {
+ 877   public:
+ 878     SuspendedThreadTask(Thread* thread) : _thread(thread), _done(false) {}
+ 879     void run();
+ 880     bool is_done() { return _done; }
+ 881     virtual void do_task(const SuspendedThreadTaskContext&amp; context) = 0;
+ 882   protected:
+ 883     ~SuspendedThreadTask() {}
+ 884   private:
+ 885     void internal_do_task();
+ 886     Thread* _thread;
+ 887     bool _done;
+ 888   };
+ 889 
+ 890 #ifndef _WINDOWS
+ 891   // Suspend/resume support
+ 892   // Protocol:
+ 893   //
+ 894   // a thread starts in SR_RUNNING
+ 895   //
+ 896   // SR_RUNNING can go to
+ 897   //   * SR_SUSPEND_REQUEST when the WatcherThread wants to suspend it
+ 898   // SR_SUSPEND_REQUEST can go to
+ 899   //   * SR_RUNNING if WatcherThread decides it waited for SR_SUSPENDED too long (timeout)
+ 900   //   * SR_SUSPENDED if the stopped thread receives the signal and switches state
+ 901   // SR_SUSPENDED can go to
+ 902   //   * SR_WAKEUP_REQUEST when the WatcherThread has done the work and wants to resume
+ 903   // SR_WAKEUP_REQUEST can go to
+ 904   //   * SR_RUNNING when the stopped thread receives the signal
+ 905   //   * SR_WAKEUP_REQUEST on timeout (resend the signal and try again)
+ 906   class SuspendResume {
+ 907    public:
+ 908     enum State {
+ 909       SR_RUNNING,
+ 910       SR_SUSPEND_REQUEST,
+ 911       SR_SUSPENDED,
+ 912       SR_WAKEUP_REQUEST
+ 913     };
+ 914 
+ 915   private:
+ 916     volatile State _state;
+ 917 
+ 918   private:
+ 919     /* try to switch state from state "from" to state "to"
+ 920      * returns the state set after the method is complete
+ 921      */
+ 922     State switch_state(State from, State to);
+ 923 
+ 924   public:
+ 925     SuspendResume() : _state(SR_RUNNING) { }
+ 926 
+ 927     State state() const { return _state; }
+ 928 
+ 929     State request_suspend() {
+ 930       return switch_state(SR_RUNNING, SR_SUSPEND_REQUEST);
+ 931     }
+ 932 
+ 933     State cancel_suspend() {
+ 934       return switch_state(SR_SUSPEND_REQUEST, SR_RUNNING);
+ 935     }
+ 936 
+ 937     State suspended() {
+ 938       return switch_state(SR_SUSPEND_REQUEST, SR_SUSPENDED);
+ 939     }
+ 940 
+ 941     State request_wakeup() {
+ 942       return switch_state(SR_SUSPENDED, SR_WAKEUP_REQUEST);
+ 943     }
+ 944 
+ 945     State running() {
+ 946       return switch_state(SR_WAKEUP_REQUEST, SR_RUNNING);
+ 947     }
+ 948 
+ 949     bool is_running() const {
+ 950       return _state == SR_RUNNING;
+ 951     }
+ 952 
+ 953     bool is_suspended() const {
+ 954       return _state == SR_SUSPENDED;
+ 955     }
+ 956   };
+ 957 #endif // !WINDOWS
+ 958 
+ 959 
+ 960  protected:
+ 961   static volatile unsigned int _rand_seed;    // seed for random number generator
+ 962   static int _processor_count;                // number of processors
+ 963   static int _initial_active_processor_count; // number of active processors during initialization.
+ 964 
+ 965   static char* format_boot_path(const char* format_string,
+ 966                                 const char* home,
+ 967                                 int home_len,
+ 968                                 char fileSep,
+ 969                                 char pathSep);
+ 970   static bool set_boot_path(char fileSep, char pathSep);
+ 971 
+ 972 };
+ 973 
+ 974 // Note that "PAUSE" is almost always used with synchronization
+ 975 // so arguably we should provide Atomic::SpinPause() instead
+ 976 // of the global SpinPause() with C linkage.
+ 977 // It'd also be eligible for inlining on many platforms.
+ 978 
+ 979 extern "C" int SpinPause();
+ 980 
+ 981 #endif // SHARE_RUNTIME_OS_HPP
+<a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="2" type="hidden" /></form></body></html>

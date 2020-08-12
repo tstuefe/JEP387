@@ -1,0 +1,340 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/metaspaceStatistics.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 
+  29 #include "memory/metaspace/chunkLevel.hpp"
+  30 #include "memory/metaspace/metaspaceCommon.hpp"
+  31 #include "memory/metaspace/metaspaceStatistics.hpp"
+  32 
+  33 #include "utilities/debug.hpp"
+  34 #include "utilities/globalDefinitions.hpp"
+  35 #include "utilities/ostream.hpp"
+  36 
+  37 namespace metaspace {
+  38 
+  39 
+  40 // Returns total word size of all chunks in this manager.
+  41 void cm_stats_t::add(const cm_stats_t&amp; other) {
+  42   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+  43     num_chunks[l] += other.num_chunks[l];
+  44     committed_word_size[l] += other.committed_word_size[l];
+  45   }
+  46 }
+  47 
+  48 // Returns total word size of all chunks in this manager.
+  49 size_t cm_stats_t::total_word_size() const {
+  50   size_t s = 0;
+  51   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+  52     s += num_chunks[l] * chunklevel::word_size_for_level(l);
+  53   }
+  54   return s;
+  55 }
+  56 
+  57 // Returns total committed word size of all chunks in this manager.
+  58 size_t cm_stats_t::total_committed_word_size() const {
+  59   size_t s = 0;
+  60   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+  61     s += committed_word_size[l];
+  62   }
+  63   return s;
+  64 }
+  65 
+  66 
+  67 void cm_stats_t::print_on(outputStream* st, size_t scale) const {
+  68   // Note: used as part of MetaspaceReport so formatting matters.
+  69   size_t total_size = 0;
+  70   size_t total_committed_size = 0;
+  71   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+  72     st-&gt;cr();
+  73     chunklevel::print_chunk_size(st, l);
+  74     st-&gt;print(": ");
+  75     if (num_chunks[l] &gt; 0) {
+  76       const size_t word_size = num_chunks[l] * chunklevel::word_size_for_level(l);
+  77 
+  78       st-&gt;print("%4d, capacity=", num_chunks[l]);
+  79       print_scaled_words(st, word_size, scale);
+  80 
+  81       st-&gt;print(", committed=");
+  82       print_scaled_words_and_percentage(st, committed_word_size[l], word_size, scale);
+  83 
+  84       total_size += word_size;
+  85       total_committed_size += committed_word_size[l];
+  86     } else {
+  87       st-&gt;print("(none)");
+  88     }
+  89   }
+  90   st-&gt;cr();
+  91   st-&gt;print("Total word size: ");
+  92   print_scaled_words(st, total_size, scale);
+  93   st-&gt;print(", committed: ");
+  94   print_scaled_words_and_percentage(st, total_committed_size, total_size, scale);
+  95   st-&gt;cr();
+  96 }
+  97 
+  98 #ifdef ASSERT
+  99 void cm_stats_t::verify() const {
+ 100   assert(total_committed_word_size() &lt;= total_word_size(),
+ 101          "Sanity");
+ 102 }
+ 103 #endif
+ 104 
+ 105 
+ 106 void in_use_chunk_stats_t::print_on(outputStream* st, size_t scale) const {
+ 107   int col = st-&gt;position();
+ 108   st-&gt;print("%4d chunk%s, ", num, num != 1 ? "s" : "");
+ 109   if (num &gt; 0) {
+ 110     col += 14; st-&gt;fill_to(col);
+ 111 
+ 112     print_scaled_words(st, word_size, scale, 5);
+ 113     st-&gt;print(" capacity,");
+ 114 
+ 115     col += 20; st-&gt;fill_to(col);
+ 116     print_scaled_words_and_percentage(st, committed_words, word_size, scale, 5);
+ 117     st-&gt;print(" committed, ");
+ 118 
+ 119     col += 18; st-&gt;fill_to(col);
+ 120     print_scaled_words_and_percentage(st, used_words, word_size, scale, 5);
+ 121     st-&gt;print(" used, ");
+ 122 
+ 123     col += 20; st-&gt;fill_to(col);
+ 124     print_scaled_words_and_percentage(st, free_words, word_size, scale, 5);
+ 125     st-&gt;print(" free, ");
+ 126 
+ 127     col += 20; st-&gt;fill_to(col);
+ 128     print_scaled_words_and_percentage(st, waste_words, word_size, scale, 5);
+ 129     st-&gt;print(" waste ");
+ 130 
+ 131   }
+ 132 }
+ 133 
+ 134 #ifdef ASSERT
+ 135 void in_use_chunk_stats_t::verify() const {
+ 136   assert(word_size &gt;= committed_words &amp;&amp;
+ 137       committed_words == used_words + free_words + waste_words,
+ 138          "Sanity: cap " SIZE_FORMAT ", committed " SIZE_FORMAT ", used " SIZE_FORMAT ", free " SIZE_FORMAT ", waste " SIZE_FORMAT ".",
+ 139          word_size, committed_words, used_words, free_words, waste_words);
+ 140 }
+ 141 #endif
+ 142 
+ 143 void arena_stats_t::add(const arena_stats_t&amp; other) {
+ 144   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+ 145     stats[l].add(other.stats[l]);
+ 146   }
+ 147   free_blocks_num += other.free_blocks_num;
+ 148   free_blocks_word_size += other.free_blocks_word_size;
+ 149 }
+ 150 
+ 151 
+ 152 // Returns total chunk statistics over all chunk types.
+ 153 in_use_chunk_stats_t arena_stats_t::totals() const {
+ 154   in_use_chunk_stats_t out;
+ 155   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+ 156     out.add(stats[l]);
+ 157   }
+ 158   return out;
+ 159 }
+ 160 
+ 161 void arena_stats_t::print_on(outputStream* st, size_t scale,  bool detailed) const {
+ 162   streamIndentor sti(st);
+ 163   if (detailed) {
+ 164     st-&gt;cr_indent();
+ 165     st-&gt;print("Usage by chunk level:");
+ 166     {
+ 167       streamIndentor sti2(st);
+ 168       for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+ 169         st-&gt;cr_indent();
+ 170         chunklevel::print_chunk_size(st, l);
+ 171         st-&gt;print(" chunks: ");
+ 172         if (stats[l].num == 0) {
+ 173           st-&gt;print(" (none)");
+ 174         } else {
+ 175           stats[l].print_on(st, scale);
+ 176         }
+ 177       }
+ 178 
+ 179       st-&gt;cr_indent();
+ 180       st-&gt;print("%15s: ", "-total-");
+ 181       totals().print_on(st, scale);
+ 182     }
+ 183     if (free_blocks_num &gt; 0) {
+ 184       st-&gt;cr_indent();
+ 185       st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", free_blocks_num);
+ 186       print_scaled_words(st, free_blocks_word_size, scale);
+ 187     }
+ 188   } else {
+ 189     totals().print_on(st, scale);
+ 190     st-&gt;print(", ");
+ 191     st-&gt;print("deallocated: " UINTX_FORMAT " blocks with ", free_blocks_num);
+ 192     print_scaled_words(st, free_blocks_word_size, scale);
+ 193   }
+ 194 }
+ 195 
+ 196 #ifdef ASSERT
+ 197 
+ 198 void arena_stats_t::verify() const {
+ 199   size_t total_used = 0;
+ 200   for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l ++) {
+ 201     stats[l].verify();
+ 202     total_used += stats[l].used_words;
+ 203   }
+ 204   // Deallocated allocations still count as used
+ 205   assert(total_used &gt;= free_blocks_word_size,
+ 206          "Sanity");
+ 207 }
+ 208 #endif
+ 209 
+ 210 
+ 211 // Returns total arena statistics for both class and non-class metaspace
+ 212 arena_stats_t clms_stats_t::totals() const {
+ 213   arena_stats_t out;
+ 214   out.add(arena_stats_nonclass);
+ 215   out.add(arena_stats_class);
+ 216   return out;
+ 217 }
+ 218 
+ 219 void clms_stats_t::print_on(outputStream* st, size_t scale, bool detailed) const {
+ 220   streamIndentor sti(st);
+ 221   st-&gt;cr_indent();
+ 222   if (Metaspace::using_class_space()) {
+ 223     st-&gt;print("Non-Class: ");
+ 224   }
+ 225   arena_stats_nonclass.print_on(st, scale, detailed);
+ 226   if (detailed) {
+ 227     st-&gt;cr();
+ 228   }
+ 229   if (Metaspace::using_class_space()) {
+ 230     st-&gt;cr_indent();
+ 231     st-&gt;print("    Class: ");
+ 232     arena_stats_class.print_on(st, scale, detailed);
+ 233     if (detailed) {
+ 234       st-&gt;cr();
+ 235     }
+ 236     st-&gt;cr_indent();
+ 237     st-&gt;print("     Both: ");
+ 238     totals().print_on(st, scale, detailed);
+ 239     if (detailed) {
+ 240       st-&gt;cr();
+ 241     }
+ 242   }
+ 243   st-&gt;cr();
+ 244 }
+ 245 
+ 246 
+ 247 #ifdef ASSERT
+ 248 void clms_stats_t::verify() const {
+ 249   arena_stats_nonclass.verify();
+ 250   arena_stats_class.verify();
+ 251 }
+ 252 #endif
+ 253 
+ 254 } // end namespace metaspace
+ 255 
+ 256 
+ 257 
+</pre></body></html>

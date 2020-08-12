@@ -1,0 +1,252 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/blocktree.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "memory/metaspace/blocktree.hpp"
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 #include "utilities/ostream.hpp"
+  32 
+  33 namespace metaspace {
+  34 
+  35 
+  36 #ifdef ASSERT
+  37 
+  38 // Tree verification
+  39 
+  40 // These asserts prints the tree, then asserts
+  41 #define assrt(cond, format, ...) \
+  42   if (!(cond)) { \
+  43     print_tree(tty); \
+  44     assert(cond, format, __VA_ARGS__); \
+  45   }
+  46 
+  47   // This assert prints the tree, then stops (generic message)
+  48 #define assrt0(cond) \
+  49           if (!(cond)) { \
+  50             print_tree(tty); \
+  51             assert(cond, "sanity"); \
+  52           }
+  53 
+  54 struct BlockTree::veri_data_t {
+  55   MemRangeCounter counter;
+  56   int max_edge;
+  57   size_t largest;
+  58 };
+  59 
+  60 // Given a node, check that all siblings have the same size and that we have no
+  61 // (direct) circularities.
+  62 void BlockTree::verify_node_siblings(node_t* n, veri_data_t* vd) const {
+  63   const size_t size = n-&gt;size;
+  64   node_t* n2 = n-&gt;next;
+  65   node_t* prev_sib = NULL;
+  66   while (n2 != NULL) {
+  67     assrt0(n2-&gt;size == size);
+  68     vd-&gt;counter.add(n2-&gt;size);
+  69     if (prev_sib != NULL) {
+  70       assrt0(prev_sib-&gt;next == n2);
+  71       assrt0(prev_sib != n2);
+  72     }
+  73     prev_sib = n2;
+  74     n2 = n2-&gt;next;
+  75   }
+  76 }
+  77 
+  78 // Given a node and outer bounds applying to it and all children, check it and all children recursively.
+  79 void BlockTree::verify_node(node_t* n, size_t left_limit, size_t right_limit,
+  80     veri_data_t* vd, int lvl) const {
+  81 
+  82   if (lvl &gt; vd-&gt;max_edge) {
+  83     vd-&gt;max_edge = lvl;
+  84   }
+  85 
+  86   if (n-&gt;size &gt; vd-&gt;largest) {
+  87     vd-&gt;largest = n-&gt;size;
+  88   }
+  89 
+  90   assrt0((n == _root &amp;&amp; n-&gt;parent == NULL) || (n != _root &amp;&amp; n-&gt;parent != NULL));
+  91 
+  92   // check all siblings
+  93   if (n-&gt;next != NULL) {
+  94     verify_node_siblings(n, vd);
+  95   }
+  96 
+  97   // check order
+  98   assrt(n-&gt;size &gt;= minimal_word_size &amp;&amp; n-&gt;size &lt;= maximal_word_size,
+  99       "bad node size " SIZE_FORMAT, n-&gt;size);
+ 100   assrt0(n-&gt;size &lt; right_limit);
+ 101   assrt0(n-&gt;size &gt; left_limit);
+ 102 
+ 103   vd-&gt;counter.add(n-&gt;size);
+ 104 
+ 105   if (n-&gt;left != NULL) {
+ 106     assrt0(n != n-&gt;left);
+ 107     assrt0(n-&gt;left-&gt;parent == n);
+ 108     assrt0(n-&gt;left-&gt;size &lt; n-&gt;size);
+ 109     assrt0(n-&gt;left-&gt;size &gt; left_limit);
+ 110     verify_node(n-&gt;left, left_limit, n-&gt;size, vd, lvl + 1);
+ 111   }
+ 112 
+ 113   if (n-&gt;right != NULL) {
+ 114     assrt0(n != n-&gt;right);
+ 115     assrt0(n-&gt;right-&gt;parent == n);
+ 116     assrt0(n-&gt;right-&gt;size &lt; right_limit);
+ 117     assrt0(n-&gt;right-&gt;size &gt; n-&gt;size);
+ 118     verify_node(n-&gt;right, n-&gt;size, right_limit, vd, lvl + 1);
+ 119   }
+ 120 
+ 121 }
+ 122 
+ 123 void BlockTree::verify_tree() const {
+ 124   int num = 0;
+ 125   size_t size = 0;
+ 126   veri_data_t vd;
+ 127   vd.max_edge = 0;
+ 128   vd.largest = 0;
+ 129   if (_root != NULL) {
+ 130     assrt0(_root-&gt;parent == NULL);
+ 131     verify_node(_root, 0, maximal_word_size + 1, &amp;vd, 0);
+ 132     assrt0(vd.largest == _largest_size_added);
+ 133     vd.counter.check(_counter);
+ 134     assrt0(vd.counter.count() &gt; 0);
+ 135   }
+ 136 }
+ 137 
+ 138 void BlockTree::zap_range(MetaWord* p, size_t word_size) {
+ 139   memset(p, 0xF3, word_size * sizeof(MetaWord));
+ 140 }
+ 141 
+ 142 #undef assrt
+ 143 #undef assrt0
+ 144 
+ 145 #endif // ASSERT
+ 146 
+ 147 
+ 148 void BlockTree::print_node(outputStream* st, node_t* n, int lvl) {
+ 149   for (int i = 0; i &lt; lvl; i ++) {
+ 150     st-&gt;print("---");
+ 151   }
+ 152   st-&gt;print_cr("&lt;" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n-&gt;size);
+ 153   if (n-&gt;left) {
+ 154     print_node(st, n-&gt;left, lvl + 1);
+ 155   }
+ 156   if (n-&gt;right) {
+ 157     print_node(st, n-&gt;right, lvl + 1);
+ 158   }
+ 159 }
+ 160 
+ 161 void BlockTree::print_tree(outputStream* st) const {
+ 162   if (_root != NULL) {
+ 163     print_node(st, _root, 0);
+ 164   } else {
+ 165     st-&gt;print_cr("&lt;no nodes&gt;");
+ 166   }
+ 167 }
+ 168 
+ 169 } // namespace metaspace
+</pre></body></html>

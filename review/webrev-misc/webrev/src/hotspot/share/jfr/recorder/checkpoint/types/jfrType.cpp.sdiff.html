@@ -1,0 +1,277 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff src/hotspot/share/jfr/recorder/checkpoint/types </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../../../src/hotspot/share/gc/z/zUnload.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../../src/hotspot/share/jvmci/jvmciCompilerToVM.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-misc.patch</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  22  *
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "classfile/javaClasses.inline.hpp"
+  27 #include "code/codeBlob.hpp"
+  28 #include "code/codeCache.hpp"
+  29 #include "compiler/compilerDefinitions.hpp"
+  30 #include "gc/shared/gcCause.hpp"
+  31 #include "gc/shared/gcName.hpp"
+  32 #include "gc/shared/gcTrace.hpp"
+  33 #include "gc/shared/gcWhen.hpp"
+  34 #include "jfr/leakprofiler/leakProfiler.hpp"
+  35 #include "jfr/recorder/checkpoint/jfrCheckpointWriter.hpp"
+  36 #include "jfr/recorder/checkpoint/types/jfrType.hpp"
+  37 #include "jfr/recorder/jfrRecorder.hpp"
+  38 #include "jfr/recorder/checkpoint/types/jfrThreadGroup.hpp"
+  39 #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
+  40 #include "jfr/support/jfrThreadLocal.hpp"
+  41 #include "jfr/writers/jfrJavaEventWriter.hpp"
+
+
+  42 #include "jfr/utilities/jfrThreadIterator.hpp"
+  43 #include "memory/iterator.hpp"
+<span class="removed">  44 #include "memory/metaspaceGCThresholdUpdater.hpp"</span>
+  45 #include "memory/referenceType.hpp"
+  46 #include "memory/universe.hpp"
+  47 #include "oops/compressedOops.hpp"
+  48 #include "runtime/flags/jvmFlag.hpp"
+  49 #include "runtime/mutexLocker.hpp"
+  50 #include "runtime/osThread.hpp"
+  51 #include "runtime/safepoint.hpp"
+  52 #include "runtime/synchronizer.hpp"
+  53 #include "runtime/thread.inline.hpp"
+  54 #include "runtime/vmOperations.hpp"
+  55 
+  56 #ifdef COMPILER2
+  57 #include "opto/compile.hpp"
+  58 #include "opto/node.hpp"
+  59 #endif
+  60 
+  61 // Requires a ResourceMark for get_thread_name/as_utf8
+  62 class JfrCheckpointThreadClosure : public ThreadClosure {
+  63  private:
+  64   JfrCheckpointWriter&amp; _writer;
+
+</pre><hr></hr><pre>
+ 179   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 180     writer.write_key(i);
+ 181     writer.write(GCWhen::to_string((GCWhen::Type)i));
+ 182   }
+ 183 }
+ 184 
+ 185 void GCThresholdUpdaterConstant::serialize(JfrCheckpointWriter&amp; writer) {
+ 186   static const u4 nof_entries = MetaspaceGCThresholdUpdater::Last;
+ 187   writer.write_count(nof_entries);
+ 188   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 189     writer.write_key(i);
+ 190     writer.write(MetaspaceGCThresholdUpdater::to_string((MetaspaceGCThresholdUpdater::Type)i));
+ 191   }
+ 192 }
+ 193 
+ 194 void MetadataTypeConstant::serialize(JfrCheckpointWriter&amp; writer) {
+ 195   static const u4 nof_entries = Metaspace::MetadataTypeCount;
+ 196   writer.write_count(nof_entries);
+ 197   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 198     writer.write_key(i);
+<span class="changed"> 199     writer.write(Metaspace::metadata_type_name((Metaspace::MetadataType)i));</span>
+ 200   }
+ 201 }
+ 202 
+ 203 void MetaspaceObjectTypeConstant::serialize(JfrCheckpointWriter&amp; writer) {
+ 204   static const u4 nof_entries = MetaspaceObj::_number_of_types;
+ 205   writer.write_count(nof_entries);
+ 206   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 207     writer.write_key(i);
+ 208     writer.write(MetaspaceObj::type_name((MetaspaceObj::Type)i));
+ 209   }
+ 210 }
+ 211 
+ 212 static const char* reference_type_to_string(ReferenceType rt) {
+ 213   switch (rt) {
+ 214     case REF_NONE: return "None reference";
+ 215     case REF_OTHER: return "Other reference";
+ 216     case REF_SOFT: return "Soft reference";
+ 217     case REF_WEAK: return "Weak reference";
+ 218     case REF_FINAL: return "Final reference";
+ 219     case REF_PHANTOM: return "Phantom reference";
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  22  *
+  23  */
+  24 
+  25 #include "precompiled.hpp"
+  26 #include "classfile/javaClasses.inline.hpp"
+  27 #include "code/codeBlob.hpp"
+  28 #include "code/codeCache.hpp"
+  29 #include "compiler/compilerDefinitions.hpp"
+  30 #include "gc/shared/gcCause.hpp"
+  31 #include "gc/shared/gcName.hpp"
+  32 #include "gc/shared/gcTrace.hpp"
+  33 #include "gc/shared/gcWhen.hpp"
+  34 #include "jfr/leakprofiler/leakProfiler.hpp"
+  35 #include "jfr/recorder/checkpoint/jfrCheckpointWriter.hpp"
+  36 #include "jfr/recorder/checkpoint/types/jfrType.hpp"
+  37 #include "jfr/recorder/jfrRecorder.hpp"
+  38 #include "jfr/recorder/checkpoint/types/jfrThreadGroup.hpp"
+  39 #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
+  40 #include "jfr/support/jfrThreadLocal.hpp"
+  41 #include "jfr/writers/jfrJavaEventWriter.hpp"
+<span class="new">  42 #include "memory/metaspace.hpp"</span>
+<span class="new">  43 #include "memory/metaspace/metaspaceEnums.hpp"</span>
+  44 #include "jfr/utilities/jfrThreadIterator.hpp"
+  45 #include "memory/iterator.hpp"
+
+  46 #include "memory/referenceType.hpp"
+  47 #include "memory/universe.hpp"
+  48 #include "oops/compressedOops.hpp"
+  49 #include "runtime/flags/jvmFlag.hpp"
+  50 #include "runtime/mutexLocker.hpp"
+  51 #include "runtime/osThread.hpp"
+  52 #include "runtime/safepoint.hpp"
+  53 #include "runtime/synchronizer.hpp"
+  54 #include "runtime/thread.inline.hpp"
+  55 #include "runtime/vmOperations.hpp"
+  56 
+  57 #ifdef COMPILER2
+  58 #include "opto/compile.hpp"
+  59 #include "opto/node.hpp"
+  60 #endif
+  61 
+  62 // Requires a ResourceMark for get_thread_name/as_utf8
+  63 class JfrCheckpointThreadClosure : public ThreadClosure {
+  64  private:
+  65   JfrCheckpointWriter&amp; _writer;
+
+</pre><hr></hr><pre>
+ 180   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 181     writer.write_key(i);
+ 182     writer.write(GCWhen::to_string((GCWhen::Type)i));
+ 183   }
+ 184 }
+ 185 
+ 186 void GCThresholdUpdaterConstant::serialize(JfrCheckpointWriter&amp; writer) {
+ 187   static const u4 nof_entries = MetaspaceGCThresholdUpdater::Last;
+ 188   writer.write_count(nof_entries);
+ 189   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 190     writer.write_key(i);
+ 191     writer.write(MetaspaceGCThresholdUpdater::to_string((MetaspaceGCThresholdUpdater::Type)i));
+ 192   }
+ 193 }
+ 194 
+ 195 void MetadataTypeConstant::serialize(JfrCheckpointWriter&amp; writer) {
+ 196   static const u4 nof_entries = Metaspace::MetadataTypeCount;
+ 197   writer.write_count(nof_entries);
+ 198   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 199     writer.write_key(i);
+<span class="changed"> 200     writer.write(metaspace::describe_mdtype((Metaspace::MetadataType)i));</span>
+ 201   }
+ 202 }
+ 203 
+ 204 void MetaspaceObjectTypeConstant::serialize(JfrCheckpointWriter&amp; writer) {
+ 205   static const u4 nof_entries = MetaspaceObj::_number_of_types;
+ 206   writer.write_count(nof_entries);
+ 207   for (u4 i = 0; i &lt; nof_entries; ++i) {
+ 208     writer.write_key(i);
+ 209     writer.write(MetaspaceObj::type_name((MetaspaceObj::Type)i));
+ 210   }
+ 211 }
+ 212 
+ 213 static const char* reference_type_to_string(ReferenceType rt) {
+ 214   switch (rt) {
+ 215     case REF_NONE: return "None reference";
+ 216     case REF_OTHER: return "Other reference";
+ 217     case REF_SOFT: return "Soft reference";
+ 218     case REF_WEAK: return "Weak reference";
+ 219     case REF_FINAL: return "Final reference";
+ 220     case REF_PHANTOM: return "Phantom reference";
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../../../src/hotspot/share/gc/z/zUnload.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../../src/hotspot/share/jvmci/jvmciCompilerToVM.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

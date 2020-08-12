@@ -1,0 +1,889 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60529">60529</a> : imported patch jep387-misc.patch</pre><hr></hr>
+<pre>
+   1 /*
+   2  * Copyright (c) 2013, 2020, Red Hat, Inc. All rights reserved.
+   3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   4  *
+   5  * This code is free software; you can redistribute it and/or modify it
+   6  * under the terms of the GNU General Public License version 2 only, as
+   7  * published by the Free Software Foundation.
+   8  *
+   9  * This code is distributed in the hope that it will be useful, but WITHOUT
+  10  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  11  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  12  * version 2 for more details (a copy is included in the LICENSE file that
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+  26 #define SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+  27 
+  28 #include "gc/shared/markBitMap.hpp"
+  29 #include "gc/shared/softRefPolicy.hpp"
+  30 #include "gc/shared/collectedHeap.hpp"
+  31 #include "gc/shenandoah/shenandoahAsserts.hpp"
+  32 #include "gc/shenandoah/shenandoahAllocRequest.hpp"
+  33 #include "gc/shenandoah/shenandoahLock.hpp"
+  34 #include "gc/shenandoah/shenandoahEvacOOMHandler.hpp"
+  35 #include "gc/shenandoah/shenandoahPadding.hpp"
+  36 #include "gc/shenandoah/shenandoahSharedVariables.hpp"
+  37 #include "gc/shenandoah/shenandoahUnload.hpp"
+<a name="1" id="anc1"></a><span class="new">  38 #include "memory/metaspace.hpp"</span>
+  39 #include "services/memoryManager.hpp"
+  40 #include "utilities/globalDefinitions.hpp"
+  41 
+  42 class ConcurrentGCTimer;
+  43 class ReferenceProcessor;
+  44 class ShenandoahCollectorPolicy;
+  45 class ShenandoahControlThread;
+  46 class ShenandoahGCSession;
+  47 class ShenandoahGCStateResetter;
+  48 class ShenandoahHeuristics;
+  49 class ShenandoahMarkingContext;
+  50 class ShenandoahMarkCompact;
+  51 class ShenandoahMode;
+  52 class ShenandoahPhaseTimings;
+  53 class ShenandoahHeap;
+  54 class ShenandoahHeapRegion;
+  55 class ShenandoahHeapRegionClosure;
+  56 class ShenandoahCollectionSet;
+  57 class ShenandoahFreeSet;
+  58 class ShenandoahConcurrentMark;
+  59 class ShenandoahMarkCompact;
+  60 class ShenandoahMonitoringSupport;
+  61 class ShenandoahPacer;
+  62 class ShenandoahVerifier;
+  63 class ShenandoahWorkGang;
+  64 class VMStructs;
+  65 
+  66 // Used for buffering per-region liveness data.
+  67 // Needed since ShenandoahHeapRegion uses atomics to update liveness.
+  68 // The ShenandoahHeap array has max-workers elements, each of which is an array of
+  69 // uint16_t * max_regions. The choice of uint16_t is not accidental:
+  70 // there is a tradeoff between static/dynamic footprint that translates
+  71 // into cache pressure (which is already high during marking), and
+  72 // too many atomic updates. uint32_t is too large, uint8_t is too small.
+  73 typedef uint16_t ShenandoahLiveData;
+  74 #define SHENANDOAH_LIVEDATA_MAX ((ShenandoahLiveData)-1)
+  75 
+  76 class ShenandoahRegionIterator : public StackObj {
+  77 private:
+  78   ShenandoahHeap* _heap;
+  79 
+  80   shenandoah_padding(0);
+  81   volatile size_t _index;
+  82   shenandoah_padding(1);
+  83 
+  84   // No implicit copying: iterators should be passed by reference to capture the state
+  85   NONCOPYABLE(ShenandoahRegionIterator);
+  86 
+  87 public:
+  88   ShenandoahRegionIterator();
+  89   ShenandoahRegionIterator(ShenandoahHeap* heap);
+  90 
+  91   // Reset iterator to default state
+  92   void reset();
+  93 
+  94   // Returns next region, or NULL if there are no more regions.
+  95   // This is multi-thread-safe.
+  96   inline ShenandoahHeapRegion* next();
+  97 
+  98   // This is *not* MT safe. However, in the absence of multithreaded access, it
+  99   // can be used to determine if there is more work to do.
+ 100   bool has_next() const;
+ 101 };
+ 102 
+ 103 class ShenandoahHeapRegionClosure : public StackObj {
+ 104 public:
+ 105   virtual void heap_region_do(ShenandoahHeapRegion* r) = 0;
+ 106   virtual bool is_thread_safe() { return false; }
+ 107 };
+ 108 
+ 109 typedef ShenandoahLock    ShenandoahHeapLock;
+ 110 typedef ShenandoahLocker  ShenandoahHeapLocker;
+ 111 
+ 112 // Shenandoah GC is low-pause concurrent GC that uses Brooks forwarding pointers
+ 113 // to encode forwarding data. See BrooksPointer for details on forwarding data encoding.
+ 114 // See ShenandoahControlThread for GC cycle structure.
+ 115 //
+ 116 class ShenandoahHeap : public CollectedHeap {
+ 117   friend class ShenandoahAsserts;
+ 118   friend class VMStructs;
+ 119   friend class ShenandoahGCSession;
+ 120   friend class ShenandoahGCStateResetter;
+ 121 
+ 122 // ---------- Locks that guard important data structures in Heap
+ 123 //
+ 124 private:
+ 125   ShenandoahHeapLock _lock;
+ 126 
+ 127 public:
+ 128   ShenandoahHeapLock* lock() {
+ 129     return &amp;_lock;
+ 130   }
+ 131 
+ 132 // ---------- Initialization, termination, identification, printing routines
+ 133 //
+ 134 public:
+ 135   static ShenandoahHeap* heap();
+ 136 
+ 137   const char* name()          const { return "Shenandoah"; }
+ 138   ShenandoahHeap::Name kind() const { return CollectedHeap::Shenandoah; }
+ 139 
+ 140   ShenandoahHeap(ShenandoahCollectorPolicy* policy);
+ 141   jint initialize();
+ 142   void post_initialize();
+ 143   void initialize_heuristics();
+ 144 
+ 145   void initialize_serviceability();
+ 146 
+ 147   void print_on(outputStream* st)              const;
+ 148   void print_extended_on(outputStream *st)     const;
+ 149   void print_tracing_info()                    const;
+ 150   void print_heap_regions_on(outputStream* st) const;
+ 151 
+ 152   void stop();
+ 153 
+ 154   void prepare_for_verify();
+ 155   void verify(VerifyOption vo);
+ 156 
+ 157 // ---------- Heap counters and metrics
+ 158 //
+ 159 private:
+ 160            size_t _initial_size;
+ 161            size_t _minimum_size;
+ 162   shenandoah_padding(0);
+ 163   volatile size_t _used;
+ 164   volatile size_t _committed;
+ 165   volatile size_t _bytes_allocated_since_gc_start;
+ 166   shenandoah_padding(1);
+ 167 
+ 168 public:
+ 169   void increase_used(size_t bytes);
+ 170   void decrease_used(size_t bytes);
+ 171   void set_used(size_t bytes);
+ 172 
+ 173   void increase_committed(size_t bytes);
+ 174   void decrease_committed(size_t bytes);
+ 175   void increase_allocated(size_t bytes);
+ 176 
+ 177   size_t bytes_allocated_since_gc_start();
+ 178   void reset_bytes_allocated_since_gc_start();
+ 179 
+ 180   size_t min_capacity()     const;
+ 181   size_t max_capacity()     const;
+ 182   size_t initial_capacity() const;
+ 183   size_t capacity()         const;
+ 184   size_t used()             const;
+ 185   size_t committed()        const;
+ 186 
+ 187 // ---------- Workers handling
+ 188 //
+ 189 private:
+ 190   uint _max_workers;
+ 191   ShenandoahWorkGang* _workers;
+ 192   ShenandoahWorkGang* _safepoint_workers;
+ 193 
+ 194 public:
+ 195   uint max_workers();
+ 196   void assert_gc_workers(uint nworker) NOT_DEBUG_RETURN;
+ 197 
+ 198   WorkGang* workers() const;
+ 199   WorkGang* get_safepoint_workers();
+ 200 
+ 201   void gc_threads_do(ThreadClosure* tcl) const;
+ 202 
+ 203 // ---------- Heap regions handling machinery
+ 204 //
+ 205 private:
+ 206   MemRegion _heap_region;
+ 207   bool      _heap_region_special;
+ 208   size_t    _num_regions;
+ 209   ShenandoahHeapRegion** _regions;
+ 210   ShenandoahRegionIterator _update_refs_iterator;
+ 211 
+ 212 public:
+ 213 
+ 214   inline HeapWord* base() const { return _heap_region.start(); }
+ 215 
+ 216   inline size_t num_regions() const { return _num_regions; }
+ 217   inline bool is_heap_region_special() { return _heap_region_special; }
+ 218 
+ 219   inline ShenandoahHeapRegion* const heap_region_containing(const void* addr) const;
+ 220   inline size_t heap_region_index_containing(const void* addr) const;
+ 221 
+ 222   inline ShenandoahHeapRegion* const get_region(size_t region_idx) const;
+ 223 
+ 224   void heap_region_iterate(ShenandoahHeapRegionClosure* blk) const;
+ 225   void parallel_heap_region_iterate(ShenandoahHeapRegionClosure* blk) const;
+ 226 
+ 227 // ---------- GC state machinery
+ 228 //
+ 229 // GC state describes the important parts of collector state, that may be
+ 230 // used to make barrier selection decisions in the native and generated code.
+ 231 // Multiple bits can be set at once.
+ 232 //
+ 233 // Important invariant: when GC state is zero, the heap is stable, and no barriers
+ 234 // are required.
+ 235 //
+ 236 public:
+ 237   enum GCStateBitPos {
+ 238     // Heap has forwarded objects: needs LRB barriers.
+ 239     HAS_FORWARDED_BITPOS   = 0,
+ 240 
+ 241     // Heap is under marking: needs SATB barriers.
+ 242     MARKING_BITPOS    = 1,
+ 243 
+ 244     // Heap is under evacuation: needs LRB barriers. (Set together with HAS_FORWARDED)
+ 245     EVACUATION_BITPOS = 2,
+ 246 
+ 247     // Heap is under updating: needs no additional barriers.
+ 248     UPDATEREFS_BITPOS = 3,
+ 249   };
+ 250 
+ 251   enum GCState {
+ 252     STABLE        = 0,
+ 253     HAS_FORWARDED = 1 &lt;&lt; HAS_FORWARDED_BITPOS,
+ 254     MARKING       = 1 &lt;&lt; MARKING_BITPOS,
+ 255     EVACUATION    = 1 &lt;&lt; EVACUATION_BITPOS,
+ 256     UPDATEREFS    = 1 &lt;&lt; UPDATEREFS_BITPOS,
+ 257   };
+ 258 
+ 259 private:
+ 260   ShenandoahSharedBitmap _gc_state;
+ 261   ShenandoahSharedFlag   _degenerated_gc_in_progress;
+ 262   ShenandoahSharedFlag   _full_gc_in_progress;
+ 263   ShenandoahSharedFlag   _full_gc_move_in_progress;
+ 264   ShenandoahSharedFlag   _progress_last_gc;
+ 265   ShenandoahSharedFlag   _concurrent_strong_root_in_progress;
+ 266   ShenandoahSharedFlag   _concurrent_weak_root_in_progress;
+ 267 
+ 268   void set_gc_state_all_threads(char state);
+ 269   void set_gc_state_mask(uint mask, bool value);
+ 270 
+ 271 public:
+ 272   char gc_state() const;
+ 273   static address gc_state_addr();
+ 274 
+ 275   void set_concurrent_mark_in_progress(bool in_progress);
+ 276   void set_evacuation_in_progress(bool in_progress);
+ 277   void set_update_refs_in_progress(bool in_progress);
+ 278   void set_degenerated_gc_in_progress(bool in_progress);
+ 279   void set_full_gc_in_progress(bool in_progress);
+ 280   void set_full_gc_move_in_progress(bool in_progress);
+ 281   void set_has_forwarded_objects(bool cond);
+ 282   void set_concurrent_strong_root_in_progress(bool cond);
+ 283   void set_concurrent_weak_root_in_progress(bool cond);
+ 284 
+ 285   inline bool is_stable() const;
+ 286   inline bool is_idle() const;
+ 287   inline bool is_concurrent_mark_in_progress() const;
+ 288   inline bool is_update_refs_in_progress() const;
+ 289   inline bool is_evacuation_in_progress() const;
+ 290   inline bool is_degenerated_gc_in_progress() const;
+ 291   inline bool is_full_gc_in_progress() const;
+ 292   inline bool is_full_gc_move_in_progress() const;
+ 293   inline bool has_forwarded_objects() const;
+ 294   inline bool is_gc_in_progress_mask(uint mask) const;
+ 295   inline bool is_stw_gc_in_progress() const;
+ 296   inline bool is_concurrent_strong_root_in_progress() const;
+ 297   inline bool is_concurrent_weak_root_in_progress() const;
+ 298 
+ 299 // ---------- GC cancellation and degeneration machinery
+ 300 //
+ 301 // Cancelled GC flag is used to notify concurrent phases that they should terminate.
+ 302 //
+ 303 public:
+ 304   enum ShenandoahDegenPoint {
+ 305     _degenerated_unset,
+ 306     _degenerated_outside_cycle,
+ 307     _degenerated_mark,
+ 308     _degenerated_evac,
+ 309     _degenerated_updaterefs,
+ 310     _DEGENERATED_LIMIT
+ 311   };
+ 312 
+ 313   static const char* degen_point_to_string(ShenandoahDegenPoint point) {
+ 314     switch (point) {
+ 315       case _degenerated_unset:
+ 316         return "&lt;UNSET&gt;";
+ 317       case _degenerated_outside_cycle:
+ 318         return "Outside of Cycle";
+ 319       case _degenerated_mark:
+ 320         return "Mark";
+ 321       case _degenerated_evac:
+ 322         return "Evacuation";
+ 323       case _degenerated_updaterefs:
+ 324         return "Update Refs";
+ 325       default:
+ 326         ShouldNotReachHere();
+ 327         return "ERROR";
+ 328     }
+ 329   };
+ 330 
+ 331 private:
+ 332   enum CancelState {
+ 333     // Normal state. GC has not been cancelled and is open for cancellation.
+ 334     // Worker threads can suspend for safepoint.
+ 335     CANCELLABLE,
+ 336 
+ 337     // GC has been cancelled. Worker threads can not suspend for
+ 338     // safepoint but must finish their work as soon as possible.
+ 339     CANCELLED,
+ 340 
+ 341     // GC has not been cancelled and must not be cancelled. At least
+ 342     // one worker thread checks for pending safepoint and may suspend
+ 343     // if a safepoint is pending.
+ 344     NOT_CANCELLED
+ 345   };
+ 346 
+ 347   ShenandoahSharedEnumFlag&lt;CancelState&gt; _cancelled_gc;
+ 348   bool try_cancel_gc();
+ 349 
+ 350 public:
+ 351   static address cancelled_gc_addr();
+ 352 
+ 353   inline bool cancelled_gc() const;
+ 354   inline bool check_cancelled_gc_and_yield(bool sts_active = true);
+ 355 
+ 356   inline void clear_cancelled_gc();
+ 357 
+ 358   void cancel_gc(GCCause::Cause cause);
+ 359 
+ 360 // ---------- GC operations entry points
+ 361 //
+ 362 public:
+ 363   // Entry points to STW GC operations, these cause a related safepoint, that then
+ 364   // call the entry method below
+ 365   void vmop_entry_init_mark();
+ 366   void vmop_entry_final_mark();
+ 367   void vmop_entry_init_updaterefs();
+ 368   void vmop_entry_final_updaterefs();
+ 369   void vmop_entry_full(GCCause::Cause cause);
+ 370   void vmop_degenerated(ShenandoahDegenPoint point);
+ 371 
+ 372   // Entry methods to normally STW GC operations. These set up logging, monitoring
+ 373   // and workers for net VM operation
+ 374   void entry_init_mark();
+ 375   void entry_final_mark();
+ 376   void entry_init_updaterefs();
+ 377   void entry_final_updaterefs();
+ 378   void entry_full(GCCause::Cause cause);
+ 379   void entry_degenerated(int point);
+ 380 
+ 381   // Entry methods to normally concurrent GC operations. These set up logging, monitoring
+ 382   // for concurrent operation.
+ 383   void entry_reset();
+ 384   void entry_mark();
+ 385   void entry_preclean();
+ 386   void entry_weak_roots();
+ 387   void entry_class_unloading();
+ 388   void entry_strong_roots();
+ 389   void entry_cleanup_early();
+ 390   void entry_evac();
+ 391   void entry_updaterefs();
+ 392   void entry_cleanup_complete();
+ 393   void entry_uncommit(double shrink_before);
+ 394 
+ 395 private:
+ 396   // Actual work for the phases
+ 397   void op_init_mark();
+ 398   void op_final_mark();
+ 399   void op_init_updaterefs();
+ 400   void op_final_updaterefs();
+ 401   void op_full(GCCause::Cause cause);
+ 402   void op_degenerated(ShenandoahDegenPoint point);
+ 403   void op_degenerated_fail();
+ 404   void op_degenerated_futile();
+ 405 
+ 406   void op_reset();
+ 407   void op_mark();
+ 408   void op_preclean();
+ 409   void op_weak_roots();
+ 410   void op_class_unloading();
+ 411   void op_strong_roots();
+ 412   void op_cleanup_early();
+ 413   void op_conc_evac();
+ 414   void op_stw_evac();
+ 415   void op_updaterefs();
+ 416   void op_cleanup_complete();
+ 417   void op_uncommit(double shrink_before);
+ 418 
+ 419   // Messages for GC trace events, they have to be immortal for
+ 420   // passing around the logging/tracing systems
+ 421   const char* init_mark_event_message() const;
+ 422   const char* final_mark_event_message() const;
+ 423   const char* conc_mark_event_message() const;
+ 424   const char* degen_event_message(ShenandoahDegenPoint point) const;
+ 425 
+ 426 // ---------- GC subsystems
+ 427 //
+ 428 private:
+ 429   ShenandoahControlThread*   _control_thread;
+ 430   ShenandoahCollectorPolicy* _shenandoah_policy;
+ 431   ShenandoahMode*            _gc_mode;
+ 432   ShenandoahHeuristics*      _heuristics;
+ 433   ShenandoahFreeSet*         _free_set;
+ 434   ShenandoahConcurrentMark*  _scm;
+ 435   ShenandoahMarkCompact*     _full_gc;
+ 436   ShenandoahPacer*           _pacer;
+ 437   ShenandoahVerifier*        _verifier;
+ 438 
+ 439   ShenandoahPhaseTimings*    _phase_timings;
+ 440 
+ 441   ShenandoahControlThread*   control_thread()          { return _control_thread;    }
+ 442   ShenandoahMarkCompact*     full_gc()                 { return _full_gc;           }
+ 443 
+ 444 public:
+ 445   ShenandoahCollectorPolicy* shenandoah_policy() const { return _shenandoah_policy; }
+ 446   ShenandoahMode*            mode()              const { return _gc_mode;           }
+ 447   ShenandoahHeuristics*      heuristics()        const { return _heuristics;        }
+ 448   ShenandoahFreeSet*         free_set()          const { return _free_set;          }
+ 449   ShenandoahConcurrentMark*  concurrent_mark()         { return _scm;               }
+ 450   ShenandoahPacer*           pacer()             const { return _pacer;             }
+ 451 
+ 452   ShenandoahPhaseTimings*    phase_timings()     const { return _phase_timings;     }
+ 453 
+ 454   ShenandoahVerifier*        verifier();
+ 455 
+ 456 // ---------- VM subsystem bindings
+ 457 //
+ 458 private:
+ 459   ShenandoahMonitoringSupport* _monitoring_support;
+ 460   MemoryPool*                  _memory_pool;
+ 461   GCMemoryManager              _stw_memory_manager;
+ 462   GCMemoryManager              _cycle_memory_manager;
+ 463   ConcurrentGCTimer*           _gc_timer;
+ 464   SoftRefPolicy                _soft_ref_policy;
+ 465 
+ 466   // For exporting to SA
+ 467   int                          _log_min_obj_alignment_in_bytes;
+ 468 public:
+ 469   ShenandoahMonitoringSupport* monitoring_support() { return _monitoring_support;    }
+ 470   GCMemoryManager* cycle_memory_manager()           { return &amp;_cycle_memory_manager; }
+ 471   GCMemoryManager* stw_memory_manager()             { return &amp;_stw_memory_manager;   }
+ 472   SoftRefPolicy* soft_ref_policy()                  { return &amp;_soft_ref_policy;      }
+ 473 
+ 474   GrowableArray&lt;GCMemoryManager*&gt; memory_managers();
+ 475   GrowableArray&lt;MemoryPool*&gt; memory_pools();
+ 476   MemoryUsage memory_usage();
+ 477   GCTracer* tracer();
+ 478   ConcurrentGCTimer* gc_timer() const;
+ 479 
+ 480 // ---------- Reference processing
+ 481 //
+ 482 private:
+ 483   AlwaysTrueClosure    _subject_to_discovery;
+ 484   ReferenceProcessor*  _ref_processor;
+ 485   ShenandoahSharedFlag _process_references;
+ 486   bool                 _ref_proc_mt_discovery;
+ 487   bool                 _ref_proc_mt_processing;
+ 488 
+ 489   void ref_processing_init();
+ 490 
+ 491 public:
+ 492   ReferenceProcessor* ref_processor() { return _ref_processor; }
+ 493   bool ref_processor_mt_discovery()   { return _ref_proc_mt_discovery;  }
+ 494   bool ref_processor_mt_processing()  { return _ref_proc_mt_processing; }
+ 495   void set_process_references(bool pr);
+ 496   bool process_references() const;
+ 497 
+ 498 // ---------- Class Unloading
+ 499 //
+ 500 private:
+ 501   ShenandoahSharedFlag _unload_classes;
+ 502   ShenandoahUnload     _unloader;
+ 503 
+ 504 public:
+ 505   void set_unload_classes(bool uc);
+ 506   bool unload_classes() const;
+ 507 
+ 508   // Perform STW class unloading and weak root cleaning
+ 509   void parallel_cleaning(bool full_gc);
+ 510 
+ 511 private:
+ 512   void stw_unload_classes(bool full_gc);
+ 513   void stw_process_weak_roots(bool full_gc);
+ 514 
+ 515   // Prepare concurrent root processing
+ 516   void prepare_concurrent_roots();
+ 517   // Prepare and finish concurrent unloading
+ 518   void prepare_concurrent_unloading();
+ 519   void finish_concurrent_unloading();
+ 520 
+ 521 // ---------- Generic interface hooks
+ 522 // Minor things that super-interface expects us to implement to play nice with
+ 523 // the rest of runtime. Some of the things here are not required to be implemented,
+ 524 // and can be stubbed out.
+ 525 //
+ 526 public:
+ 527   AdaptiveSizePolicy* size_policy() shenandoah_not_implemented_return(NULL);
+ 528   bool is_maximal_no_gc() const shenandoah_not_implemented_return(false);
+ 529 
+ 530   bool is_in(const void* p) const;
+ 531 
+ 532   MemRegion reserved_region() const { return _reserved; }
+ 533   bool is_in_reserved(const void* addr) const { return _reserved.contains(addr); }
+ 534 
+ 535   void collect(GCCause::Cause cause);
+ 536   void do_full_collection(bool clear_all_soft_refs);
+ 537 
+ 538   // Used for parsing heap during error printing
+ 539   HeapWord* block_start(const void* addr) const;
+ 540   bool block_is_obj(const HeapWord* addr) const;
+ 541   bool print_location(outputStream* st, void* addr) const;
+ 542 
+ 543   // Used for native heap walkers: heap dumpers, mostly
+ 544   void object_iterate(ObjectClosure* cl);
+ 545 
+ 546   // Keep alive an object that was loaded with AS_NO_KEEPALIVE.
+ 547   void keep_alive(oop obj);
+ 548 
+ 549 // ---------- Safepoint interface hooks
+ 550 //
+ 551 public:
+ 552   void safepoint_synchronize_begin();
+ 553   void safepoint_synchronize_end();
+ 554 
+ 555 // ---------- Code roots handling hooks
+ 556 //
+ 557 public:
+ 558   void register_nmethod(nmethod* nm);
+ 559   void unregister_nmethod(nmethod* nm);
+ 560   void flush_nmethod(nmethod* nm);
+ 561   void verify_nmethod(nmethod* nm) {}
+ 562 
+ 563 // ---------- Pinning hooks
+ 564 //
+ 565 public:
+ 566   // Shenandoah supports per-object (per-region) pinning
+ 567   bool supports_object_pinning() const { return true; }
+ 568 
+ 569   oop pin_object(JavaThread* thread, oop obj);
+ 570   void unpin_object(JavaThread* thread, oop obj);
+ 571 
+ 572   void sync_pinned_region_status();
+ 573   void assert_pinned_region_status() NOT_DEBUG_RETURN;
+ 574 
+ 575 // ---------- Allocation support
+ 576 //
+ 577 private:
+ 578   HeapWord* allocate_memory_under_lock(ShenandoahAllocRequest&amp; request, bool&amp; in_new_region);
+ 579   inline HeapWord* allocate_from_gclab(Thread* thread, size_t size);
+ 580   HeapWord* allocate_from_gclab_slow(Thread* thread, size_t size);
+ 581   HeapWord* allocate_new_gclab(size_t min_size, size_t word_size, size_t* actual_size);
+ 582 
+ 583 public:
+ 584   HeapWord* allocate_memory(ShenandoahAllocRequest&amp; request);
+ 585   HeapWord* mem_allocate(size_t size, bool* what);
+ 586   MetaWord* satisfy_failed_metadata_allocation(ClassLoaderData* loader_data,
+ 587                                                size_t size,
+ 588                                                Metaspace::MetadataType mdtype);
+ 589 
+ 590   void notify_mutator_alloc_words(size_t words, bool waste);
+ 591 
+ 592   // Shenandoah supports TLAB allocation
+ 593   bool supports_tlab_allocation() const { return true; }
+ 594 
+ 595   HeapWord* allocate_new_tlab(size_t min_size, size_t requested_size, size_t* actual_size);
+ 596   size_t tlab_capacity(Thread *thr) const;
+ 597   size_t unsafe_max_tlab_alloc(Thread *thread) const;
+ 598   size_t max_tlab_size() const;
+ 599   size_t tlab_used(Thread* ignored) const;
+ 600 
+ 601   void ensure_parsability(bool retire_labs);
+ 602 
+ 603   void labs_make_parsable();
+ 604   void tlabs_retire(bool resize);
+ 605   void gclabs_retire(bool resize);
+ 606 
+ 607 // ---------- Marking support
+ 608 //
+ 609 private:
+ 610   ShenandoahMarkingContext* _marking_context;
+ 611   MemRegion  _bitmap_region;
+ 612   MemRegion  _aux_bitmap_region;
+ 613   MarkBitMap _verification_bit_map;
+ 614   MarkBitMap _aux_bit_map;
+ 615 
+ 616   size_t _bitmap_size;
+ 617   size_t _bitmap_regions_per_slice;
+ 618   size_t _bitmap_bytes_per_slice;
+ 619 
+ 620   size_t _pretouch_heap_page_size;
+ 621   size_t _pretouch_bitmap_page_size;
+ 622 
+ 623   bool _bitmap_region_special;
+ 624   bool _aux_bitmap_region_special;
+ 625 
+ 626   ShenandoahLiveData** _liveness_cache;
+ 627 
+ 628 public:
+ 629   inline ShenandoahMarkingContext* complete_marking_context() const;
+ 630   inline ShenandoahMarkingContext* marking_context() const;
+ 631   inline void mark_complete_marking_context();
+ 632   inline void mark_incomplete_marking_context();
+ 633 
+ 634   template&lt;class T&gt;
+ 635   inline void marked_object_iterate(ShenandoahHeapRegion* region, T* cl);
+ 636 
+ 637   template&lt;class T&gt;
+ 638   inline void marked_object_iterate(ShenandoahHeapRegion* region, T* cl, HeapWord* limit);
+ 639 
+ 640   template&lt;class T&gt;
+ 641   inline void marked_object_oop_iterate(ShenandoahHeapRegion* region, T* cl, HeapWord* limit);
+ 642 
+ 643   void reset_mark_bitmap();
+ 644 
+ 645   // SATB barriers hooks
+ 646   inline bool requires_marking(const void* entry) const;
+ 647   void force_satb_flush_all_threads();
+ 648 
+ 649   // Support for bitmap uncommits
+ 650   bool commit_bitmap_slice(ShenandoahHeapRegion *r);
+ 651   bool uncommit_bitmap_slice(ShenandoahHeapRegion *r);
+ 652   bool is_bitmap_slice_committed(ShenandoahHeapRegion* r, bool skip_self = false);
+ 653 
+ 654   // Liveness caching support
+ 655   ShenandoahLiveData* get_liveness_cache(uint worker_id);
+ 656   void flush_liveness_cache(uint worker_id);
+ 657 
+ 658   size_t pretouch_heap_page_size() { return _pretouch_heap_page_size; }
+ 659 
+ 660 // ---------- Evacuation support
+ 661 //
+ 662 private:
+ 663   ShenandoahCollectionSet* _collection_set;
+ 664   ShenandoahEvacOOMHandler _oom_evac_handler;
+ 665 
+ 666   void evacuate_and_update_roots();
+ 667 
+ 668 public:
+ 669   static address in_cset_fast_test_addr();
+ 670 
+ 671   ShenandoahCollectionSet* collection_set() const { return _collection_set; }
+ 672 
+ 673   // Checks if object is in the collection set.
+ 674   inline bool in_collection_set(oop obj) const;
+ 675 
+ 676   // Checks if location is in the collection set. Can be interior pointer, not the oop itself.
+ 677   inline bool in_collection_set_loc(void* loc) const;
+ 678 
+ 679   // Evacuates object src. Returns the evacuated object, either evacuated
+ 680   // by this thread, or by some other thread.
+ 681   inline oop evacuate_object(oop src, Thread* thread);
+ 682 
+ 683   // Call before/after evacuation.
+ 684   inline void enter_evacuation(Thread* t);
+ 685   inline void leave_evacuation(Thread* t);
+ 686 
+ 687 // ---------- Helper functions
+ 688 //
+ 689 public:
+ 690   template &lt;class T&gt;
+ 691   inline oop evac_update_with_forwarded(T* p);
+ 692 
+ 693   template &lt;class T&gt;
+ 694   inline oop maybe_update_with_forwarded(T* p);
+ 695 
+ 696   template &lt;class T&gt;
+ 697   inline oop maybe_update_with_forwarded_not_null(T* p, oop obj);
+ 698 
+ 699   template &lt;class T&gt;
+ 700   inline oop update_with_forwarded_not_null(T* p, oop obj);
+ 701 
+ 702   static inline oop cas_oop(oop n, narrowOop* addr, oop c);
+ 703   static inline oop cas_oop(oop n, oop* addr, oop c);
+ 704   static inline oop cas_oop(oop n, narrowOop* addr, narrowOop c);
+ 705 
+ 706   void trash_humongous_region_at(ShenandoahHeapRegion *r);
+ 707 
+ 708   void deduplicate_string(oop str);
+ 709 
+ 710 private:
+ 711   void trash_cset_regions();
+ 712   void update_heap_references(bool concurrent);
+ 713 
+ 714 // ---------- Testing helpers functions
+ 715 //
+ 716 private:
+ 717   ShenandoahSharedFlag _inject_alloc_failure;
+ 718 
+ 719   void try_inject_alloc_failure();
+ 720   bool should_inject_alloc_failure();
+ 721 };
+ 722 
+ 723 #endif // SHARE_GC_SHENANDOAH_SHENANDOAHHEAP_HPP
+<a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="2" type="hidden" /></form></body></html>
