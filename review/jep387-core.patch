@@ -4916,7 +4916,7 @@ diff --git a/src/hotspot/share/memory/metaspace/chunkManager.hpp b/src/hotspot/s
   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   *
   * This code is free software; you can redistribute it and/or modify it
-@@ -26,173 +27,165 @@
+@@ -26,173 +27,166 @@
  #define SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
  
  #include "memory/allocation.hpp"
@@ -4963,20 +4963,21 @@ diff --git a/src/hotspot/share/memory/metaspace/chunkManager.hpp b/src/hotspot/s
 +//  are added to the front, others to the back.
 +//
 +// Level
-+//       +--------------------+   +--------------------+
-+//  0    |  free root chunk   |---|  free root chunk   |---...
-+//       +--------------------+   +--------------------+
-+//
-+//       +----------+   +----------+
-+//  1    |          |---|          |---...
-+//       +----------+   +----------+
-+//
++//          +--------------------+   +--------------------+
++//  0  +----|  free root chunk   |---|  free root chunk   |---...
++//     |    +--------------------+   +--------------------+
++//     |
++//     |    +----------+   +----------+
++//  1  +----|          |---|          |---...
++//     |    +----------+   +----------+
++//     |
 +//  .
 +//  .
++//  .
 +//
-+//       +-+   +-+
-+//  12   | |---| |---...
-+//       +-+   +-+
++//     |    +-+   +-+
++//  12 +----| |---| |---...
++//          +-+   +-+
  
 -  // Whether or not this is the class chunkmanager.
 -  const bool _is_class;
@@ -5216,7 +5217,7 @@ diff --git a/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp b/src/h
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,210 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -5249,9 +5250,6 @@ new file mode 100644
 +#include "memory/metaspace.hpp"
 +#include "memory/metaspaceTracer.hpp"
 +#include "memory/metaspace/chunkManager.hpp"
-+// Note: for now, to keep changes to the outside tree minimal, the ClassLoaderMetaspace
-+//  class definitioan continues to live in metaspace.hpp and in global scope.
-+//#include "memory/metaspace/classLoaderMetaspace.hpp"
 +#include "memory/metaspace/internStat.hpp"
 +#include "memory/metaspace/metaspaceArena.hpp"
 +#include "memory/metaspace/metaspaceEnums.hpp"

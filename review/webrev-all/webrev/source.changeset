@@ -1,9 +1,9 @@
 # HG changeset patch
 # User stuefe
-# Date 1597217305 -7200
-#      Wed Aug 12 09:28:25 2020 +0200
-# Node ID 295c4dfd477ddd375d7d1bbd6a373aaf7e142b7f
-# Parent  0d7947ba53894681c9bf55759d9c20ee3859e7bd
+# Date 1597251858 -7200
+#      Wed Aug 12 19:04:18 2020 +0200
+# Node ID bcc0a2a653f4050a1a727e46c6b1cf40b7c4846b
+# Parent  ce770ba672fef24a214113780a16564c30c73851
 imported patch jep387-all.patch
 
 diff --git a/src/hotspot/share/classfile/classLoaderData.cpp b/src/hotspot/share/classfile/classLoaderData.cpp
@@ -7241,7 +7241,7 @@ diff --git a/src/hotspot/share/memory/metaspace/chunkManager.hpp b/src/hotspot/s
   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   *
   * This code is free software; you can redistribute it and/or modify it
-@@ -26,173 +27,165 @@
+@@ -26,173 +27,166 @@
  #define SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
  
  #include "memory/allocation.hpp"
@@ -7288,20 +7288,21 @@ diff --git a/src/hotspot/share/memory/metaspace/chunkManager.hpp b/src/hotspot/s
 +//  are added to the front, others to the back.
 +//
 +// Level
-+//       +--------------------+   +--------------------+
-+//  0    |  free root chunk   |---|  free root chunk   |---...
-+//       +--------------------+   +--------------------+
-+//
-+//       +----------+   +----------+
-+//  1    |          |---|          |---...
-+//       +----------+   +----------+
-+//
++//          +--------------------+   +--------------------+
++//  0  +----|  free root chunk   |---|  free root chunk   |---...
++//     |    +--------------------+   +--------------------+
++//     |
++//     |    +----------+   +----------+
++//  1  +----|          |---|          |---...
++//     |    +----------+   +----------+
++//     |
 +//  .
 +//  .
++//  .
 +//
-+//       +-+   +-+
-+//  12   | |---| |---...
-+//       +-+   +-+
++//     |    +-+   +-+
++//  12 +----| |---| |---...
++//          +-+   +-+
  
 -  // Whether or not this is the class chunkmanager.
 -  const bool _is_class;
@@ -7541,7 +7542,7 @@ diff --git a/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp b/src/h
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,210 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -7574,9 +7575,6 @@ new file mode 100644
 +#include "memory/metaspace.hpp"
 +#include "memory/metaspaceTracer.hpp"
 +#include "memory/metaspace/chunkManager.hpp"
-+// Note: for now, to keep changes to the outside tree minimal, the ClassLoaderMetaspace
-+//  class definitioan continues to live in metaspace.hpp and in global scope.
-+//#include "memory/metaspace/classLoaderMetaspace.hpp"
 +#include "memory/metaspace/internStat.hpp"
 +#include "memory/metaspace/metaspaceArena.hpp"
 +#include "memory/metaspace/metaspaceEnums.hpp"
@@ -14186,38 +14184,6 @@ diff --git a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
  
    uintx                           _num_classes_by_spacetype [Metaspace::MetaspaceTypeCount];
    uintx                           _num_classes_shared_by_spacetype [Metaspace::MetaspaceTypeCount];
-diff --git a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
---- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
-+++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
-@@ -1,6 +1,6 @@
- /*
-- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
-- * Copyright (c) 2018, SAP and/or its affiliates.
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
-@@ -22,6 +22,7 @@
-  * questions.
-  *
-  */
-+
- #include "precompiled.hpp"
- 
- #include "memory/metaspaceShared.hpp"
-diff --git a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
---- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
-+++ b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
-@@ -1,6 +1,6 @@
- /*
-- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
-- * Copyright (c) 2018, SAP and/or its affiliates.
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
 diff --git a/src/hotspot/share/memory/metaspace/rootChunkArea.cpp b/src/hotspot/share/memory/metaspace/rootChunkArea.cpp
 new file mode 100644
 --- /dev/null
@@ -18672,6 +18638,13 @@ diff --git a/src/hotspot/share/memory/metaspaceClosure.hpp b/src/hotspot/share/m
 diff --git a/src/hotspot/share/memory/metaspaceCounters.cpp b/src/hotspot/share/memory/metaspaceCounters.cpp
 --- a/src/hotspot/share/memory/metaspaceCounters.cpp
 +++ b/src/hotspot/share/memory/metaspaceCounters.cpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2012, 2013, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
 @@ -29,7 +29,7 @@
  #include "runtime/perfData.hpp"
  #include "utilities/exceptions.hpp"
@@ -18684,6 +18657,13 @@ diff --git a/src/hotspot/share/memory/metaspaceCounters.cpp b/src/hotspot/share/
 diff --git a/src/hotspot/share/memory/metaspaceCounters.hpp b/src/hotspot/share/memory/metaspaceCounters.hpp
 --- a/src/hotspot/share/memory/metaspaceCounters.hpp
 +++ b/src/hotspot/share/memory/metaspaceCounters.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2012, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2012, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
 @@ -29,6 +29,7 @@
  
  class MetaspacePerfCounters;
@@ -18752,6 +18732,13 @@ deleted file mode 100644
 diff --git a/src/hotspot/share/memory/metaspaceTracer.hpp b/src/hotspot/share/memory/metaspaceTracer.hpp
 --- a/src/hotspot/share/memory/metaspaceTracer.hpp
 +++ b/src/hotspot/share/memory/metaspaceTracer.hpp
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (c) 2014, 2019, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2014, 2020, Oracle and/or its affiliates. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
 @@ -27,7 +27,6 @@
  
  #include "memory/allocation.hpp"
@@ -18763,7 +18750,7 @@ diff --git a/src/hotspot/share/memory/metaspaceTracer.hpp b/src/hotspot/share/me
 diff --git a/src/hotspot/share/memory/universe.cpp b/src/hotspot/share/memory/universe.cpp
 --- a/src/hotspot/share/memory/universe.cpp
 +++ b/src/hotspot/share/memory/universe.cpp
-@@ -1177,7 +1177,7 @@
+@@ -1163,7 +1163,7 @@
    }
    if (should_verify_subset(Verify_MetaspaceUtils)) {
      log_debug(gc, verify)("MetaspaceUtils");
@@ -18932,18 +18919,6 @@ diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/g
    manageable(uintx, MinHeapFreeRatio, 40,                                   \
            "The minimum percentage of heap free after GC to avoid expansion."\
            " For most GCs this applies to the old generation. In G1 and"     \
-diff --git a/src/hotspot/share/runtime/os.hpp b/src/hotspot/share/runtime/os.hpp
---- a/src/hotspot/share/runtime/os.hpp
-+++ b/src/hotspot/share/runtime/os.hpp
-@@ -405,6 +405,8 @@
-   static bool   can_execute_large_page_memory();
- 
-   // Check if pointer points to readable memory (by 4-byte read access)
-+  // !! Unreliable before VM initialization! Use CanUseSafeFetch32() to test
-+  //    if this function is reliable !!
-   static bool    is_readable_pointer(const void* p);
-   static bool    is_readable_range(const void* from, const void* to);
- 
 diff --git a/src/hotspot/share/runtime/vmOperations.cpp b/src/hotspot/share/runtime/vmOperations.cpp
 --- a/src/hotspot/share/runtime/vmOperations.cpp
 +++ b/src/hotspot/share/runtime/vmOperations.cpp
@@ -19872,24 +19847,6 @@ deleted file mode 100644
 -}
 -
 -#endif // ASSERT
-diff --git a/test/hotspot/gtest/memory/test_virtualspace.cpp b/test/hotspot/gtest/memory/test_virtualspace.cpp
---- a/test/hotspot/gtest/memory/test_virtualspace.cpp
-+++ b/test/hotspot/gtest/memory/test_virtualspace.cpp
-@@ -28,6 +28,7 @@
- #include "utilities/align.hpp"
- #include "unittest.hpp"
- 
-+
- namespace {
-   class MemoryReleaser {
-     ReservedSpace* const _rs;
-@@ -337,3 +338,6 @@
-   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 5 * M,  Commit));
-   EXPECT_NO_FATAL_FAILURE(test_virtual_space_actual_committed_space(10 * M, 10 * M, Commit));
- }
-+
-+
-+
 diff --git a/test/hotspot/gtest/metaspace/metaspaceTestContexts.cpp b/test/hotspot/gtest/metaspace/metaspaceTestContexts.cpp
 new file mode 100644
 --- /dev/null

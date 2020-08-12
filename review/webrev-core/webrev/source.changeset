@@ -1,9 +1,9 @@
 # HG changeset patch
 # User stuefe
-# Date 1597217613 -7200
-#      Wed Aug 12 09:33:33 2020 +0200
-# Node ID 9f86735859cf321ac719f41c62d252a13eef1986
-# Parent  0d7947ba53894681c9bf55759d9c20ee3859e7bd
+# Date 1597251984 -7200
+#      Wed Aug 12 19:06:24 2020 +0200
+# Node ID 9a3a277144a63c5a64bcd9696ac285b14407e250
+# Parent  ce770ba672fef24a214113780a16564c30c73851
 imported patch jep387-core.patch
 
 diff --git a/src/hotspot/share/memory/metaspace.cpp b/src/hotspot/share/memory/metaspace.cpp
@@ -4924,7 +4924,7 @@ diff --git a/src/hotspot/share/memory/metaspace/chunkManager.hpp b/src/hotspot/s
   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
   *
   * This code is free software; you can redistribute it and/or modify it
-@@ -26,173 +27,165 @@
+@@ -26,173 +27,166 @@
  #define SHARE_MEMORY_METASPACE_CHUNKMANAGER_HPP
  
  #include "memory/allocation.hpp"
@@ -4971,20 +4971,21 @@ diff --git a/src/hotspot/share/memory/metaspace/chunkManager.hpp b/src/hotspot/s
 +//  are added to the front, others to the back.
 +//
 +// Level
-+//       +--------------------+   +--------------------+
-+//  0    |  free root chunk   |---|  free root chunk   |---...
-+//       +--------------------+   +--------------------+
-+//
-+//       +----------+   +----------+
-+//  1    |          |---|          |---...
-+//       +----------+   +----------+
-+//
++//          +--------------------+   +--------------------+
++//  0  +----|  free root chunk   |---|  free root chunk   |---...
++//     |    +--------------------+   +--------------------+
++//     |
++//     |    +----------+   +----------+
++//  1  +----|          |---|          |---...
++//     |    +----------+   +----------+
++//     |
 +//  .
 +//  .
++//  .
 +//
-+//       +-+   +-+
-+//  12   | |---| |---...
-+//       +-+   +-+
++//     |    +-+   +-+
++//  12 +----| |---| |---...
++//          +-+   +-+
  
 -  // Whether or not this is the class chunkmanager.
 -  const bool _is_class;
@@ -5224,7 +5225,7 @@ diff --git a/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp b/src/h
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/classLoaderMetaspace.cpp
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,210 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -5257,9 +5258,6 @@ new file mode 100644
 +#include "memory/metaspace.hpp"
 +#include "memory/metaspaceTracer.hpp"
 +#include "memory/metaspace/chunkManager.hpp"
-+// Note: for now, to keep changes to the outside tree minimal, the ClassLoaderMetaspace
-+//  class definitioan continues to live in metaspace.hpp and in global scope.
-+//#include "memory/metaspace/classLoaderMetaspace.hpp"
 +#include "memory/metaspace/internStat.hpp"
 +#include "memory/metaspace/metaspaceArena.hpp"
 +#include "memory/metaspace/metaspaceEnums.hpp"

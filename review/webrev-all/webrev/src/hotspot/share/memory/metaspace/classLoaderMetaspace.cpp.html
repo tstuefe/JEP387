@@ -112,185 +112,182 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   30 #include "memory/metaspace.hpp"
   31 #include "memory/metaspaceTracer.hpp"
   32 #include "memory/metaspace/chunkManager.hpp"
-  33 // Note: for now, to keep changes to the outside tree minimal, the ClassLoaderMetaspace
-  34 //  class definitioan continues to live in metaspace.hpp and in global scope.
-  35 //#include "memory/metaspace/classLoaderMetaspace.hpp"
-  36 #include "memory/metaspace/internStat.hpp"
-  37 #include "memory/metaspace/metaspaceArena.hpp"
-  38 #include "memory/metaspace/metaspaceEnums.hpp"
-  39 #include "memory/metaspace/metaspaceStatistics.hpp"
-  40 #include "memory/metaspace/runningCounters.hpp"
-  41 #include "memory/metaspace/settings.hpp"
-  42 #include "runtime/atomic.hpp"
-  43 #include "utilities/debug.hpp"
-  44 
-  45 using metaspace::clms_stats_t;
-  46 using metaspace::ChunkManager;
-  47 using metaspace::MetaspaceArena;
-  48 using metaspace::ArenaGrowthPolicy;
-  49 using metaspace::RunningCounters;
-  50 using metaspace::InternalStats;
+  33 #include "memory/metaspace/internStat.hpp"
+  34 #include "memory/metaspace/metaspaceArena.hpp"
+  35 #include "memory/metaspace/metaspaceEnums.hpp"
+  36 #include "memory/metaspace/metaspaceStatistics.hpp"
+  37 #include "memory/metaspace/runningCounters.hpp"
+  38 #include "memory/metaspace/settings.hpp"
+  39 #include "runtime/atomic.hpp"
+  40 #include "utilities/debug.hpp"
+  41 
+  42 using metaspace::clms_stats_t;
+  43 using metaspace::ChunkManager;
+  44 using metaspace::MetaspaceArena;
+  45 using metaspace::ArenaGrowthPolicy;
+  46 using metaspace::RunningCounters;
+  47 using metaspace::InternalStats;
+  48 
+  49 #define LOGFMT         "CLMS @" PTR_FORMAT " "
+  50 #define LOGFMT_ARGS    p2i(this)
   51 
-  52 #define LOGFMT         "CLMS @" PTR_FORMAT " "
-  53 #define LOGFMT_ARGS    p2i(this)
-  54 
-  55 static bool use_class_space(bool is_class) {
-  56   if (Metaspace::using_class_space() &amp;&amp; is_class) {
-  57     return true;
-  58   }
-  59   return false;
-  60 }
-  61 
-  62 static bool use_class_space(Metaspace::MetadataType mdType) {
-  63   return use_class_space(metaspace::is_class(mdType));
-  64 }
-  65 
-  66 ClassLoaderMetaspace::ClassLoaderMetaspace(Mutex* lock, Metaspace::MetaspaceType space_type)
-  67   : _lock(lock)
-  68   , _space_type(space_type)
-  69   , _non_class_space_arena(NULL)
-  70   , _class_space_arena(NULL)
-  71 {
-  72   ChunkManager* const non_class_cm =
-  73           ChunkManager::chunkmanager_nonclass();
-  74 
-  75   // Initialize non-class Arena
-  76   _non_class_space_arena = new MetaspaceArena(
-  77       non_class_cm,
-  78       ArenaGrowthPolicy::policy_for_space_type(space_type, false),
-  79       lock,
-  80       RunningCounters::used_nonclass_counter(),
-  81       "non-class sm");
-  82 
-  83   // If needed, initialize class arena
-  84   if (Metaspace::using_class_space()) {
-  85     ChunkManager* const class_cm =
-  86             ChunkManager::chunkmanager_class();
-  87     _class_space_arena = new MetaspaceArena(
-  88         class_cm,
-  89         ArenaGrowthPolicy::policy_for_space_type(space_type, true),
-  90         lock,
-  91         RunningCounters::used_class_counter(),
-  92         "class sm");
-  93   }
-  94 
-  95   UL2(debug, "born (SpcMgr nonclass: " PTR_FORMAT ", SpcMgr class: " PTR_FORMAT ".",
-  96       p2i(_non_class_space_arena), p2i(_class_space_arena));
-  97 }
+  52 static bool use_class_space(bool is_class) {
+  53   if (Metaspace::using_class_space() &amp;&amp; is_class) {
+  54     return true;
+  55   }
+  56   return false;
+  57 }
+  58 
+  59 static bool use_class_space(Metaspace::MetadataType mdType) {
+  60   return use_class_space(metaspace::is_class(mdType));
+  61 }
+  62 
+  63 ClassLoaderMetaspace::ClassLoaderMetaspace(Mutex* lock, Metaspace::MetaspaceType space_type)
+  64   : _lock(lock)
+  65   , _space_type(space_type)
+  66   , _non_class_space_arena(NULL)
+  67   , _class_space_arena(NULL)
+  68 {
+  69   ChunkManager* const non_class_cm =
+  70           ChunkManager::chunkmanager_nonclass();
+  71 
+  72   // Initialize non-class Arena
+  73   _non_class_space_arena = new MetaspaceArena(
+  74       non_class_cm,
+  75       ArenaGrowthPolicy::policy_for_space_type(space_type, false),
+  76       lock,
+  77       RunningCounters::used_nonclass_counter(),
+  78       "non-class sm");
+  79 
+  80   // If needed, initialize class arena
+  81   if (Metaspace::using_class_space()) {
+  82     ChunkManager* const class_cm =
+  83             ChunkManager::chunkmanager_class();
+  84     _class_space_arena = new MetaspaceArena(
+  85         class_cm,
+  86         ArenaGrowthPolicy::policy_for_space_type(space_type, true),
+  87         lock,
+  88         RunningCounters::used_class_counter(),
+  89         "class sm");
+  90   }
+  91 
+  92   UL2(debug, "born (SpcMgr nonclass: " PTR_FORMAT ", SpcMgr class: " PTR_FORMAT ".",
+  93       p2i(_non_class_space_arena), p2i(_class_space_arena));
+  94 }
+  95 
+  96 ClassLoaderMetaspace::~ClassLoaderMetaspace() {
+  97   Metaspace::assert_not_frozen();
   98 
-  99 ClassLoaderMetaspace::~ClassLoaderMetaspace() {
- 100   Metaspace::assert_not_frozen();
- 101 
- 102   UL(debug, "dies.");
+  99   UL(debug, "dies.");
+ 100 
+ 101   delete _non_class_space_arena;
+ 102   delete _class_space_arena;
  103 
- 104   delete _non_class_space_arena;
- 105   delete _class_space_arena;
- 106 
- 107 }
- 108 
- 109 // Allocate word_size words from Metaspace.
- 110 MetaWord* ClassLoaderMetaspace::allocate(size_t word_size, Metaspace::MetadataType mdType) {
- 111   Metaspace::assert_not_frozen();
- 112   if (use_class_space(mdType)) {
- 113     return class_space_arena()-&gt;allocate(word_size);
- 114   } else {
- 115     return non_class_space_arena()-&gt;allocate(word_size);
- 116   }
- 117 }
- 118 
- 119 // Attempt to expand the GC threshold to be good for at least another word_size words
- 120 // and allocate. Returns NULL if failure. Used during Metaspace GC.
- 121 MetaWord* ClassLoaderMetaspace::expand_and_allocate(size_t word_size, Metaspace::MetadataType mdType) {
- 122   Metaspace::assert_not_frozen();
- 123   size_t delta_bytes = MetaspaceGC::delta_capacity_until_GC(word_size * BytesPerWord);
- 124   assert(delta_bytes &gt; 0, "Must be");
- 125 
- 126   size_t before = 0;
- 127   size_t after = 0;
- 128   bool can_retry = true;
- 129   MetaWord* res;
- 130   bool incremented;
- 131 
- 132   // Each thread increments the HWM at most once. Even if the thread fails to increment
- 133   // the HWM, an allocation is still attempted. This is because another thread must then
- 134   // have incremented the HWM and therefore the allocation might still succeed.
- 135   do {
- 136     incremented = MetaspaceGC::inc_capacity_until_GC(delta_bytes, &amp;after, &amp;before, &amp;can_retry);
- 137     res = allocate(word_size, mdType);
- 138   } while (!incremented &amp;&amp; res == NULL &amp;&amp; can_retry);
- 139 
- 140   if (incremented) {
- 141     Metaspace::tracer()-&gt;report_gc_threshold(before, after,
- 142                                   MetaspaceGCThresholdUpdater::ExpandAndAllocate);
- 143     // Keeping both for now until I am sure the old variant (gc + metaspace) is not needed anymore
- 144     log_trace(gc, metaspace)("Increase capacity to GC from " SIZE_FORMAT " to " SIZE_FORMAT, before, after);
- 145     UL2(info, "GC threshold increased: " SIZE_FORMAT "-&gt;" SIZE_FORMAT ".", before, after);
- 146   }
+ 104 }
+ 105 
+ 106 // Allocate word_size words from Metaspace.
+ 107 MetaWord* ClassLoaderMetaspace::allocate(size_t word_size, Metaspace::MetadataType mdType) {
+ 108   Metaspace::assert_not_frozen();
+ 109   if (use_class_space(mdType)) {
+ 110     return class_space_arena()-&gt;allocate(word_size);
+ 111   } else {
+ 112     return non_class_space_arena()-&gt;allocate(word_size);
+ 113   }
+ 114 }
+ 115 
+ 116 // Attempt to expand the GC threshold to be good for at least another word_size words
+ 117 // and allocate. Returns NULL if failure. Used during Metaspace GC.
+ 118 MetaWord* ClassLoaderMetaspace::expand_and_allocate(size_t word_size, Metaspace::MetadataType mdType) {
+ 119   Metaspace::assert_not_frozen();
+ 120   size_t delta_bytes = MetaspaceGC::delta_capacity_until_GC(word_size * BytesPerWord);
+ 121   assert(delta_bytes &gt; 0, "Must be");
+ 122 
+ 123   size_t before = 0;
+ 124   size_t after = 0;
+ 125   bool can_retry = true;
+ 126   MetaWord* res;
+ 127   bool incremented;
+ 128 
+ 129   // Each thread increments the HWM at most once. Even if the thread fails to increment
+ 130   // the HWM, an allocation is still attempted. This is because another thread must then
+ 131   // have incremented the HWM and therefore the allocation might still succeed.
+ 132   do {
+ 133     incremented = MetaspaceGC::inc_capacity_until_GC(delta_bytes, &amp;after, &amp;before, &amp;can_retry);
+ 134     res = allocate(word_size, mdType);
+ 135   } while (!incremented &amp;&amp; res == NULL &amp;&amp; can_retry);
+ 136 
+ 137   if (incremented) {
+ 138     Metaspace::tracer()-&gt;report_gc_threshold(before, after,
+ 139                                   MetaspaceGCThresholdUpdater::ExpandAndAllocate);
+ 140     // Keeping both for now until I am sure the old variant (gc + metaspace) is not needed anymore
+ 141     log_trace(gc, metaspace)("Increase capacity to GC from " SIZE_FORMAT " to " SIZE_FORMAT, before, after);
+ 142     UL2(info, "GC threshold increased: " SIZE_FORMAT "-&gt;" SIZE_FORMAT ".", before, after);
+ 143   }
+ 144 
+ 145   return res;
+ 146 }
  147 
- 148   return res;
- 149 }
- 150 
- 151 // Prematurely returns a metaspace allocation to the _block_freelists
- 152 // because it is not needed anymore.
- 153 void ClassLoaderMetaspace::deallocate(MetaWord* ptr, size_t word_size, bool is_class) {
- 154 
- 155   Metaspace::assert_not_frozen();
- 156 
- 157   if (use_class_space(is_class)) {
- 158     class_space_arena()-&gt;deallocate(ptr, word_size);
- 159   } else {
- 160     non_class_space_arena()-&gt;deallocate(ptr, word_size);
- 161   }
- 162 
- 163   DEBUG_ONLY(InternalStats::inc_num_deallocs();)
- 164 
- 165 }
- 166 
- 167 // Update statistics. This walks all in-use chunks.
- 168 void ClassLoaderMetaspace::add_to_statistics(clms_stats_t* out) const {
- 169   if (non_class_space_arena() != NULL) {
- 170     non_class_space_arena()-&gt;add_to_statistics(&amp;out-&gt;arena_stats_nonclass);
+ 148 // Prematurely returns a metaspace allocation to the _block_freelists
+ 149 // because it is not needed anymore.
+ 150 void ClassLoaderMetaspace::deallocate(MetaWord* ptr, size_t word_size, bool is_class) {
+ 151 
+ 152   Metaspace::assert_not_frozen();
+ 153 
+ 154   if (use_class_space(is_class)) {
+ 155     class_space_arena()-&gt;deallocate(ptr, word_size);
+ 156   } else {
+ 157     non_class_space_arena()-&gt;deallocate(ptr, word_size);
+ 158   }
+ 159 
+ 160   DEBUG_ONLY(InternalStats::inc_num_deallocs();)
+ 161 
+ 162 }
+ 163 
+ 164 // Update statistics. This walks all in-use chunks.
+ 165 void ClassLoaderMetaspace::add_to_statistics(clms_stats_t* out) const {
+ 166   if (non_class_space_arena() != NULL) {
+ 167     non_class_space_arena()-&gt;add_to_statistics(&amp;out-&gt;arena_stats_nonclass);
+ 168   }
+ 169   if (class_space_arena() != NULL) {
+ 170     class_space_arena()-&gt;add_to_statistics(&amp;out-&gt;arena_stats_class);
  171   }
- 172   if (class_space_arena() != NULL) {
- 173     class_space_arena()-&gt;add_to_statistics(&amp;out-&gt;arena_stats_class);
- 174   }
- 175 }
- 176 
- 177 #ifdef ASSERT
- 178 void ClassLoaderMetaspace::verify() const {
- 179   metaspace::check_valid_spacetype(_space_type);
- 180   if (non_class_space_arena() != NULL) {
- 181     non_class_space_arena()-&gt;verify(false);
+ 172 }
+ 173 
+ 174 #ifdef ASSERT
+ 175 void ClassLoaderMetaspace::verify() const {
+ 176   metaspace::check_valid_spacetype(_space_type);
+ 177   if (non_class_space_arena() != NULL) {
+ 178     non_class_space_arena()-&gt;verify(false);
+ 179   }
+ 180   if (class_space_arena() != NULL) {
+ 181     class_space_arena()-&gt;verify(false);
  182   }
- 183   if (class_space_arena() != NULL) {
- 184     class_space_arena()-&gt;verify(false);
- 185   }
- 186 }
- 187 #endif // ASSERT
- 188 
- 189 
- 190 // This only exists for JFR and jcmd VM.classloader_stats. We may want to
- 191 //  change this. Capacity as a stat is of questionable use since it may
- 192 //  contain committed and uncommitted areas. For now we do this to maintain
- 193 //  backward compatibility with JFR.
- 194 void ClassLoaderMetaspace::calculate_jfr_stats(size_t* p_used_bytes, size_t* p_capacity_bytes) const {
- 195   // Implement this using the standard statistics objects.
- 196   size_t used_c = 0, cap_c = 0, used_nc = 0, cap_nc = 0;
- 197   if (non_class_space_arena() != NULL) {
- 198     non_class_space_arena()-&gt;usage_numbers(&amp;used_nc, NULL, &amp;cap_nc);
+ 183 }
+ 184 #endif // ASSERT
+ 185 
+ 186 
+ 187 // This only exists for JFR and jcmd VM.classloader_stats. We may want to
+ 188 //  change this. Capacity as a stat is of questionable use since it may
+ 189 //  contain committed and uncommitted areas. For now we do this to maintain
+ 190 //  backward compatibility with JFR.
+ 191 void ClassLoaderMetaspace::calculate_jfr_stats(size_t* p_used_bytes, size_t* p_capacity_bytes) const {
+ 192   // Implement this using the standard statistics objects.
+ 193   size_t used_c = 0, cap_c = 0, used_nc = 0, cap_nc = 0;
+ 194   if (non_class_space_arena() != NULL) {
+ 195     non_class_space_arena()-&gt;usage_numbers(&amp;used_nc, NULL, &amp;cap_nc);
+ 196   }
+ 197   if (class_space_arena() != NULL) {
+ 198     class_space_arena()-&gt;usage_numbers(&amp;used_c, NULL, &amp;cap_c);
  199   }
- 200   if (class_space_arena() != NULL) {
- 201     class_space_arena()-&gt;usage_numbers(&amp;used_c, NULL, &amp;cap_c);
+ 200   if (p_used_bytes != NULL) {
+ 201     *p_used_bytes = used_c + used_nc;
  202   }
- 203   if (p_used_bytes != NULL) {
- 204     *p_used_bytes = used_c + used_nc;
+ 203   if (p_capacity_bytes != NULL) {
+ 204     *p_capacity_bytes = cap_c + cap_nc;
  205   }
- 206   if (p_capacity_bytes != NULL) {
- 207     *p_capacity_bytes = cap_c + cap_nc;
- 208   }
- 209 }
+ 206 }
+ 207 
+ 208 
+ 209 
  210 
- 211 
- 212 
- 213 
 </pre></body></html>
