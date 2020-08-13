@@ -658,7 +658,7 @@ Not vital for this review but may give more information.
 
 - The [JEP](https://openjdk.java.net/jeps/8221173) explains core concepts in greater detail.
 
-- A presentation we gave in March 2020: https://github.com/tstuefe/JEP-Improve-Metaspace-Allocator/blob/master/pres/metaspace2.pdf
+- A presentation we gave in March 2020: https://github.com/tstuefe/jep387/blob/master/pres/elastic-metaspace.pdf
 
 - A brief talk we gave at Fosdem 2020: https://www.youtube.com/watch?v=XqaQ-z70sQs 
 
