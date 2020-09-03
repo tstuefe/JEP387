@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,10 +25,28 @@
 
 #include "precompiled.hpp"
 
+#include "memory/metaspace/msArena.hpp"
+#include "memory/metaspace/msArenaGrowthPolicy.hpp"
+#include "memory/metaspace/msChunkManager.hpp"
+#include "memory/metaspace/msCounter.hpp"
+#include "memory/metaspace/msStatistics.hpp"
+#include "runtime/mutexLocker.hpp"
+#include "utilities/debug.hpp"
+#include "utilities/globalDefinitions.hpp"
+
 //#define LOG_PLEASE
-#include "metaspace/metaspaceTestsCommon.hpp"
-#include "metaspace/metaspaceTestContexts.hpp"
-#include "metaspace/metaspace_sparsearray.hpp"
+#include "metaspaceGtestCommon.hpp"
+#include "metaspaceGtestContexts.hpp"
+#include "metaspaceGtestSparseArray.hpp"
+
+using metaspace::ArenaGrowthPolicy;
+using metaspace::ChunkManager;
+using metaspace::IntCounter;
+using metaspace::MemRangeCounter;
+using metaspace::MetaspaceArena;
+using metaspace::SizeAtomicCounter;
+using metaspace::ArenaStats;
+using metaspace::InUseChunkStats;
 
 // Little randomness helper
 static bool fifty_fifty() {
@@ -78,18 +96,18 @@ class MetaspaceArenaTestBed : public CHeapObj<mtInternal> {
   // overhead.
   void verify_arena_statistics() const {
 
-    arena_stats_t stats;
+    ArenaStats stats;
     _arena->add_to_statistics(&stats);
-    in_use_chunk_stats_t in_use_stats = stats.totals();
+    InUseChunkStats in_use_stats = stats.totals();
 
     assert(_dealloc_count.total_size() <= _alloc_count.total_size() &&
            _dealloc_count.count() <= _alloc_count.count(), "Sanity");
 
     // Check consistency of stats
-    ASSERT_GE(in_use_stats.word_size, in_use_stats.committed_words);
-    ASSERT_EQ(in_use_stats.committed_words,
-              in_use_stats.used_words + in_use_stats.free_words + in_use_stats.waste_words);
-    ASSERT_GE(in_use_stats.used_words, stats.free_blocks_word_size);
+    ASSERT_GE(in_use_stats._word_size, in_use_stats._committed_words);
+    ASSERT_EQ(in_use_stats._committed_words,
+              in_use_stats._used_words + in_use_stats._free_words + in_use_stats._waste_words);
+    ASSERT_GE(in_use_stats._used_words, stats._free_blocks_word_size);
 
     // Note: reasons why the outside alloc counter and the inside used counter can differ:
     // - alignment/padding of allocations
@@ -104,8 +122,8 @@ class MetaspaceArenaTestBed : public CHeapObj<mtInternal> {
     const size_t max_word_overhead_per_alloc = 4;
     const size_t at_most_allocated = _alloc_count.total_size() + max_word_overhead_per_alloc * _alloc_count.count();
 
-    ASSERT_LE(at_least_allocated, in_use_stats.used_words - stats.free_blocks_word_size);
-    ASSERT_GE(at_most_allocated, in_use_stats.used_words - stats.free_blocks_word_size);
+    ASSERT_LE(at_least_allocated, in_use_stats._used_words - stats._free_blocks_word_size);
+    ASSERT_GE(at_most_allocated, in_use_stats._used_words - stats._free_blocks_word_size);
 
   }
 
@@ -141,7 +159,7 @@ public:
       a = b;
     }
 
-    DEBUG_ONLY(_arena->verify(true);)
+    DEBUG_ONLY(_arena->verify();)
 
     // Delete MetaspaceArena. That should clean up all metaspace.
     delete _arena;
@@ -169,7 +187,7 @@ public:
       _alloc_count.add(word_size);
       if ((_alloc_count.count() % 20) == 0) {
         verify_arena_statistics();
-        DEBUG_ONLY(_arena->verify(true);)
+        DEBUG_ONLY(_arena->verify();)
       }
       return true;
     } else {
@@ -191,17 +209,16 @@ public:
       a->p = NULL; a->word_size = 0;
       if ((_dealloc_count.count() % 20) == 0) {
         verify_arena_statistics();
-        DEBUG_ONLY(_arena->verify(true);)
+        DEBUG_ONLY(_arena->verify();)
       }
     }
   }
 
 }; // End: MetaspaceArenaTestBed
 
-
 class MetaspaceArenaTest {
 
-  MetaspaceTestContext _helper;
+  MetaspaceGtestContext _context;
 
   SizeAtomicCounter _used_words_counter;
 
@@ -212,7 +229,7 @@ class MetaspaceArenaTest {
 
   void create_new_test_bed_at(int slotindex, const ArenaGrowthPolicy* growth_policy, SizeRange allocation_range) {
     DEBUG_ONLY(_testbeds.check_slot_is_null(slotindex));
-    MetaspaceArenaTestBed* bed = new MetaspaceArenaTestBed(&_helper.cm(), growth_policy,
+    MetaspaceArenaTestBed* bed = new MetaspaceArenaTestBed(&_context.cm(), growth_policy,
                                                        &_used_words_counter, allocation_range);
     _testbeds.set_at(slotindex, bed);
     _num_beds.increment();
@@ -238,7 +255,7 @@ class MetaspaceArenaTest {
 
   // Create test beds for all slots
   void create_all_test_beds() {
-    for (int slot = 0; slot < _testbeds.size(); slot ++) {
+    for (int slot = 0; slot < _testbeds.size(); slot++) {
       if (_testbeds.slot_is_null(slot)) {
         create_random_test_bed_at(slot);
       }
@@ -279,7 +296,7 @@ class MetaspaceArenaTest {
     bool success = bed->checked_random_allocate();
     if (success == false) {
       // We must have hit a limit.
-      EXPECT_LT(_helper.commit_limiter().possible_expansion_words(),
+      EXPECT_LT(_context.commit_limiter().possible_expansion_words(),
                 metaspace::get_raw_word_size_for_requested_word_size(bed->size_of_last_failed_allocation()));
     }
     return success;
@@ -291,7 +308,7 @@ class MetaspaceArenaTest {
     int n = 0;
     while (success && n < num_allocations) {
       success = random_allocate_from_testbed(slotindex);
-      n ++;
+      n++;
     }
     return success;
   }
@@ -343,7 +360,7 @@ class MetaspaceArenaTest {
 public:
 
   MetaspaceArenaTest(size_t commit_limit, int num_testbeds)
-    : _helper(commit_limit),
+    : _context(commit_limit),
       _testbeds(num_testbeds),
       _num_beds()
   {}
@@ -353,7 +370,6 @@ public:
     delete_all_test_beds();
 
   }
-
 
   //////////////// Tests ////////////////////////
 
@@ -372,7 +388,7 @@ public:
 
     bool force_bed_deletion = false;
 
-    for (int niter = 0; niter < iterations; niter ++) {
+    for (int niter = 0; niter < iterations; niter++) {
 
       const int r = IntRange(100).random_value();
 
@@ -408,9 +424,7 @@ public:
 
   }
 
-
 };
-
 
 // 32 parallel MetaspaceArena objects, random allocating without commit limit
 TEST_VM(metaspace, MetaspaceArena_random_allocs_32_beds_no_commit_limit) {
@@ -430,8 +444,4 @@ TEST_VM(metaspace, MetaspaceArena_random_allocs_1_bed_no_commit_limit) {
   MetaspaceArenaTest test(max_uintx, 1);
   test.test();
 }
-
-
-
-
 

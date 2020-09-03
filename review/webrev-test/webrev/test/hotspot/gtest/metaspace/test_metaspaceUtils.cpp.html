@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -109,50 +109,49 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   27 #include "memory/metaspace.hpp"
   28 #include "unittest.hpp"
   29 
-  30 
-  31 TEST_VM(MetaspaceUtils, reserved) {
-  32   size_t reserved = MetaspaceUtils::reserved_bytes();
-  33   EXPECT_GT(reserved, 0UL);
-  34 
-  35   size_t reserved_metadata = MetaspaceUtils::reserved_bytes(Metaspace::NonClassType);
-  36   EXPECT_GT(reserved_metadata, 0UL);
-  37   EXPECT_LE(reserved_metadata, reserved);
-  38 }
-  39 
-  40 TEST_VM(MetaspaceUtils, reserved_compressed_class_pointers) {
-  41   if (!UseCompressedClassPointers) {
-  42     return;
-  43   }
-  44   size_t reserved = MetaspaceUtils::reserved_bytes();
-  45   EXPECT_GT(reserved, 0UL);
-  46 
-  47   size_t reserved_class = MetaspaceUtils::reserved_bytes(Metaspace::ClassType);
-  48   EXPECT_GT(reserved_class, 0UL);
-  49   EXPECT_LE(reserved_class, reserved);
-  50 }
-  51 
-  52 TEST_VM(MetaspaceUtils, committed) {
-  53   size_t committed = MetaspaceUtils::committed_bytes();
-  54   EXPECT_GT(committed, 0UL);
-  55 
-  56   size_t reserved  = MetaspaceUtils::reserved_bytes();
-  57   EXPECT_LE(committed, reserved);
-  58 
-  59   size_t committed_metadata = MetaspaceUtils::committed_bytes(Metaspace::NonClassType);
-  60   EXPECT_GT(committed_metadata, 0UL);
-  61   EXPECT_LE(committed_metadata, committed);
-  62 }
-  63 
-  64 TEST_VM(MetaspaceUtils, committed_compressed_class_pointers) {
-  65   if (!UseCompressedClassPointers) {
-  66     return;
-  67   }
-  68   size_t committed = MetaspaceUtils::committed_bytes();
-  69   EXPECT_GT(committed, 0UL);
-  70 
-  71   size_t committed_class = MetaspaceUtils::committed_bytes(Metaspace::ClassType);
-  72   EXPECT_GT(committed_class, 0UL);
-  73   EXPECT_LE(committed_class, committed);
-  74 }
-  75 
+  30 TEST_VM(MetaspaceUtils, reserved) {
+  31   size_t reserved = MetaspaceUtils::reserved_bytes();
+  32   EXPECT_GT(reserved, 0UL);
+  33 
+  34   size_t reserved_metadata = MetaspaceUtils::reserved_bytes(Metaspace::NonClassType);
+  35   EXPECT_GT(reserved_metadata, 0UL);
+  36   EXPECT_LE(reserved_metadata, reserved);
+  37 }
+  38 
+  39 TEST_VM(MetaspaceUtils, reserved_compressed_class_pointers) {
+  40   if (!UseCompressedClassPointers) {
+  41     return;
+  42   }
+  43   size_t reserved = MetaspaceUtils::reserved_bytes();
+  44   EXPECT_GT(reserved, 0UL);
+  45 
+  46   size_t reserved_class = MetaspaceUtils::reserved_bytes(Metaspace::ClassType);
+  47   EXPECT_GT(reserved_class, 0UL);
+  48   EXPECT_LE(reserved_class, reserved);
+  49 }
+  50 
+  51 TEST_VM(MetaspaceUtils, committed) {
+  52   size_t committed = MetaspaceUtils::committed_bytes();
+  53   EXPECT_GT(committed, 0UL);
+  54 
+  55   size_t reserved  = MetaspaceUtils::reserved_bytes();
+  56   EXPECT_LE(committed, reserved);
+  57 
+  58   size_t committed_metadata = MetaspaceUtils::committed_bytes(Metaspace::NonClassType);
+  59   EXPECT_GT(committed_metadata, 0UL);
+  60   EXPECT_LE(committed_metadata, committed);
+  61 }
+  62 
+  63 TEST_VM(MetaspaceUtils, committed_compressed_class_pointers) {
+  64   if (!UseCompressedClassPointers) {
+  65     return;
+  66   }
+  67   size_t committed = MetaspaceUtils::committed_bytes();
+  68   EXPECT_GT(committed, 0UL);
+  69 
+  70   size_t committed_class = MetaspaceUtils::committed_bytes(Metaspace::ClassType);
+  71   EXPECT_GT(committed_class, 0UL);
+  72   EXPECT_LE(committed_class, committed);
+  73 }
+  74 
 </pre></body></html>

@@ -1,0 +1,193 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msMetachunkList.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "memory/metaspace/msMetachunkList.hpp"
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 #include "utilities/ostream.hpp"
+  32 
+  33 namespace metaspace {
+  34 
+  35 #ifdef ASSERT
+  36 
+  37 bool MetachunkList::contains(const Metachunk* c) const {
+  38   for (Metachunk* c2 = _first; c2 != NULL; c2 = c2-&gt;next()) {
+  39     if (c == c2) {
+  40       return true;
+  41     }
+  42   }
+  43   return false;
+  44 }
+  45 
+  46 void MetachunkList::verify() const {
+  47   int num = 0;
+  48   const Metachunk* last_c = NULL;
+  49   for (const Metachunk* c = _first; c != NULL; c = c-&gt;next()) {
+  50     num++;
+  51     assert(c-&gt;prev() != c &amp;&amp; c-&gt;next() != c, "circularity");
+  52     assert(c-&gt;prev() == last_c,
+  53            "Broken link to predecessor. Chunk " METACHUNK_FULL_FORMAT ".",
+  54            METACHUNK_FULL_FORMAT_ARGS(c));
+  55     c-&gt;verify();
+  56     last_c = c;
+  57   }
+  58   _num_chunks.check(num);
+  59 }
+  60 
+  61 #endif // ASSERT
+  62 
+  63 size_t MetachunkList::calc_committed_word_size() const {
+  64 
+  65   if (_first != NULL &amp;&amp; _first-&gt;is_dead()) {
+  66     // list used for chunk header pool; dead chunks have no size.
+  67     return 0;
+  68   }
+  69 
+  70   size_t s = 0;
+  71   for (Metachunk* c = _first; c != NULL; c = c-&gt;next()) {
+  72     assert(c-&gt;is_dead() == false, "Sanity");
+  73     s += c-&gt;committed_words();
+  74   }
+  75   return s;
+  76 }
+  77 
+  78 size_t MetachunkList::calc_word_size() const {
+  79 
+  80   if (_first != NULL &amp;&amp; _first-&gt;is_dead()) {
+  81     // list used for chunk header pool; dead chunks have no size.
+  82     return 0;
+  83   }
+  84 
+  85   size_t s = 0;
+  86   for (Metachunk* c = _first; c != NULL; c = c-&gt;next()) {
+  87     assert(c-&gt;is_dead() == false, "Sanity");
+  88     s += c-&gt;committed_words();
+  89   }
+  90   return s;
+  91 
+  92 }
+  93 
+  94 void MetachunkList::print_on(outputStream* st) const {
+  95 
+  96   if (_num_chunks.get() &gt; 0) {
+  97     for (const Metachunk* c = _first; c != NULL; c = c-&gt;next()) {
+  98       st-&gt;print(" - &lt;");
+  99       c-&gt;print_on(st);
+ 100       st-&gt;print("&gt;");
+ 101     }
+ 102     st-&gt;print(" - total : %d chunks.", _num_chunks.get());
+ 103   } else {
+ 104     st-&gt;print("empty");
+ 105   }
+ 106 
+ 107 }
+ 108 
+ 109 } // namespace metaspace
+ 110 
+</pre></body></html>

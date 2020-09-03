@@ -122,85 +122,84 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   40  *
   41  */
   42 
-  43 
-  44 /*
-  45  * @test id=debug
-  46  * @library /test/lib
-  47  * @modules java.base/jdk.internal.misc
-  48  *          java.management
-  49  * @build sun.hotspot.WhiteBox
-  50  * @key randomness
-  51  * @requires (vm.debug == true)
-  52  *
-  53  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
-  54  *
-  55  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10                                        TestMetaspaceAllocationMT1
-  56  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT1
-  57  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT1
-  58  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocationMT1
-  59  *
-  60  */
-  61 
-  62 /*
-  63  * @test id=ndebug
-  64  * @library /test/lib
-  65  * @modules java.base/jdk.internal.misc
-  66  *          java.management
-  67  * @build sun.hotspot.WhiteBox
-  68  * @key randomness
-  69  * @requires (vm.debug == false)
-  70  *
-  71  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
-  72  *
-  73  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI                                        TestMetaspaceAllocationMT1
-  74  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT1
-  75  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT1
-  76  */
-  77 
-  78 public class TestMetaspaceAllocationMT1 {
-  79 
-  80     public static void main(String[] args) throws Exception {
-  81 
-  82         final long testAllocationCeiling = 1024 * 1024 * 8; // 8m words = 64M on 64bit
-  83         final int numThreads = 4;
-  84         final int seconds = 10;
-  85 
-  86         for (int i = 0; i &lt; 3; i ++) {
-  87 
-  88             long commitLimit = (i == 1) ? 1024 * 256 : 0;
-  89 
-  90             // Note: reserve limit must be a multiple of Metaspace::reserve_alignment_words()
-  91             //  (512 K)
-  92             long reserveLimit = (i == 2) ? 1024 * 512 : 0;
-  93 
-  94             System.out.println("#### Test: ");
-  95             System.out.println("#### testAllocationCeiling: " + testAllocationCeiling);
-  96             System.out.println("#### numThreads: " + numThreads);
-  97             System.out.println("#### seconds: " + seconds);
-  98             System.out.println("#### commitLimit: " + commitLimit);
-  99             System.out.println("#### reserveLimit: " + reserveLimit);
- 100             System.out.println("#### ReclaimPolicy: " + Settings.settings().reclaimPolicy);
- 101             System.out.println("#### guards: " + Settings.settings().usesAllocationGuards);
- 102 
- 103             MetaspaceTestContext context = new MetaspaceTestContext(commitLimit, reserveLimit);
- 104             MetaspaceTestOneArenaManyThreads test = new MetaspaceTestOneArenaManyThreads(context, testAllocationCeiling, numThreads, seconds);
- 105 
- 106             try {
- 107                 test.runTest();
- 108             } catch (RuntimeException e) {
- 109                 System.out.println(e);
- 110                 context.printToTTY();
- 111                 throw e;
- 112             }
- 113 
- 114             context.destroy();
- 115 
- 116             System.out.println("#### Done. ####");
- 117             System.out.println("###############");
- 118 
- 119         }
- 120 
- 121     }
- 122 
- 123 }
+  43 /*
+  44  * @test id=debug
+  45  * @library /test/lib
+  46  * @modules java.base/jdk.internal.misc
+  47  *          java.management
+  48  * @build sun.hotspot.WhiteBox
+  49  * @key randomness
+  50  * @requires (vm.debug == true)
+  51  *
+  52  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  53  *
+  54  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10                                        TestMetaspaceAllocationMT1
+  55  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT1
+  56  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT1
+  57  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocationMT1
+  58  *
+  59  */
+  60 
+  61 /*
+  62  * @test id=ndebug
+  63  * @library /test/lib
+  64  * @modules java.base/jdk.internal.misc
+  65  *          java.management
+  66  * @build sun.hotspot.WhiteBox
+  67  * @key randomness
+  68  * @requires (vm.debug == false)
+  69  *
+  70  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  71  *
+  72  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI                                        TestMetaspaceAllocationMT1
+  73  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT1
+  74  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT1
+  75  */
+  76 
+  77 public class TestMetaspaceAllocationMT1 {
+  78 
+  79     public static void main(String[] args) throws Exception {
+  80 
+  81         final long testAllocationCeiling = 1024 * 1024 * 8; // 8m words = 64M on 64bit
+  82         final int numThreads = 4;
+  83         final int seconds = 10;
+  84 
+  85         for (int i = 0; i &lt; 3; i ++) {
+  86 
+  87             long commitLimit = (i == 1) ? 1024 * 256 : 0;
+  88 
+  89             // Note: reserve limit must be a multiple of Metaspace::reserve_alignment_words()
+  90             //  (512 K)
+  91             long reserveLimit = (i == 2) ? 1024 * 512 : 0;
+  92 
+  93             System.out.println("#### Test: ");
+  94             System.out.println("#### testAllocationCeiling: " + testAllocationCeiling);
+  95             System.out.println("#### numThreads: " + numThreads);
+  96             System.out.println("#### seconds: " + seconds);
+  97             System.out.println("#### commitLimit: " + commitLimit);
+  98             System.out.println("#### reserveLimit: " + reserveLimit);
+  99             System.out.println("#### ReclaimPolicy: " + Settings.settings().reclaimPolicy);
+ 100             System.out.println("#### guards: " + Settings.settings().usesAllocationGuards);
+ 101 
+ 102             MetaspaceTestContext context = new MetaspaceTestContext(commitLimit, reserveLimit);
+ 103             MetaspaceTestOneArenaManyThreads test = new MetaspaceTestOneArenaManyThreads(context, testAllocationCeiling, numThreads, seconds);
+ 104 
+ 105             try {
+ 106                 test.runTest();
+ 107             } catch (RuntimeException e) {
+ 108                 System.out.println(e);
+ 109                 context.printToTTY();
+ 110                 throw e;
+ 111             }
+ 112 
+ 113             context.destroy();
+ 114 
+ 115             System.out.println("#### Done. ####");
+ 116             System.out.println("###############");
+ 117 
+ 118         }
+ 119 
+ 120     }
+ 121 
+ 122 }
 </pre></body></html>

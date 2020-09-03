@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -107,117 +107,125 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   25 
   26 #include "precompiled.hpp"
   27 
-  28 //#define LOG_PLEASE
-  29 #include "metaspace/metaspaceTestsCommon.hpp"
-  30 #include "metaspace/metaspaceTestContexts.hpp"
-  31 #include "metaspace/metaspace_rangehelpers.hpp"
-  32 
-  33 TEST_VM(metaspace, metachunklist) {
-  34 
-  35   ChunkTestsContext helper;
+  28 #include "memory/metaspace/msCounter.hpp"
+  29 #include "memory/metaspace/msFreeChunkList.hpp"
+  30 #include "memory/metaspace/msMetachunkList.hpp"
+  31 
+  32 //#define LOG_PLEASE
+  33 #include "metaspaceGtestCommon.hpp"
+  34 #include "metaspaceGtestContexts.hpp"
+  35 #include "metaspaceGtestRangeHelpers.hpp"
   36 
-  37   MetachunkList lst;
-  38 
-  39   Metachunk* chunks[10];
-  40   size_t total_size = 0;
+  37 using metaspace::MemRangeCounter;
+  38 using metaspace::MetachunkList;
+  39 using metaspace::FreeChunkListVector;
+  40 
   41 
-  42   for (int i = 0; i &lt; 10; i ++) {
-  43     Metachunk* c = NULL;
-  44     helper.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());
-  45     chunks[i] = c;
-  46     total_size += c-&gt;committed_words();
+  42 TEST_VM(metaspace, metachunklist) {
+  43 
+  44   ChunkGtestContext context;
+  45 
+  46   MetachunkList lst;
   47 
-  48     lst.add(c);
-  49     EXPECT_EQ(lst.first(), c);
+  48   Metachunk* chunks[10];
+  49   size_t total_size = 0;
   50 
-  51     Metachunk* c2 = lst.remove_first();
-  52     EXPECT_EQ(c, c2);
-  53 
-  54     EXPECT_EQ(lst.count(), i);
-  55     lst.add(c);
-  56     EXPECT_EQ(lst.count(), i + 1);
-  57     EXPECT_EQ(lst.calc_committed_word_size(), total_size);
-  58 
-  59   }
-  60 
-  61   for (int i = 0; i &lt; 10; i ++) {
-  62     DEBUG_ONLY(EXPECT_TRUE(lst.contains(chunks[i]));)
-  63   }
-  64 
-  65   for (int i = 0; i &lt; 10; i ++) {
-  66     Metachunk* c = lst.remove_first();
-  67     DEBUG_ONLY(EXPECT_FALSE(lst.contains(c));)
-  68     helper.return_chunk(c);
-  69   }
-  70 
-  71   EXPECT_EQ(lst.count(), 0);
-  72   EXPECT_EQ(lst.calc_committed_word_size(), (size_t)0);
+  51   for (int i = 0; i &lt; 10; i++) {
+  52     Metachunk* c = NULL;
+  53     context.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());
+  54     chunks[i] = c;
+  55     total_size += c-&gt;committed_words();
+  56 
+  57     lst.add(c);
+  58     EXPECT_EQ(lst.first(), c);
+  59 
+  60     Metachunk* c2 = lst.remove_first();
+  61     EXPECT_EQ(c, c2);
+  62 
+  63     EXPECT_EQ(lst.count(), i);
+  64     lst.add(c);
+  65     EXPECT_EQ(lst.count(), i + 1);
+  66     EXPECT_EQ(lst.calc_committed_word_size(), total_size);
+  67 
+  68   }
+  69 
+  70   for (int i = 0; i &lt; 10; i++) {
+  71     DEBUG_ONLY(EXPECT_TRUE(lst.contains(chunks[i]));)
+  72   }
   73 
-  74 }
-  75 
-  76 
-  77 TEST_VM(metaspace, freechunklist) {
-  78 
-  79   ChunkTestsContext helper;
-  80 
-  81   FreeChunkListVector lst;
+  74   for (int i = 0; i &lt; 10; i++) {
+  75     Metachunk* c = lst.remove_first();
+  76     DEBUG_ONLY(EXPECT_FALSE(lst.contains(c));)
+  77     context.return_chunk(c);
+  78   }
+  79 
+  80   EXPECT_EQ(lst.count(), 0);
+  81   EXPECT_EQ(lst.calc_committed_word_size(), (size_t)0);
   82 
-  83   MemRangeCounter cnt;
-  84   MemRangeCounter committed_cnt;
-  85 
-  86   // Add random chunks to list and check the counter apis (word_size, commited_word_size, num_chunks)
-  87   // Make every other chunk randomly uncommitted, and later we check that committed chunks are sorted in at the front
-  88   // of the lists.
-  89   for (int i = 0; i &lt; 100; i ++) {
-  90     Metachunk* c = NULL;
-  91     helper.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());
-  92     bool uncommitted_chunk = i % 3;
-  93     if (uncommitted_chunk) {
-  94       helper.uncommit_chunk_with_test(c);
-  95       c-&gt;set_in_use();
-  96     }
-  97 
-  98     lst.add(c);
-  99 
- 100     LOG("-&gt;" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
- 101 
- 102     cnt.add(c-&gt;word_size());
- 103     committed_cnt.add(c-&gt;committed_words());
- 104 
- 105     EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
- 106     EXPECT_EQ(lst.word_size(), cnt.total_size());
- 107     EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
- 108   }
+  83 }
+  84 
+  85 TEST_VM(metaspace, freechunklist) {
+  86 
+  87   ChunkGtestContext context;
+  88 
+  89   FreeChunkListVector lst;
+  90 
+  91   MemRangeCounter cnt;
+  92   MemRangeCounter committed_cnt;
+  93 
+  94   // Add random chunks to list and check the counter apis (word_size, commited_word_size, num_chunks)
+  95   // Make every other chunk randomly uncommitted, and later we check that committed chunks are sorted in at the front
+  96   // of the lists.
+  97   for (int i = 0; i &lt; 100; i++) {
+  98     Metachunk* c = NULL;
+  99     context.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());
+ 100     bool uncommitted_chunk = i % 3;
+ 101     if (uncommitted_chunk) {
+ 102       context.uncommit_chunk_with_test(c);
+ 103       c-&gt;set_in_use();
+ 104     }
+ 105 
+ 106     lst.add(c);
+ 107 
+ 108     LOG("-&gt;" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
  109 
- 110   // Drain each list separately
- 111   for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl ++) {
- 112     Metachunk* c = lst.remove_first(lvl);
- 113     bool found_uncommitted = false;
- 114     while (c != NULL) {
- 115 
- 116       LOG("&lt;-" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
+ 110     cnt.add(c-&gt;word_size());
+ 111     committed_cnt.add(c-&gt;committed_words());
+ 112 
+ 113     EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
+ 114     EXPECT_EQ(lst.word_size(), cnt.total_size());
+ 115     EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+ 116   }
  117 
- 118       // Within a level, no committed chunk should follow an uncommitted chunk:
- 119       if (found_uncommitted) {
- 120         EXPECT_TRUE(c-&gt;is_fully_uncommitted());
- 121       } else {
- 122         found_uncommitted = c-&gt;is_fully_uncommitted();
- 123       }
- 124 
- 125       cnt.sub(c-&gt;word_size());
- 126       committed_cnt.sub(c-&gt;committed_words());
- 127 
- 128       EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
- 129       EXPECT_EQ(lst.word_size(), cnt.total_size());
- 130       EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
- 131 
- 132       helper.return_chunk(c);
- 133 
- 134       c = lst.remove_first(lvl);
- 135     }
- 136   }
- 137 
- 138   // TODO
- 139 }
- 140 
+ 118   // Drain each list separately
+ 119   for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl++) {
+ 120     Metachunk* c = lst.remove_first(lvl);
+ 121     bool found_uncommitted = false;
+ 122     while (c != NULL) {
+ 123 
+ 124       LOG("&lt;-" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
+ 125 
+ 126       // Within a level, no committed chunk should follow an uncommitted chunk:
+ 127       if (found_uncommitted) {
+ 128         EXPECT_TRUE(c-&gt;is_fully_uncommitted());
+ 129       } else {
+ 130         found_uncommitted = c-&gt;is_fully_uncommitted();
+ 131       }
+ 132 
+ 133       cnt.sub(c-&gt;word_size());
+ 134       committed_cnt.sub(c-&gt;committed_words());
+ 135 
+ 136       EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
+ 137       EXPECT_EQ(lst.word_size(), cnt.total_size());
+ 138       EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+ 139 
+ 140       context.return_chunk(c);
+ 141 
+ 142       c = lst.remove_first(lvl);
+ 143     }
+ 144   }
+ 145 
+ 146   // TODO
+ 147 }
+ 148 
 </pre></body></html>

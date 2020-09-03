@@ -81,10 +81,10 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     </head>
     <body id="SUNWwebrev" onkeypress="keypress(event);">
     <a name="0"></a>
-    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre><hr></hr>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre><hr></hr>
 <pre>
    1 /*
-<a name="1" id="anc1"></a><span class="changed">   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
    3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    4  *
    5  * This code is free software; you can redistribute it and/or modify it
@@ -242,16 +242,16 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  157     ZNMethod::purge(_workers);
  158   }
  159 
- 160   ClassLoaderDataGraph::purge();
+ 160   ClassLoaderDataGraph::purge(/*at_safepoint*/false);
  161   CodeCache::purge_exception_caches();
  162 }
  163 
  164 void ZUnload::finish() {
  165   // Resize and verify metaspace
  166   MetaspaceGC::compute_new_size();
-<a name="2" id="anc2"></a><span class="changed"> 167   DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
+<a name="1" id="anc1"></a><span class="changed"> 167   DEBUG_ONLY(MetaspaceUtils::verify();)</span>
  168 }
-<a name="3" id="anc3"></a><b style="font-size: large; color: red">--- EOF ---</b>
+<a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
 
 
 
@@ -331,4 +331,4 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 
 
-</pre><form name="eof"><input name="value" value="3" type="hidden" /></form></body></html>
+</pre><form name="eof"><input name="value" value="2" type="hidden" /></form></body></html>

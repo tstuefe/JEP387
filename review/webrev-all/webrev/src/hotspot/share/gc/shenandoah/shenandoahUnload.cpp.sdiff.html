@@ -82,7 +82,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center><a href='../../../../../src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/z/zCollectedHeap.hpp.sdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp</h2>
 <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre>
 
 <table><tr valign="top">
 <td><pre>
@@ -96,7 +96,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  185 
  186     {
  187       ShenandoahTimingsTracker t(ShenandoahPhaseTimings::conc_class_unload_purge_cldg);
- 188       ClassLoaderDataGraph::purge();
+ 188       ClassLoaderDataGraph::purge(/*at_safepoint*/false);
  189     }
  190 
  191     {
@@ -121,7 +121,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  185 
  186     {
  187       ShenandoahTimingsTracker t(ShenandoahPhaseTimings::conc_class_unload_purge_cldg);
- 188       ClassLoaderDataGraph::purge();
+ 188       ClassLoaderDataGraph::purge(/*at_safepoint*/false);
  189     }
  190 
  191     {
@@ -133,7 +133,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  197 
  198 void ShenandoahUnload::finish() {
  199   MetaspaceGC::compute_new_size();
-<span class="changed"> 200   DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
+<span class="changed"> 200   DEBUG_ONLY(MetaspaceUtils::verify();)</span>
  201 }
 </pre></td>
 </tr></table>

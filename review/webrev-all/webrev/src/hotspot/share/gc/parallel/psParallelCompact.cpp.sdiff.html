@@ -82,99 +82,99 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center><a href='../../../../../src/hotspot/share/gc/g1/g1CollectedHeap.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/collectedHeap.hpp.sdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/gc/parallel/psParallelCompact.cpp</h2>
 <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre>
 
 <table><tr valign="top">
 <td><pre>
 
 </pre><hr></hr><pre>
-1040   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
-1041   bool eden_empty = eden_space-&gt;is_empty();
-1042 
-1043   // Update heap occupancy information which is used as input to the soft ref
-1044   // clearing policy at the next gc.
-1045   Universe::update_heap_info_at_gc();
-1046 
-1047   bool young_gen_empty = eden_empty &amp;&amp; from_space-&gt;is_empty() &amp;&amp;
-1048     to_space-&gt;is_empty();
-1049 
-1050   PSCardTable* ct = heap-&gt;card_table();
-1051   MemRegion old_mr = heap-&gt;old_gen()-&gt;reserved();
-1052   if (young_gen_empty) {
-1053     ct-&gt;clear(MemRegion(old_mr.start(), old_mr.end()));
-1054   } else {
-1055     ct-&gt;invalidate(MemRegion(old_mr.start(), old_mr.end()));
-1056   }
-1057 
-1058   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
-1059   ClassLoaderDataGraph::purge();
-<span class="changed">1060   MetaspaceUtils::verify_metrics();</span>
-1061 
-1062   heap-&gt;prune_scavengable_nmethods();
-1063 
-1064 #if COMPILER2_OR_JVMCI
-1065   DerivedPointerTable::update_pointers();
-1066 #endif
-1067 
-1068   if (ZapUnusedHeapArea) {
-1069     heap-&gt;gen_mangle_unused_area();
-1070   }
-1071 
-1072   // Signal that we have completed a visit to all live objects.
-1073   Universe::heap()-&gt;record_whole_heap_examined_timestamp();
-1074 }
-1075 
-1076 HeapWord*
-1077 PSParallelCompact::compute_dense_prefix_via_density(const SpaceId id,
-1078                                                     bool maximum_compaction)
-1079 {
-1080   const size_t region_size = ParallelCompactData::RegionSize;
+1041   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
+1042   bool eden_empty = eden_space-&gt;is_empty();
+1043 
+1044   // Update heap occupancy information which is used as input to the soft ref
+1045   // clearing policy at the next gc.
+1046   Universe::update_heap_info_at_gc();
+1047 
+1048   bool young_gen_empty = eden_empty &amp;&amp; from_space-&gt;is_empty() &amp;&amp;
+1049     to_space-&gt;is_empty();
+1050 
+1051   PSCardTable* ct = heap-&gt;card_table();
+1052   MemRegion old_mr = heap-&gt;old_gen()-&gt;reserved();
+1053   if (young_gen_empty) {
+1054     ct-&gt;clear(MemRegion(old_mr.start(), old_mr.end()));
+1055   } else {
+1056     ct-&gt;invalidate(MemRegion(old_mr.start(), old_mr.end()));
+1057   }
+1058 
+1059   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+1060   ClassLoaderDataGraph::purge(/*at_safepoint*/true);
+<span class="changed">1061   MetaspaceUtils::verify_metrics();</span>
+1062 
+1063   heap-&gt;prune_scavengable_nmethods();
+1064 
+1065 #if COMPILER2_OR_JVMCI
+1066   DerivedPointerTable::update_pointers();
+1067 #endif
+1068 
+1069   if (ZapUnusedHeapArea) {
+1070     heap-&gt;gen_mangle_unused_area();
+1071   }
+1072 
+1073   // Signal that we have completed a visit to all live objects.
+1074   Universe::heap()-&gt;record_whole_heap_examined_timestamp();
+1075 }
+1076 
+1077 HeapWord*
+1078 PSParallelCompact::compute_dense_prefix_via_density(const SpaceId id,
+1079                                                     bool maximum_compaction)
+1080 {
+1081   const size_t region_size = ParallelCompactData::RegionSize;
 
 </pre><hr></hr>
 </pre></td><td><pre>
 
 </pre><hr></hr><pre>
-1040   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
-1041   bool eden_empty = eden_space-&gt;is_empty();
-1042 
-1043   // Update heap occupancy information which is used as input to the soft ref
-1044   // clearing policy at the next gc.
-1045   Universe::update_heap_info_at_gc();
-1046 
-1047   bool young_gen_empty = eden_empty &amp;&amp; from_space-&gt;is_empty() &amp;&amp;
-1048     to_space-&gt;is_empty();
-1049 
-1050   PSCardTable* ct = heap-&gt;card_table();
-1051   MemRegion old_mr = heap-&gt;old_gen()-&gt;reserved();
-1052   if (young_gen_empty) {
-1053     ct-&gt;clear(MemRegion(old_mr.start(), old_mr.end()));
-1054   } else {
-1055     ct-&gt;invalidate(MemRegion(old_mr.start(), old_mr.end()));
-1056   }
-1057 
-1058   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
-1059   ClassLoaderDataGraph::purge();
-<span class="changed">1060   DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
-1061 
-1062   heap-&gt;prune_scavengable_nmethods();
-1063 
-1064 #if COMPILER2_OR_JVMCI
-1065   DerivedPointerTable::update_pointers();
-1066 #endif
-1067 
-1068   if (ZapUnusedHeapArea) {
-1069     heap-&gt;gen_mangle_unused_area();
-1070   }
-1071 
-1072   // Signal that we have completed a visit to all live objects.
-1073   Universe::heap()-&gt;record_whole_heap_examined_timestamp();
-1074 }
-1075 
-1076 HeapWord*
-1077 PSParallelCompact::compute_dense_prefix_via_density(const SpaceId id,
-1078                                                     bool maximum_compaction)
-1079 {
-1080   const size_t region_size = ParallelCompactData::RegionSize;
+1041   ParallelScavengeHeap* heap = ParallelScavengeHeap::heap();
+1042   bool eden_empty = eden_space-&gt;is_empty();
+1043 
+1044   // Update heap occupancy information which is used as input to the soft ref
+1045   // clearing policy at the next gc.
+1046   Universe::update_heap_info_at_gc();
+1047 
+1048   bool young_gen_empty = eden_empty &amp;&amp; from_space-&gt;is_empty() &amp;&amp;
+1049     to_space-&gt;is_empty();
+1050 
+1051   PSCardTable* ct = heap-&gt;card_table();
+1052   MemRegion old_mr = heap-&gt;old_gen()-&gt;reserved();
+1053   if (young_gen_empty) {
+1054     ct-&gt;clear(MemRegion(old_mr.start(), old_mr.end()));
+1055   } else {
+1056     ct-&gt;invalidate(MemRegion(old_mr.start(), old_mr.end()));
+1057   }
+1058 
+1059   // Delete metaspaces for unloaded class loaders and clean up loader_data graph
+1060   ClassLoaderDataGraph::purge(/*at_safepoint*/true);
+<span class="changed">1061   DEBUG_ONLY(MetaspaceUtils::verify();)</span>
+1062 
+1063   heap-&gt;prune_scavengable_nmethods();
+1064 
+1065 #if COMPILER2_OR_JVMCI
+1066   DerivedPointerTable::update_pointers();
+1067 #endif
+1068 
+1069   if (ZapUnusedHeapArea) {
+1070     heap-&gt;gen_mangle_unused_area();
+1071   }
+1072 
+1073   // Signal that we have completed a visit to all live objects.
+1074   Universe::heap()-&gt;record_whole_heap_examined_timestamp();
+1075 }
+1076 
+1077 HeapWord*
+1078 PSParallelCompact::compute_dense_prefix_via_density(const SpaceId id,
+1079                                                     bool maximum_compaction)
+1080 {
+1081   const size_t region_size = ParallelCompactData::RegionSize;
 
 </pre><hr></hr>
 </pre></td>

@@ -81,7 +81,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     </head>
     <body id="SUNWwebrev" onkeypress="keypress(event);">
     <a name="0"></a>
-    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre><hr></hr>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre><hr></hr>
 <pre>
    1 /*
    2  * Copyright (c) 2013, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -752,18 +752,18 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  667   mss._committed_in_bytes[type]  = MetaspaceUtils::committed_bytes(type);
  668   mss._used_in_bytes[type]       = MetaspaceUtils::used_bytes(type);
  669 
-<a name="1" id="anc1"></a><span class="changed"> 670   size_t free_in_bytes = 0;// TODO fix(MetaspaceUtils::capacity_bytes(type) - MetaspaceUtils::used_bytes(type))</span>
-<span class="changed"> 671                      //  + MetaspaceUtils::free_chunks_total_bytes(type)</span>
-<span class="changed"> 672                      //  + MetaspaceUtils::free_in_vs_bytes(type);</span>
- 673   mss._free_in_bytes[type] = free_in_bytes;
- 674 }
- 675 
- 676 void MetaspaceSnapshot::snapshot(MetaspaceSnapshot&amp; mss) {
- 677   snapshot(Metaspace::ClassType, mss);
- 678   if (Metaspace::using_class_space()) {
- 679     snapshot(Metaspace::NonClassType, mss);
- 680   }
- 681 }
+<a name="1" id="anc1"></a><span class="changed"> 670   // The answer to "what is free" in metaspace is complex and cannot be answered with a single number.</span>
+<span class="changed"> 671   // Free as in available to all loaders? Free, pinned to one loader? For now, keep it simple.</span>
+<span class="changed"> 672   mss._free_in_bytes[type] = mss._committed_in_bytes[type] - mss._used_in_bytes[type];</span>
+
+ 673 }
+ 674 
+ 675 void MetaspaceSnapshot::snapshot(MetaspaceSnapshot&amp; mss) {
+ 676   snapshot(Metaspace::ClassType, mss);
+ 677   if (Metaspace::using_class_space()) {
+ 678     snapshot(Metaspace::NonClassType, mss);
+ 679   }
+ 680 }
 <a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
 
 

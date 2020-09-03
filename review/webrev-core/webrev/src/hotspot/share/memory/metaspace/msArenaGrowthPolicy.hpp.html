@@ -1,0 +1,160 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msArenaGrowthPolicy.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_MSARENAGROWTHPOLICY_HPP
+  27 #define SHARE_MEMORY_METASPACE_MSARENAGROWTHPOLICY_HPP
+  28 
+  29 #include "memory/metaspace/msChunklevel.hpp"
+  30 #include "memory/metaspace.hpp" // For Metaspace::MetaspaceType
+  31 #include "utilities/debug.hpp"
+  32 
+  33 namespace metaspace {
+  34 
+  35 // ArenaGrowthPolicy encodes the growth policy of a MetaspaceArena.
+  36 //
+  37 // These arenas grow in steps (by allocating new chunks). The coarseness of growth
+  38 // (chunk size, level) depends on what the arena is used for. Used for a class loader
+  39 // which is expected to load only one or very few classes should grow in tiny steps.
+  40 // For normal classloaders, it can grow in coarser steps, and arenas used by
+  41 // the boot loader will grow in even larger steps since we expect it to load a lot of
+  42 // classes.
+  43 // Note that when growing in large steps (in steps larger than a commit granule,
+  44 // by default 64K), costs diminish somewhat since we do not commit the whole space
+  45 // immediately.
+  46 
+  47 class ArenaGrowthPolicy {
+  48 
+  49   // const array specifying chunk level allocation progression (growth steps). Last
+  50   //  chunk is to be an endlessly repeated allocation.
+  51   const chunklevel_t* const _entries;
+  52   const int _num_entries;
+  53 
+  54 public:
+  55 
+  56   ArenaGrowthPolicy(const chunklevel_t* array, int num_entries)
+  57     : _entries(array), _num_entries(num_entries) {
+  58     assert(_num_entries &gt; 0, "must not be empty.");
+  59   }
+  60 
+  61   chunklevel_t get_level_at_step(int num_allocated) const {
+  62     if (num_allocated &gt;= _num_entries) {
+  63       // Caller shall repeat last allocation
+  64       return _entries[_num_entries - 1];
+  65     }
+  66     return _entries[num_allocated];
+  67   }
+  68 
+  69   // Given a space type, return the correct policy to use.
+  70   // The returned object is static and read only.
+  71   static const ArenaGrowthPolicy* policy_for_space_type(Metaspace::MetaspaceType space_type, bool is_class);
+  72 
+  73 };
+  74 
+  75 } // namespace metaspace
+  76 
+  77 #endif // SHARE_MEMORY_METASPACE_MSARENAGROWTHPOLICY_HPP
+</pre></body></html>

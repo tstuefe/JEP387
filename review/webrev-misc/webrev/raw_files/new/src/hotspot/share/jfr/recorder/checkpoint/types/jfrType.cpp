@@ -39,10 +39,9 @@
 #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
 #include "jfr/support/jfrThreadLocal.hpp"
 #include "jfr/writers/jfrJavaEventWriter.hpp"
-#include "memory/metaspace.hpp"
-#include "memory/metaspace/metaspaceEnums.hpp"
 #include "jfr/utilities/jfrThreadIterator.hpp"
 #include "memory/iterator.hpp"
+#include "memory/metaspace.hpp"
 #include "memory/referenceType.hpp"
 #include "memory/universe.hpp"
 #include "oops/compressedOops.hpp"
@@ -197,7 +196,7 @@ void MetadataTypeConstant::serialize(JfrCheckpointWriter& writer) {
   writer.write_count(nof_entries);
   for (u4 i = 0; i < nof_entries; ++i) {
     writer.write_key(i);
-    writer.write(metaspace::describe_mdtype((Metaspace::MetadataType)i));
+    writer.write(Metaspace::metadata_type_name((Metaspace::MetadataType)i));
   }
 }
 

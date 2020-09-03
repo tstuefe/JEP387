@@ -107,7 +107,7 @@ Chunks are variable power-of-two sized. Largest size is 4M ("Root Chunk"). Small
 
 Chunks are managed by a [buddy allocator](https://en.wikipedia.org/wiki/Buddy_memory_allocation). A buddy allocator is a simple old efficient algorithm useful to keep fragmentation at bay, at the cost of limiting the size of managed areas to power of two units. This restriction does not matter for Metaspace since the chunks are not the ultimate unit of allocation, just an intermediate.
 
-In code (see `chunklevel.hpp`), chunk size is given as "chunk level" (`typedef .. chklvl_t`). A root chunk - the largest chunk there is - has chunk level 0. The smallest chunk has chunk level 13. Helper functions and constants to work with chunk level can be found at chunk_level.hpp.
+In code (see `chunklevel.hpp`), chunk size is given as "chunk level" (`typedef .. chunklevel_t`). A root chunk - the largest chunk there is - has chunk level 0. The smallest chunk has chunk level 13. Helper functions and constants to work with chunk level can be found at chunk_level.hpp.
 
 #### 1.2.2.1. Merging chunks
 
@@ -149,22 +149,39 @@ If the buddy is not free, or split (in which case one of the splinters will not 
 
 #### 1.2.2.2. Splitting chunks
 
-To get a small chunk from a larger chunk, a large chunk can be split. Splitting always happens at pow2 sizes. A split operation yields the desired smaller chunk as well as splinter chunks.
-
-In this example, A is four times as big as the chunk we need, so we split it twice, arriving at the target chunk d1, and splinter chunks D2, C and B.
+To get a small chunk from a larger chunk, a large chunk can be split. Splitting always happens at power-of-2 sizes (convention, followed by most implementations). A split operation yields the desired smaller chunk as well as splinter chunks.
 
 ```
-+---------------------------------------+
-|                   A                   |
-+---------------------------------------+
-                    |
-                    v
-+-------------------+-------------------+
-| d1 | D2 |    C    |         B         |
-+-------------------+-------------------+
-  ^
-  Result chunk
+Step
+     +---------------------------------------+
+ 0   |                   A                   |
+     +---------------------------------------+
+
+                         |
+                         v
+     +-------------------+-------------------+
+ 1   | d1 | D2 |    C    |         B         |
+     +-------------------+-------------------+
+       ^
+       Result chunk
+                         |
+                         v
+     +-------------------+-------------------+
+ 2   | d1 | d2 |    c    |         B         |
+     +-------------------+-------------------+
+            ^
+            Result chunk
+                         |
+                         v
+     +-------------------+-------------------+
+ 3   | d1 | d2 | c1 | C2 |         B         |
+     +-------------------+-------------------+
+                 ^
+                 Result chunk
+
 ```
+
+
 
 
 ## 1.3 How it all looks in memory

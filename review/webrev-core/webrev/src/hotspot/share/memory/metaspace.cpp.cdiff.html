@@ -83,9 +83,9 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center>&lt prev <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace.hpp.cdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/memory/metaspace.cpp</h2>
         <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-core.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-core.patch</pre>
         <pre>
-<hr /><span class="oldmarker">*** 21,87 ****</span>
+<hr /><span class="oldmarker">*** 21,88 ****</span>
    * questions.
    *
    */
@@ -98,16 +98,17 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   #include "logging/logStream.hpp"
   #include "memory/filemap.hpp"
   #include "memory/metaspace.hpp"
-  #include "memory/metaspace/chunkManager.hpp"
-<span class="changed">! #include "memory/metaspace/metachunk.hpp"</span>
-  #include "memory/metaspace/metaspaceCommon.hpp"
-<span class="changed">! #include "memory/metaspace/printCLDMetaspaceInfoClosure.hpp"</span>
-<span class="changed">! #include "memory/metaspace/spaceManager.hpp"</span>
-  #include "memory/metaspace/virtualSpaceList.hpp"
-<span class="removed">- #include "memory/metaspaceShared.hpp"</span>
-<span class="removed">- #include "memory/metaspaceTracer.hpp"</span>
+<span class="removed">- #include "memory/metaspace/chunkManager.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metachunk.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metaspaceCommon.hpp"</span>
+<span class="removed">- #include "memory/metaspace/printCLDMetaspaceInfoClosure.hpp"</span>
+<span class="removed">- #include "memory/metaspace/spaceManager.hpp"</span>
+<span class="removed">- #include "memory/metaspace/virtualSpaceList.hpp"</span>
+  #include "memory/metaspaceShared.hpp"
+  #include "memory/metaspaceTracer.hpp"
   #include "memory/universe.hpp"
   #include "oops/compressedOops.hpp"
+  #include "runtime/arguments.hpp"
   #include "runtime/atomic.hpp"
   #include "runtime/init.hpp"
   #include "services/memTracker.hpp"
@@ -153,7 +154,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   // should succeed.  If the GC did not free enough space for the metaspace
   // allocation, the HWM is increased so that another virtualspace will be
   // allocated for the metadata.  With perm gen the increase in the perm
-<span class="newmarker">--- 21,214 ----</span>
+<span class="newmarker">--- 21,212 ----</span>
    * questions.
    *
    */
@@ -165,22 +166,22 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   #include "logging/log.hpp"
   #include "logging/logStream.hpp"
   #include "memory/filemap.hpp"
+<span class="new">+ #include "memory/metaspace/metaspaceSizesSnapshot.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msChunkHeaderPool.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msChunkManager.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msCommitLimiter.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msCommon.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msContext.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msReport.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msRunningCounters.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msSettings.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msVirtualSpaceList.hpp"</span>
   #include "memory/metaspace.hpp"
-<span class="new">+ #include "memory/metaspaceShared.hpp"</span>
-<span class="new">+ #include "memory/metaspaceTracer.hpp"</span>
-<span class="new">+ #include "memory/metaspace/chunkHeaderPool.hpp"</span>
-  #include "memory/metaspace/chunkManager.hpp"
-<span class="changed">! #include "memory/metaspace/commitLimiter.hpp"</span>
-  #include "memory/metaspace/metaspaceCommon.hpp"
-<span class="changed">! #include "memory/metaspace/metaspaceContext.hpp"</span>
-<span class="changed">! #include "memory/metaspace/metaspaceEnums.hpp"</span>
-<span class="changed">! #include "memory/metaspace/metaspaceReport.hpp"</span>
-<span class="changed">! #include "memory/metaspace/metaspaceSizesSnapshot.hpp"</span>
-<span class="changed">! #include "memory/metaspace/runningCounters.hpp"</span>
-<span class="changed">! #include "memory/metaspace/settings.hpp"</span>
-  #include "memory/metaspace/virtualSpaceList.hpp"
+  #include "memory/metaspaceShared.hpp"
+  #include "memory/metaspaceTracer.hpp"
   #include "memory/universe.hpp"
   #include "oops/compressedOops.hpp"
+  #include "runtime/arguments.hpp"
   #include "runtime/atomic.hpp"
   #include "runtime/init.hpp"
 <span class="new">+ #include "runtime/java.hpp"</span>
@@ -204,7 +205,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">! }</span>
   
 <span class="changed">! size_t MetaspaceUtils::used_words(Metaspace::MetadataType mdtype) {</span>
-<span class="changed">!   return metaspace::is_class(mdtype) ? RunningCounters::used_words_class() : RunningCounters::used_words_nonclass();</span>
+<span class="changed">!   return Metaspace::is_class_space_allocation(mdtype) ? RunningCounters::used_words_class() : RunningCounters::used_words_nonclass();</span>
 <span class="changed">! }</span>
 <span class="changed">! </span>
 <span class="changed">! size_t MetaspaceUtils::reserved_words() {</span>
@@ -212,17 +213,17 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">! }</span>
 <span class="changed">! </span>
 <span class="changed">! size_t MetaspaceUtils::reserved_words(Metaspace::MetadataType mdtype) {</span>
-<span class="changed">!   return metaspace::is_class(mdtype) ? RunningCounters::reserved_words_class() : RunningCounters::reserved_words_nonclass();</span>
+<span class="changed">!   return Metaspace::is_class_space_allocation(mdtype) ? RunningCounters::reserved_words_class() : RunningCounters::reserved_words_nonclass();</span>
 <span class="changed">! }</span>
-  
+<span class="changed">! </span>
 <span class="changed">! size_t MetaspaceUtils::committed_words() {</span>
 <span class="changed">!   return RunningCounters::committed_words();</span>
 <span class="changed">! }</span>
 <span class="changed">! </span>
 <span class="changed">! size_t MetaspaceUtils::committed_words(Metaspace::MetadataType mdtype) {</span>
-<span class="changed">!   return metaspace::is_class(mdtype) ? RunningCounters::committed_words_class() : RunningCounters::committed_words_nonclass();</span>
+<span class="changed">!   return Metaspace::is_class_space_allocation(mdtype) ? RunningCounters::committed_words_class() : RunningCounters::committed_words_nonclass();</span>
 <span class="changed">! }</span>
-<span class="changed">! </span>
+  
 <span class="changed">! </span>
 <span class="changed">! </span>
 <span class="changed">! void MetaspaceUtils::print_metaspace_change(const metaspace::MetaspaceSizesSnapshot&amp; pre_meta_values) {</span>
@@ -272,16 +273,16 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">! void MetaspaceUtils::print_basic_report(outputStream* out, size_t scale) {</span>
 <span class="changed">!   MetaspaceReporter::print_basic_report(out, scale);</span>
 <span class="changed">! }</span>
-<span class="changed">! </span>
+  
 <span class="changed">! // Prints a report about the current metaspace state.</span>
 <span class="changed">! // Optional parts can be enabled via flags.</span>
 <span class="changed">! // Function will walk the CLDG and will lock the expand lock; if that is not</span>
 <span class="changed">! // convenient, use print_basic_report() instead.</span>
 <span class="changed">! void MetaspaceUtils::print_report(outputStream* out, size_t scale) {</span>
 <span class="changed">!   const int flags =</span>
-<span class="changed">!       MetaspaceReporter::rf_show_loaders |</span>
-<span class="changed">!       MetaspaceReporter::rf_break_down_by_chunktype |</span>
-<span class="changed">!       MetaspaceReporter::rf_show_classes;</span>
+<span class="changed">!       (int)MetaspaceReporter::Option::ShowLoaders |</span>
+<span class="changed">!       (int)MetaspaceReporter::Option::BreakDownByChunkType |</span>
+<span class="changed">!       (int)MetaspaceReporter::Option::ShowClasses;</span>
 <span class="changed">!   MetaspaceReporter::print_report(out, scale, flags);</span>
 <span class="changed">! }</span>
 <span class="changed">! </span>
@@ -308,31 +309,29 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!                   reserved_bytes(ct)/K);</span>
 <span class="changed">!   }</span>
 <span class="changed">! }</span>
-  
+<span class="changed">! </span>
 <span class="changed">! #ifdef ASSERT</span>
-<span class="changed">! void MetaspaceUtils::verify(bool slow) {</span>
+<span class="changed">! void MetaspaceUtils::verify() {</span>
 <span class="changed">!   if (Metaspace::initialized()) {</span>
-  
+<span class="changed">! </span>
 <span class="changed">!     // Verify non-class chunkmanager...</span>
 <span class="changed">!     ChunkManager* cm = ChunkManager::chunkmanager_nonclass();</span>
-<span class="changed">!     cm-&gt;verify(slow);</span>
-<span class="changed">! </span>
+<span class="changed">!     cm-&gt;verify();</span>
+  
 <span class="changed">!     // ... and space list.</span>
 <span class="changed">!     VirtualSpaceList* vsl = VirtualSpaceList::vslist_nonclass();</span>
-<span class="changed">!     vsl-&gt;verify(slow);</span>
-<span class="changed">! </span>
-<span class="changed">!     if (Metaspace::using_class_space()) {</span>
-<span class="changed">!       // If we use compressed class pointers, verify class chunkmanager...</span>
-<span class="changed">!       cm = ChunkManager::chunkmanager_class();</span>
-<span class="changed">!       assert(cm != NULL, "Sanity");</span>
-<span class="changed">!       cm-&gt;verify(slow);</span>
-<span class="changed">! </span>
-<span class="changed">!       // ... and class spacelist.</span>
-<span class="changed">!       VirtualSpaceList* vsl = VirtualSpaceList::vslist_nonclass();</span>
-<span class="changed">!       assert(vsl != NULL, "Sanity");</span>
-<span class="changed">!       vsl-&gt;verify(slow);</span>
-<span class="changed">!     }</span>
+<span class="changed">!     vsl-&gt;verify();</span>
   
+<span class="new">+     if (Metaspace::using_class_space()) {</span>
+<span class="new">+       // If we use compressed class pointers, verify class chunkmanager...</span>
+<span class="new">+       cm = ChunkManager::chunkmanager_class();</span>
+<span class="new">+       cm-&gt;verify();</span>
+<span class="new">+ </span>
+<span class="new">+       // ... and class spacelist.</span>
+<span class="new">+       vsl = VirtualSpaceList::vslist_class();</span>
+<span class="new">+       vsl-&gt;verify();</span>
+<span class="new">+     }</span>
+<span class="new">+ </span>
 <span class="new">+   }</span>
 <span class="new">+ }</span>
 <span class="new">+ #endif</span>
@@ -348,7 +347,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   // should succeed.  If the GC did not free enough space for the metaspace
   // allocation, the HWM is increased so that another virtualspace will be
   // allocated for the metadata.  With perm gen the increase in the perm
-<hr /><span class="oldmarker">*** 349,1014 ****</span>
+<hr /><span class="oldmarker">*** 350,1015 ****</span>
                                                new_capacity_until_GC,
                                                MetaspaceGCThresholdUpdater::ComputeNewSize);
     }
@@ -358,7 +357,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="removed">- size_t MetaspaceUtils::_capacity_words [Metaspace:: MetadataTypeCount] = {0, 0};</span>
 <span class="removed">- size_t MetaspaceUtils::_overhead_words [Metaspace:: MetadataTypeCount] = {0, 0};</span>
 <span class="removed">- volatile size_t MetaspaceUtils::_used_words [Metaspace:: MetadataTypeCount] = {0, 0};</span>
-<span class="removed">- </span>
+  
 <span class="removed">- // Collect used metaspace statistics. This involves walking the CLDG. The resulting</span>
 <span class="removed">- // output will be the accumulated values for all live metaspaces.</span>
 <span class="removed">- // Note: method does not do any locking.</span>
@@ -377,25 +376,25 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="removed">-   VirtualSpaceList* list = Metaspace::get_space_list(mdtype);</span>
 <span class="removed">-   return list == NULL ? 0 : list-&gt;free_bytes();</span>
 <span class="removed">- }</span>
-  
+<span class="removed">- </span>
 <span class="removed">- size_t MetaspaceUtils::free_in_vs_bytes() {</span>
 <span class="removed">-   return free_in_vs_bytes(Metaspace::ClassType) + free_in_vs_bytes(Metaspace::NonClassType);</span>
 <span class="removed">- }</span>
+<span class="removed">- </span>
+<span class="removed">- static void inc_stat_nonatomically(size_t* pstat, size_t words) {</span>
+<span class="removed">-   assert_lock_strong(MetaspaceExpand_lock);</span>
+<span class="removed">-   (*pstat) += words;</span>
+<span class="removed">- }</span>
+<span class="removed">- </span>
+<span class="removed">- static void dec_stat_nonatomically(size_t* pstat, size_t words) {</span>
+<span class="removed">-   assert_lock_strong(MetaspaceExpand_lock);</span>
+<span class="removed">-   const size_t size_now = *pstat;</span>
+<span class="removed">-   assert(size_now &gt;= words, "About to decrement counter below zero "</span>
+<span class="removed">-          "(current value: " SIZE_FORMAT ", decrement value: " SIZE_FORMAT ".",</span>
+<span class="removed">-          size_now, words);</span>
+<span class="removed">-   *pstat = size_now - words;</span>
+<span class="removed">- }</span>
   
-<span class="changed">! static void inc_stat_nonatomically(size_t* pstat, size_t words) {</span>
-<span class="changed">!   assert_lock_strong(MetaspaceExpand_lock);</span>
-<span class="changed">!   (*pstat) += words;</span>
-<span class="changed">! }</span>
-  
-<span class="changed">! static void dec_stat_nonatomically(size_t* pstat, size_t words) {</span>
-<span class="changed">!   assert_lock_strong(MetaspaceExpand_lock);</span>
-<span class="changed">!   const size_t size_now = *pstat;</span>
-<span class="changed">!   assert(size_now &gt;= words, "About to decrement counter below zero "</span>
-<span class="changed">!          "(current value: " SIZE_FORMAT ", decrement value: " SIZE_FORMAT ".",</span>
-<span class="changed">!          size_now, words);</span>
-<span class="changed">!   *pstat = size_now - words;</span>
-<span class="changed">! }</span>
-<span class="changed">! </span>
 <span class="changed">! static void inc_stat_atomically(volatile size_t* pstat, size_t words) {</span>
 <span class="changed">!   Atomic::add(pstat, words);</span>
 <span class="changed">! }</span>
@@ -590,7 +589,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!     out-&gt;print_cr("Metaspace not yet initialized.");</span>
 <span class="changed">!     return;</span>
 <span class="changed">!   }</span>
-<span class="changed">! </span>
+  
 <span class="changed">!   out-&gt;cr();</span>
 <span class="changed">!   out-&gt;print_cr("Usage:");</span>
 <span class="changed">! </span>
@@ -1015,7 +1014,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   // Reserve a range of memory at an address suitable for en/decoding narrow
   // Klass pointers (see: CompressedClassPointers::is_valid_base()).
   // The returned address shall both be suitable as a compressed class pointers
-<span class="newmarker">--- 476,535 ----</span>
+<span class="newmarker">--- 474,533 ----</span>
                                                new_capacity_until_GC,
                                                MetaspaceGCThresholdUpdater::ComputeNewSize);
     }
@@ -1076,7 +1075,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   // Reserve a range of memory at an address suitable for en/decoding narrow
   // Klass pointers (see: CompressedClassPointers::is_valid_base()).
   // The returned address shall both be suitable as a compressed class pointers
-<hr /><span class="oldmarker">*** 1061,1136 ****</span>
+<hr /><span class="oldmarker">*** 1062,1137 ****</span>
   }
   
   #endif // _LP64
@@ -1125,24 +1124,24 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   MaxMetaspaceExpansion = align_down_bounded(MaxMetaspaceExpansion, _commit_alignment);</span>
 <span class="changed">! </span>
 <span class="changed">!   CompressedClassSpaceSize = align_down_bounded(CompressedClassSpaceSize, _reserve_alignment);</span>
-<span class="changed">! </span>
-<span class="changed">!   // Initial virtual space size will be calculated at global_initialize()</span>
-<span class="changed">!   size_t min_metaspace_sz =</span>
-<span class="changed">!       VIRTUALSPACEMULTIPLIER * InitialBootClassLoaderMetaspaceSize;</span>
-<span class="changed">!   if (UseCompressedClassPointers) {</span>
-<span class="changed">!     if ((min_metaspace_sz + CompressedClassSpaceSize) &gt;  MaxMetaspaceSize) {</span>
-<span class="changed">!       if (min_metaspace_sz &gt;= MaxMetaspaceSize) {</span>
-<span class="changed">!         vm_exit_during_initialization("MaxMetaspaceSize is too small.");</span>
-<span class="changed">!       } else {</span>
-<span class="changed">!         FLAG_SET_ERGO(CompressedClassSpaceSize,</span>
-<span class="changed">!                       MaxMetaspaceSize - min_metaspace_sz);</span>
-<span class="changed">!       }</span>
-<span class="changed">!     }</span>
-<span class="changed">!   } else if (min_metaspace_sz &gt;= MaxMetaspaceSize) {</span>
-<span class="changed">!     FLAG_SET_ERGO(InitialBootClassLoaderMetaspaceSize,</span>
-<span class="changed">!                   min_metaspace_sz);</span>
-<span class="changed">!   }</span>
   
+<span class="removed">-   // Initial virtual space size will be calculated at global_initialize()</span>
+<span class="removed">-   size_t min_metaspace_sz =</span>
+<span class="removed">-       VIRTUALSPACEMULTIPLIER * InitialBootClassLoaderMetaspaceSize;</span>
+<span class="removed">-   if (UseCompressedClassPointers) {</span>
+<span class="removed">-     if ((min_metaspace_sz + CompressedClassSpaceSize) &gt;  MaxMetaspaceSize) {</span>
+<span class="removed">-       if (min_metaspace_sz &gt;= MaxMetaspaceSize) {</span>
+<span class="removed">-         vm_exit_during_initialization("MaxMetaspaceSize is too small.");</span>
+<span class="removed">-       } else {</span>
+<span class="removed">-         FLAG_SET_ERGO(CompressedClassSpaceSize,</span>
+<span class="removed">-                       MaxMetaspaceSize - min_metaspace_sz);</span>
+<span class="removed">-       }</span>
+<span class="removed">-     }</span>
+<span class="removed">-   } else if (min_metaspace_sz &gt;= MaxMetaspaceSize) {</span>
+<span class="removed">-     FLAG_SET_ERGO(InitialBootClassLoaderMetaspaceSize,</span>
+<span class="removed">-                   min_metaspace_sz);</span>
+<span class="removed">-   }</span>
+<span class="removed">- </span>
 <span class="removed">-   set_compressed_class_space_size(CompressedClassSpaceSize);</span>
   }
   
@@ -1153,7 +1152,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     // a) if CDS is active (either dump time or runtime), it will create the ccs
     //    for us, initialize it and set up CompressedKlassPointers encoding.
     //    Class space will be reserved above the mapped archives.
-<span class="newmarker">--- 582,675 ----</span>
+<span class="newmarker">--- 580,673 ----</span>
   }
   
   #endif // _LP64
@@ -1173,7 +1172,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   metaspace::Settings::ergo_initialize();</span>
   
 <span class="changed">!   // MaxMetaspaceSize and CompressedClassSpaceSize:</span>
-    //
+<span class="changed">!   //</span>
 <span class="changed">!   // MaxMetaspaceSize is the maximum size, in bytes, of memory we are allowed</span>
 <span class="changed">!   //  to commit for the Metaspace.</span>
 <span class="changed">!   //  It is just a number; a limit we compare against before committing. It</span>
@@ -1193,38 +1192,38 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   //  MaxMetaspaceSize = CompressedClassSpaceSize + &lt;non-class metadata size&gt;</span>
 <span class="changed">!   //  is subtly wrong: MaxMetaspaceSize can besmaller than CompressedClassSpaceSize,</span>
 <span class="changed">!   //  in which case we just would not be able to fully commit the class space range.</span>
-<span class="changed">!   //</span>
+    //
 <span class="changed">!   // We still adjust CompressedClassSpaceSize to reasonable limits, mainly to</span>
 <span class="changed">!   //  save on reserved space, and to make ergnonomics less confusing.</span>
-<span class="changed">! </span>
-<span class="changed">!   // (aligned just for cleanliness:)</span>
-<span class="changed">!   MaxMetaspaceSize = MAX2(align_down(MaxMetaspaceSize, commit_alignment()), commit_alignment());</span>
-<span class="changed">! </span>
-<span class="changed">!   if (UseCompressedClassPointers) {</span>
-<span class="changed">!     // Let CCS size not be larger than 80% of MaxMetaspaceSize. Note that is</span>
-<span class="changed">!     // grossly over-dimensioned for most usage scenarios; typical ratio of</span>
-<span class="changed">!     // class space : non class space usage is about 1:6. With many small classes,</span>
-<span class="changed">!     // it can get as low as 1:2. It is not a big deal though since ccs is only</span>
-<span class="changed">!     // reserved and will be committed on demand only.</span>
-<span class="changed">!     size_t max_ccs_size = MaxMetaspaceSize * 0.8;</span>
-<span class="changed">!     size_t adjusted_ccs_size = MIN2(CompressedClassSpaceSize, max_ccs_size);</span>
-<span class="changed">! </span>
-<span class="changed">!     // CCS must be aligned to root chunk size, and be at least the size of one</span>
-<span class="changed">!     //  root chunk.</span>
-<span class="changed">!     adjusted_ccs_size = align_up(adjusted_ccs_size, reserve_alignment());</span>
-<span class="changed">!     adjusted_ccs_size = MAX2(adjusted_ccs_size, reserve_alignment());</span>
-<span class="changed">! </span>
-<span class="changed">!     // Note: re-adjusting may have us left with a CompressedClassSpaceSize</span>
-<span class="changed">!     //  larger than MaxMetaspaceSize for very small values of MaxMetaspaceSize.</span>
-<span class="changed">!     //  Lets just live with that, its not a big deal.</span>
-<span class="changed">! </span>
-<span class="changed">!     if (adjusted_ccs_size != CompressedClassSpaceSize) {</span>
-<span class="changed">!       FLAG_SET_ERGO(CompressedClassSpaceSize, adjusted_ccs_size);</span>
-<span class="changed">!       log_info(metaspace)("Setting CompressedClassSpaceSize to " SIZE_FORMAT ".",</span>
-<span class="changed">!                           CompressedClassSpaceSize);</span>
-<span class="changed">!     }</span>
-<span class="changed">!   }</span>
   
+<span class="new">+   // (aligned just for cleanliness:)</span>
+<span class="new">+   MaxMetaspaceSize = MAX2(align_down(MaxMetaspaceSize, commit_alignment()), commit_alignment());</span>
+<span class="new">+ </span>
+<span class="new">+   if (UseCompressedClassPointers) {</span>
+<span class="new">+     // Let CCS size not be larger than 80% of MaxMetaspaceSize. Note that is</span>
+<span class="new">+     // grossly over-dimensioned for most usage scenarios; typical ratio of</span>
+<span class="new">+     // class space : non class space usage is about 1:6. With many small classes,</span>
+<span class="new">+     // it can get as low as 1:2. It is not a big deal though since ccs is only</span>
+<span class="new">+     // reserved and will be committed on demand only.</span>
+<span class="new">+     size_t max_ccs_size = MaxMetaspaceSize * 0.8;</span>
+<span class="new">+     size_t adjusted_ccs_size = MIN2(CompressedClassSpaceSize, max_ccs_size);</span>
+<span class="new">+ </span>
+<span class="new">+     // CCS must be aligned to root chunk size, and be at least the size of one</span>
+<span class="new">+     //  root chunk.</span>
+<span class="new">+     adjusted_ccs_size = align_up(adjusted_ccs_size, reserve_alignment());</span>
+<span class="new">+     adjusted_ccs_size = MAX2(adjusted_ccs_size, reserve_alignment());</span>
+<span class="new">+ </span>
+<span class="new">+     // Note: re-adjusting may have us left with a CompressedClassSpaceSize</span>
+<span class="new">+     //  larger than MaxMetaspaceSize for very small values of MaxMetaspaceSize.</span>
+<span class="new">+     //  Lets just live with that, its not a big deal.</span>
+<span class="new">+ </span>
+<span class="new">+     if (adjusted_ccs_size != CompressedClassSpaceSize) {</span>
+<span class="new">+       FLAG_SET_ERGO(CompressedClassSpaceSize, adjusted_ccs_size);</span>
+<span class="new">+       log_info(metaspace)("Setting CompressedClassSpaceSize to " SIZE_FORMAT ".",</span>
+<span class="new">+                           CompressedClassSpaceSize);</span>
+<span class="new">+     }</span>
+<span class="new">+   }</span>
+<span class="new">+ </span>
 <span class="new">+   // Set MetaspaceSize, MinMetaspaceExpansion and MaxMetaspaceExpansion</span>
     if (MetaspaceSize &gt; MaxMetaspaceSize) {
       MetaspaceSize = MaxMetaspaceSize;
@@ -1248,7 +1247,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     // a) if CDS is active (either dump time or runtime), it will create the ccs
     //    for us, initialize it and set up CompressedKlassPointers encoding.
     //    Class space will be reserved above the mapped archives.
-<hr /><span class="oldmarker">*** 1186,1196 ****</span>
+<hr /><span class="oldmarker">*** 1187,1197 ****</span>
   
       // ...failing that, give up.
       if (!rs.is_reserved()) {
@@ -1260,7 +1259,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
       // Initialize space
       Metaspace::initialize_class_space(rs);
   
-<span class="newmarker">--- 725,735 ----</span>
+<span class="newmarker">--- 723,733 ----</span>
   
       // ...failing that, give up.
       if (!rs.is_reserved()) {
@@ -1272,7 +1271,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
       // Initialize space
       Metaspace::initialize_class_space(rs);
   
-<hr /><span class="oldmarker">*** 1198,1232 ****</span>
+<hr /><span class="oldmarker">*** 1199,1233 ****</span>
       CompressedKlassPointers::initialize((address)rs.base(), rs.size());
     }
   
@@ -1308,7 +1307,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     if (UseCompressedClassPointers) {
       // Note: "cds" would be a better fit but keep this for backward compatibility.
       LogTarget(Info, gc, metaspace) lt;
-<span class="newmarker">--- 737,764 ----</span>
+<span class="newmarker">--- 735,762 ----</span>
       CompressedKlassPointers::initialize((address)rs.base(), rs.size());
     }
   
@@ -1337,7 +1336,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     if (UseCompressedClassPointers) {
       // Note: "cds" would be a better fit but keep this for backward compatibility.
       LogTarget(Info, gc, metaspace) lt;
-<hr /><span class="oldmarker">*** 1244,1270 ****</span>
+<hr /><span class="oldmarker">*** 1245,1271 ****</span>
   
   void Metaspace::post_initialize() {
     MetaspaceGC::post_initialize();
@@ -1365,7 +1364,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
     if (HAS_PENDING_EXCEPTION) {
       assert(false, "Should not allocate with exception pending");
-<span class="newmarker">--- 776,794 ----</span>
+<span class="newmarker">--- 774,792 ----</span>
   
   void Metaspace::post_initialize() {
     MetaspaceGC::post_initialize();
@@ -1385,53 +1384,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
     if (HAS_PENDING_EXCEPTION) {
       assert(false, "Should not allocate with exception pending");
-<hr /><span class="oldmarker">*** 1272,1282 ****</span>
-    }
-  
-    assert(loader_data != NULL, "Should never pass around a NULL loader_data. "
-          "ClassLoaderData::the_null_class_loader_data() should have been used.");
-  
-<span class="changed">!   MetadataType mdtype = (type == MetaspaceObj::ClassType) ? ClassType : NonClassType;</span>
-  
-    // Try to allocate metadata.
-    MetaWord* result = loader_data-&gt;metaspace_non_null()-&gt;allocate(word_size, mdtype);
-  
-    if (result == NULL) {
-<span class="newmarker">--- 796,806 ----</span>
-    }
-  
-    assert(loader_data != NULL, "Should never pass around a NULL loader_data. "
-          "ClassLoaderData::the_null_class_loader_data() should have been used.");
-  
-<span class="changed">!   Metaspace::MetadataType mdtype = (type == MetaspaceObj::ClassType) ? Metaspace::ClassType : Metaspace::NonClassType;</span>
-  
-    // Try to allocate metadata.
-    MetaWord* result = loader_data-&gt;metaspace_non_null()-&gt;allocate(word_size, mdtype);
-  
-    if (result == NULL) {
-<hr /><span class="oldmarker">*** 1305,1325 ****</span>
-    }
-  
-    // Zero initialize.
-    Copy::fill_to_words((HeapWord*)result, word_size, 0);
-  
-    return result;
-  }
-  
-  void Metaspace::report_metadata_oome(ClassLoaderData* loader_data, size_t word_size, MetaspaceObj::Type type, MetadataType mdtype, TRAPS) {
-    tracer()-&gt;report_metadata_oom(loader_data, word_size, type, mdtype);
-  
-    // If result is still null, we are out of memory.
-    Log(gc, metaspace, freelist, oom) log;
-    if (log.is_info()) {
-      log.info("Metaspace (%s) allocation failed for size " SIZE_FORMAT,
-<span class="changed">!              is_class_space_allocation(mdtype) ? "class" : "data", word_size);</span>
-      ResourceMark rm;
-      if (log.is_debug()) {
-        if (loader_data-&gt;metaspace_or_null() != NULL) {
-          LogStream ls(log.debug());
-          loader_data-&gt;print_value_on(&amp;ls);
-<span class="newmarker">--- 829,851 ----</span>
+<hr /><span class="oldmarker">*** 1306,1315 ****</span>
+<span class="newmarker">--- 827,838 ----</span>
     }
   
     // Zero initialize.
@@ -1444,25 +1398,14 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
   void Metaspace::report_metadata_oome(ClassLoaderData* loader_data, size_t word_size, MetaspaceObj::Type type, MetadataType mdtype, TRAPS) {
     tracer()-&gt;report_metadata_oom(loader_data, word_size, type, mdtype);
-  
-    // If result is still null, we are out of memory.
-    Log(gc, metaspace, freelist, oom) log;
-    if (log.is_info()) {
-      log.info("Metaspace (%s) allocation failed for size " SIZE_FORMAT,
-<span class="changed">!              metaspace::is_class(mdtype) ? "class" : "data", word_size);</span>
-      ResourceMark rm;
-      if (log.is_debug()) {
-        if (loader_data-&gt;metaspace_or_null() != NULL) {
-          LogStream ls(log.debug());
-          loader_data-&gt;print_value_on(&amp;ls);
-<hr /><span class="oldmarker">*** 1328,1343 ****</span>
+<hr /><span class="oldmarker">*** 1329,1344 ****</span>
       LogStream ls(log.info());
       // In case of an OOM, log out a short but still useful report.
       MetaspaceUtils::print_basic_report(&amp;ls, 0);
     }
   
     bool out_of_compressed_class_space = false;
-<span class="changed">!   if (is_class_space_allocation(mdtype)) {</span>
+    if (is_class_space_allocation(mdtype)) {
       ClassLoaderMetaspace* metaspace = loader_data-&gt;metaspace_non_null();
       out_of_compressed_class_space =
         MetaspaceUtils::committed_bytes(Metaspace::ClassType) +
@@ -1472,44 +1415,30 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
     // -XX:+HeapDumpOnOutOfMemoryError and -XX:OnOutOfMemoryError support
     const char* space_string = out_of_compressed_class_space ?
-<span class="newmarker">--- 854,874 ----</span>
+<span class="newmarker">--- 852,868 ----</span>
       LogStream ls(log.info());
       // In case of an OOM, log out a short but still useful report.
       MetaspaceUtils::print_basic_report(&amp;ls, 0);
     }
   
-<span class="new">+   // Which limit did we hit? CompressedClassSpaceSize or MaxMetaspaceSize?</span>
+<span class="new">+   // TODO: this exception text may be wrong and misleading. This needs more thinking. See JDK-8252189.</span>
     bool out_of_compressed_class_space = false;
-<span class="changed">!   if (metaspace::is_class(mdtype)) {</span>
+    if (is_class_space_allocation(mdtype)) {
       ClassLoaderMetaspace* metaspace = loader_data-&gt;metaspace_non_null();
       out_of_compressed_class_space =
         MetaspaceUtils::committed_bytes(Metaspace::ClassType) +
-<span class="changed">!       // TODO: Okay this is just cheesy.</span>
-<span class="changed">!       // Of course this may fail and return incorrect results.</span>
-<span class="changed">!       // Think this over - we need some clean way to remember which limit</span>
-<span class="changed">!       // exactly we hit during an allocation. Some sort of allocation context structure?</span>
 <span class="changed">!       align_up(word_size * BytesPerWord, 4 * M) &gt;</span>
         CompressedClassSpaceSize;
     }
   
     // -XX:+HeapDumpOnOutOfMemoryError and -XX:OnOutOfMemoryError support
     const char* space_string = out_of_compressed_class_space ?
-<hr /><span class="oldmarker">*** 1360,1389 ****</span>
-    } else {
-      THROW_OOP(Universe::out_of_memory_error_metaspace());
+<hr /><span class="oldmarker">*** 1371,1390 ****</span>
+        assert(false, "Got bad mdtype: %d", (int) mdtype);
+        return NULL;
     }
   }
   
-<span class="removed">- const char* Metaspace::metadata_type_name(Metaspace::MetadataType mdtype) {</span>
-<span class="removed">-   switch (mdtype) {</span>
-<span class="removed">-     case Metaspace::ClassType: return "Class";</span>
-<span class="removed">-     case Metaspace::NonClassType: return "Metadata";</span>
-<span class="removed">-     default:</span>
-<span class="removed">-       assert(false, "Got bad mdtype: %d", (int) mdtype);</span>
-<span class="removed">-       return NULL;</span>
-<span class="removed">-   }</span>
-<span class="removed">- }</span>
-<span class="removed">- </span>
 <span class="removed">- void Metaspace::purge(MetadataType mdtype) {</span>
 <span class="removed">-   get_space_list(mdtype)-&gt;purge(get_chunk_manager(mdtype));</span>
 <span class="removed">- }</span>
@@ -1525,9 +1454,9 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
   bool Metaspace::contains(const void* ptr) {
     if (MetaspaceShared::is_in_shared_metaspace(ptr)) {
-<span class="newmarker">--- 891,910 ----</span>
-    } else {
-      THROW_OOP(Universe::out_of_memory_error_metaspace());
+<span class="newmarker">--- 895,914 ----</span>
+        assert(false, "Got bad mdtype: %d", (int) mdtype);
+        return NULL;
     }
   }
   
@@ -1546,7 +1475,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
   bool Metaspace::contains(const void* ptr) {
     if (MetaspaceShared::is_in_shared_metaspace(ptr)) {
-<hr /><span class="oldmarker">*** 1391,1606 ****</span>
+<hr /><span class="oldmarker">*** 1392,1607 ****</span>
     }
     return contains_non_shared(ptr);
   }
@@ -1763,7 +1692,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!     out-&gt;medium_chunk_word_size = ClassMediumChunk;</span>
 <span class="changed">!   }</span>
   }
-<span class="newmarker">--- 912,922 ----</span>
+<span class="newmarker">--- 916,926 ----</span>
     }
     return contains_non_shared(ptr);
   }

@@ -81,7 +81,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     </head>
     <body id="SUNWwebrev" onkeypress="keypress(event);">
     <a name="0"></a>
-    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre><hr></hr>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre><hr></hr>
 <pre>
    1 /*
    2  * Copyright (c) 2011, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -153,7 +153,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   41 namespace metaspace {
 <a name="5" id="anc5"></a><span class="changed">  42   class MetaspaceArena;</span>
 <span class="changed">  43   class MetaspaceSizesSnapshot;</span>
-<span class="changed">  44   struct clms_stats_t;</span>
+<span class="changed">  44   struct ClmsStats;</span>
 
 
 
@@ -206,15 +206,15 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 
 
-
-
-
-
-
-
-
   71 
 <a name="9" id="anc9"></a>
+
+
+
+
+
+
+
 
   72   DEBUG_ONLY(static bool   _frozen;)
   73 
@@ -311,47 +311,47 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  136 
  137   static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
 <a name="16" id="anc16"></a><span class="changed"> 138                                    MetaspaceObj::Type type, Metaspace::MetadataType mdtype, TRAPS);</span>
-
-
  139 
- 140   static void print_compressed_class_space(outputStream* st) NOT_LP64({});
+ 140   static const char* metadata_type_name(Metaspace::MetadataType mdtype);
  141 
- 142   // Return TRUE only if UseCompressedClassPointers is True.
- 143   static bool using_class_space() {
- 144     return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
- 145   }
- 146 
-<a name="17" id="anc17"></a><span class="changed"> 147   static bool initialized();</span>
-
-
-
-
+ 142   static void print_compressed_class_space(outputStream* st) NOT_LP64({});
+ 143 
+ 144   // Return TRUE only if UseCompressedClassPointers is True.
+ 145   static bool using_class_space() {
+ 146     return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
+ 147   }
  148 
- 149 };
- 150 
-<a name="18" id="anc18"></a><span class="changed"> 151 // ClassLoaderMetaspace is an inbetween-object between a CLD and its MetaspaceArena(s).</span>
-<span class="changed"> 152 //</span>
-<span class="changed"> 153 // A CLD owns one MetaspaceArena if compressed class space is off, two if its one</span>
-<span class="changed"> 154 // (one for allocations of Klass* structures from class space, one for the rest from</span>
-<span class="changed"> 155 //  non-class space).</span>
-<span class="changed"> 156 //</span>
-<span class="changed"> 157 // ClassLoaderMetaspace only exists to hide this logic from upper layers:</span>
+ 149   static bool is_class_space_allocation(MetadataType mdType) {
+ 150     return mdType == ClassType &amp;&amp; using_class_space();
+ 151   }
+ 152 
+<a name="17" id="anc17"></a><span class="changed"> 153   static bool initialized();</span>
+ 154 
+ 155 };
+ 156 
+<a name="18" id="anc18"></a><span class="changed"> 157 // ClassLoaderMetaspace is an inbetween-object between a CLD and its MetaspaceArena(s).</span>
 <span class="changed"> 158 //</span>
-<span class="changed"> 159 // +------+       +----------------------+       +-------------------+</span>
-<span class="changed"> 160 // | CLD  | ---&gt;  | ClassLoaderMetaspace | ----&gt; | (non class) Arena |</span>
-<span class="changed"> 161 // +------+       +----------------------+  |    +-------------------+     allocation top</span>
-<span class="changed"> 162 //                                          |       |                        v</span>
-<span class="changed"> 163 //                                          |       + chunk -- chunk ... -- chunk</span>
-<span class="changed"> 164 //                                          |</span>
-<span class="changed"> 165 //                                          |    +-------------------+</span>
-<span class="changed"> 166 //                                          +--&gt; | (class) Arena     |</span>
-<span class="changed"> 167 //                                               +-------------------+</span>
-<span class="changed"> 168 //                                                  |</span>
-<span class="changed"> 169 //                                                  + chunk ... chunk</span>
-<span class="changed"> 170 //                                                               ^</span>
-<span class="changed"> 171 //                                                               alloc top</span>
-<span class="changed"> 172 //</span>
- 173 class ClassLoaderMetaspace : public CHeapObj&lt;mtClass&gt; {
+<span class="changed"> 159 // A CLD owns one MetaspaceArena if compressed class space is off, two if its one</span>
+<span class="changed"> 160 // (one for allocations of Klass* structures from class space, one for the rest from</span>
+<span class="changed"> 161 //  non-class space).</span>
+<span class="changed"> 162 //</span>
+<span class="changed"> 163 // ClassLoaderMetaspace only exists to hide this logic from upper layers:</span>
+<span class="changed"> 164 //</span>
+<span class="changed"> 165 // +------+       +----------------------+       +-------------------+</span>
+<span class="changed"> 166 // | CLD  | ---&gt;  | ClassLoaderMetaspace | ----&gt; | (non class) Arena |</span>
+<span class="changed"> 167 // +------+       +----------------------+  |    +-------------------+     allocation top</span>
+<span class="changed"> 168 //                                          |       |                        v</span>
+<span class="changed"> 169 //                                          |       + chunk -- chunk ... -- chunk</span>
+<span class="changed"> 170 //                                          |</span>
+<span class="changed"> 171 //                                          |    +-------------------+</span>
+<span class="changed"> 172 //                                          +--&gt; | (class) Arena     |</span>
+<span class="changed"> 173 //                                               +-------------------+</span>
+<span class="changed"> 174 //                                                  |</span>
+<span class="changed"> 175 //                                                  + chunk ... chunk</span>
+<span class="changed"> 176 //                                                               ^</span>
+<span class="changed"> 177 //                                                               alloc top</span>
+<span class="changed"> 178 //</span>
+ 179 class ClassLoaderMetaspace : public CHeapObj&lt;mtClass&gt; {
 <a name="19" id="anc19"></a>
 
 
@@ -359,129 +359,79 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 
 
- 174 
-<a name="20" id="anc20"></a><span class="changed"> 175   // A reference to an outside lock, held by the CLD.</span>
-<span class="changed"> 176   Mutex* const _lock;</span>
+
+
+ 180 
+<a name="20" id="anc20"></a><span class="changed"> 181   // A reference to an outside lock, held by the CLD.</span>
+<span class="changed"> 182   Mutex* const _lock;</span>
 
 
 
 
 
-
-
- 177 
- 178   const Metaspace::MetaspaceType _space_type;
+ 183 
+ 184   const Metaspace::MetaspaceType _space_type;
 <a name="21" id="anc21"></a>
 
 
- 179 
-<a name="22" id="anc22"></a><span class="changed"> 180   // Arena for allocations from non-class  metaspace</span>
-<span class="changed"> 181   //  (resp. for all allocations if -XX:-UseCompressedClassPointers).</span>
-<span class="changed"> 182   metaspace::MetaspaceArena* _non_class_space_arena;</span>
-<span class="changed"> 183 </span>
-<span class="changed"> 184   // Arena for allocations from class space</span>
-<span class="changed"> 185   //  (NULL if -XX:-UseCompressedClassPointers).</span>
-<span class="changed"> 186   metaspace::MetaspaceArena* _class_space_arena;</span>
- 187 
- 188   Mutex* lock() const                             { return _lock; }
-<a name="23" id="anc23"></a><span class="new"> 189   metaspace::MetaspaceArena* non_class_space_arena() const   { return _non_class_space_arena; }</span>
-<span class="new"> 190   metaspace::MetaspaceArena* class_space_arena() const       { return _class_space_arena; }</span>
- 191 
-<a name="24" id="anc24"></a><span class="changed"> 192   metaspace::MetaspaceArena* get_arena(bool is_class) {</span>
-<span class="changed"> 193     return is_class ? class_space_arena() : non_class_space_arena();</span>
-<span class="changed"> 194   }</span>
- 195 
-<a name="25" id="anc25"></a><span class="changed"> 196 public:</span>
-
+ 185 
+<a name="22" id="anc22"></a><span class="changed"> 186   // Arena for allocations from non-class  metaspace</span>
+<span class="changed"> 187   //  (resp. for all allocations if -XX:-UseCompressedClassPointers).</span>
+<span class="changed"> 188   metaspace::MetaspaceArena* _non_class_space_arena;</span>
+<span class="changed"> 189 </span>
+<span class="changed"> 190   // Arena for allocations from class space</span>
+<span class="changed"> 191   //  (NULL if -XX:-UseCompressedClassPointers).</span>
+<span class="changed"> 192   metaspace::MetaspaceArena* _class_space_arena;</span>
+ 193 
+ 194   Mutex* lock() const                             { return _lock; }
+<a name="23" id="anc23"></a><span class="new"> 195   metaspace::MetaspaceArena* non_class_space_arena() const   { return _non_class_space_arena; }</span>
+<span class="new"> 196   metaspace::MetaspaceArena* class_space_arena() const       { return _class_space_arena; }</span>
  197 
-<a name="26" id="anc26"></a><span class="changed"> 198   ClassLoaderMetaspace(Mutex* lock, Metaspace::MetaspaceType space_type);</span>
- 199 
-<a name="27" id="anc27"></a>
+<a name="24" id="anc24"></a><span class="changed"> 198   metaspace::MetaspaceArena* get_arena(bool is_class) {</span>
+<span class="changed"> 199     return is_class ? class_space_arena() : non_class_space_arena();</span>
+<span class="changed"> 200   }</span>
 
 
- 200   ~ClassLoaderMetaspace();
+
  201 
-<a name="28" id="anc28"></a><span class="changed"> 202   Metaspace::MetaspaceType space_type() const { return _space_type; }</span>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+<a name="25" id="anc25"></a><span class="changed"> 202 public:</span>
  203 
-<a name="29" id="anc29"></a><span class="changed"> 204   // Allocate word_size words from Metaspace.</span>
-<span class="changed"> 205   MetaWord* allocate(size_t word_size, Metaspace::MetadataType mdType);</span>
- 206 
-<a name="30" id="anc30"></a><span class="changed"> 207   // Attempt to expand the GC threshold to be good for at least another word_size words</span>
-<span class="changed"> 208   // and allocate. Returns NULL if failure. Used during Metaspace GC.</span>
-<span class="changed"> 209   MetaWord* expand_and_allocate(size_t word_size, Metaspace::MetadataType mdType);</span>
+<a name="26" id="anc26"></a><span class="changed"> 204   ClassLoaderMetaspace(Mutex* lock, Metaspace::MetaspaceType space_type);</span>
+ 205 
+<a name="27" id="anc27"></a>
+ 206   ~ClassLoaderMetaspace();
+ 207 
+<a name="28" id="anc28"></a><span class="changed"> 208   Metaspace::MetaspaceType space_type() const { return _space_type; }</span>
 
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 210 
-<a name="31" id="anc31"></a><span class="changed"> 211   // Prematurely returns a metaspace allocation to the _block_freelists</span>
-<span class="changed"> 212   // because it is not needed anymore.</span>
-<span class="changed"> 213   void deallocate(MetaWord* ptr, size_t word_size, bool is_class);</span>
- 214 
-<a name="32" id="anc32"></a><span class="changed"> 215   // Update statistics. This walks all in-use chunks.</span>
-<span class="changed"> 216   void add_to_statistics(metaspace::clms_stats_t* out) const;</span>
- 217 
-<a name="33" id="anc33"></a><span class="changed"> 218   DEBUG_ONLY(void verify() const;)</span>
- 219 
-<a name="34" id="anc34"></a><span class="changed"> 220   // This only exists for JFR and jcmd VM.classloader_stats. We may want to</span>
-<span class="changed"> 221   //  change this. Capacity as a stat is of questionable use since it may</span>
-<span class="changed"> 222   //  contain committed and uncommitted areas. For now we do this to maintain</span>
-<span class="changed"> 223   //  backward compatibility with JFR.</span>
-<span class="changed"> 224   void calculate_jfr_stats(size_t* p_used_bytes, size_t* p_capacity_bytes) const;</span>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ 209 
+<a name="29" id="anc29"></a><span class="changed"> 210   // Allocate word_size words from Metaspace.</span>
+<span class="changed"> 211   MetaWord* allocate(size_t word_size, Metaspace::MetadataType mdType);</span>
+ 212 
+<a name="30" id="anc30"></a><span class="changed"> 213   // Attempt to expand the GC threshold to be good for at least another word_size words</span>
+<span class="changed"> 214   // and allocate. Returns NULL if failure. Used during Metaspace GC.</span>
+<span class="changed"> 215   MetaWord* expand_and_allocate(size_t word_size, Metaspace::MetadataType mdType);</span>
+ 216 
+<a name="31" id="anc31"></a><span class="changed"> 217   // Prematurely returns a metaspace allocation to the _block_freelists</span>
+<span class="changed"> 218   // because it is not needed anymore.</span>
+<span class="changed"> 219   void deallocate(MetaWord* ptr, size_t word_size, bool is_class);</span>
+ 220 
+<a name="32" id="anc32"></a><span class="changed"> 221   // Update statistics. This walks all in-use chunks.</span>
+<span class="changed"> 222   void add_to_statistics(metaspace::ClmsStats* out) const;</span>
+ 223 
+<a name="33" id="anc33"></a><span class="changed"> 224   DEBUG_ONLY(void verify() const;)</span>
  225 
-<a name="35" id="anc35"></a><span class="changed"> 226 }; // end: ClassLoaderMetaspace</span>
+<a name="34" id="anc34"></a><span class="changed"> 226   // This only exists for JFR and jcmd VM.classloader_stats. We may want to</span>
+<span class="changed"> 227   //  change this. Capacity as a stat is of questionable use since it may</span>
+<span class="changed"> 228   //  contain committed and uncommitted areas. For now we do this to maintain</span>
+<span class="changed"> 229   //  backward compatibility with JFR.</span>
+<span class="changed"> 230   void calculate_jfr_stats(size_t* p_used_bytes, size_t* p_capacity_bytes) const;</span>
+ 231 
+<a name="35" id="anc35"></a><span class="changed"> 232 }; // end: ClassLoaderMetaspace</span>
 
 
 
@@ -491,54 +441,30 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 
 
- 227 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 233 
 <a name="36" id="anc36"></a>
-
-
-
-
-
-
-
-
- 228 
-<a name="37" id="anc37"></a><span class="changed"> 229 ////////////////// MetaspaceGC ///////////////////////</span>
-
-
-
-
- 230 
-<a name="38" id="anc38"></a><span class="changed"> 231 // Metaspace are deallocated when their class loader are GC'ed.</span>
-<span class="changed"> 232 // This class implements a policy for inducing GC's to recover</span>
-<span class="changed"> 233 // Metaspaces.</span>
  234 
-<a name="39" id="anc39"></a><span class="changed"> 235 class MetaspaceGCThresholdUpdater : public AllStatic {</span>
-<span class="changed"> 236  public:</span>
-<span class="changed"> 237   enum Type {</span>
-<span class="changed"> 238     ComputeNewSize,</span>
-<span class="changed"> 239     ExpandAndAllocate,</span>
-<span class="changed"> 240     Last</span>
+<a name="37" id="anc37"></a><span class="changed"> 235 ////////////////// MetaspaceGC ///////////////////////</span>
 
-
-
-
-
-
-
-
- 241   };
- 242 
-<a name="40" id="anc40"></a><span class="changed"> 243   static const char* to_string(MetaspaceGCThresholdUpdater::Type updater) {</span>
-<span class="changed"> 244     switch (updater) {</span>
-<span class="changed"> 245       case ComputeNewSize:</span>
-<span class="changed"> 246         return "compute_new_size";</span>
-<span class="changed"> 247       case ExpandAndAllocate:</span>
-<span class="changed"> 248         return "expand_and_allocate";</span>
-<span class="changed"> 249       default:</span>
-<span class="changed"> 250         assert(false, "Got bad updater: %d", (int) updater);</span>
-<span class="changed"> 251         return NULL;</span>
-<span class="changed"> 252     };</span>
-<span class="changed"> 253   }</span>
+ 236 
+<a name="38" id="anc38"></a><span class="changed"> 237 // Metaspace are deallocated when their class loader are GC'ed.</span>
+<span class="changed"> 238 // This class implements a policy for inducing GC's to recover</span>
+<span class="changed"> 239 // Metaspaces.</span>
 
 
 
@@ -552,100 +478,176 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 
 
- 254 };
- 255 
-<a name="41" id="anc41"></a><span class="changed"> 256 class MetaspaceGC : public AllStatic {</span>
 
 
 
 
- 257 
- 258   // The current high-water-mark for inducing a GC.
- 259   // When committed memory of all metaspaces reaches this value,
- 260   // a GC is induced and the value is increased. Size is in bytes.
- 261   static volatile size_t _capacity_until_GC;
- 262   static uint _shrink_factor;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 240 
+<a name="39" id="anc39"></a><span class="changed"> 241 class MetaspaceGCThresholdUpdater : public AllStatic {</span>
+<span class="changed"> 242  public:</span>
+<span class="changed"> 243   enum Type {</span>
+<span class="changed"> 244     ComputeNewSize,</span>
+<span class="changed"> 245     ExpandAndAllocate,</span>
+<span class="changed"> 246     Last</span>
+
+
+
+
+
+
+
+
+ 247   };
+ 248 
+<a name="40" id="anc40"></a><span class="changed"> 249   static const char* to_string(MetaspaceGCThresholdUpdater::Type updater) {</span>
+<span class="changed"> 250     switch (updater) {</span>
+<span class="changed"> 251       case ComputeNewSize:</span>
+<span class="changed"> 252         return "compute_new_size";</span>
+<span class="changed"> 253       case ExpandAndAllocate:</span>
+<span class="changed"> 254         return "expand_and_allocate";</span>
+<span class="changed"> 255       default:</span>
+<span class="changed"> 256         assert(false, "Got bad updater: %d", (int) updater);</span>
+<span class="changed"> 257         return NULL;</span>
+<span class="changed"> 258     };</span>
+<span class="changed"> 259   }</span>
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 260 };
+ 261 
+<a name="41" id="anc41"></a><span class="changed"> 262 class MetaspaceGC : public AllStatic {</span>
+
+
+
+
  263 
- 264   static size_t shrink_factor() { return _shrink_factor; }
- 265   void set_shrink_factor(uint v) { _shrink_factor = v; }
- 266 
- 267  public:
- 268 
- 269   static void initialize();
- 270   static void post_initialize();
- 271 
- 272   static size_t capacity_until_GC();
- 273   static bool inc_capacity_until_GC(size_t v,
- 274                                     size_t* new_cap_until_GC = NULL,
- 275                                     size_t* old_cap_until_GC = NULL,
- 276                                     bool* can_retry = NULL);
- 277   static size_t dec_capacity_until_GC(size_t v);
- 278 
- 279   // The amount to increase the high-water-mark (_capacity_until_GC)
- 280   static size_t delta_capacity_until_GC(size_t bytes);
- 281 
- 282   // Tells if we have can expand metaspace without hitting set limits.
- 283   static bool can_expand(size_t words, bool is_class);
+ 264   // The current high-water-mark for inducing a GC.
+ 265   // When committed memory of all metaspaces reaches this value,
+ 266   // a GC is induced and the value is increased. Size is in bytes.
+ 267   static volatile size_t _capacity_until_GC;
+ 268   static uint _shrink_factor;
+ 269 
+ 270   static size_t shrink_factor() { return _shrink_factor; }
+ 271   void set_shrink_factor(uint v) { _shrink_factor = v; }
+ 272 
+ 273  public:
+ 274 
+ 275   static void initialize();
+ 276   static void post_initialize();
+ 277 
+ 278   static size_t capacity_until_GC();
+ 279   static bool inc_capacity_until_GC(size_t v,
+ 280                                     size_t* new_cap_until_GC = NULL,
+ 281                                     size_t* old_cap_until_GC = NULL,
+ 282                                     bool* can_retry = NULL);
+ 283   static size_t dec_capacity_until_GC(size_t v);
  284 
- 285   // Returns amount that we can expand without hitting a GC,
- 286   // measured in words.
- 287   static size_t allowed_expansion();
- 288 
- 289   // Calculate the new high-water mark at which to induce
- 290   // a GC.
- 291   static void compute_new_size();
-<a name="42" id="anc42"></a><span class="new"> 292 };</span>
-<span class="new"> 293 </span>
-<span class="new"> 294 </span>
-<span class="new"> 295 </span>
-<span class="new"> 296 </span>
-<span class="new"> 297 class MetaspaceUtils : AllStatic {</span>
-<span class="new"> 298 public:</span>
+ 285   // The amount to increase the high-water-mark (_capacity_until_GC)
+ 286   static size_t delta_capacity_until_GC(size_t bytes);
+ 287 
+ 288   // Tells if we have can expand metaspace without hitting set limits.
+ 289   static bool can_expand(size_t words, bool is_class);
+ 290 
+ 291   // Returns amount that we can expand without hitting a GC,
+ 292   // measured in words.
+ 293   static size_t allowed_expansion();
+ 294 
+ 295   // Calculate the new high-water mark at which to induce
+ 296   // a GC.
+ 297   static void compute_new_size();
+<a name="42" id="anc42"></a><span class="new"> 298 };</span>
 <span class="new"> 299 </span>
-<span class="new"> 300   // Committed space actually in use by Metadata</span>
-<span class="new"> 301   static size_t used_words();</span>
-<span class="new"> 302   static size_t used_words(Metaspace::MetadataType mdtype);</span>
-<span class="new"> 303 </span>
-<span class="new"> 304   // Space committed for Metaspace</span>
-<span class="new"> 305   static size_t committed_words();</span>
-<span class="new"> 306   static size_t committed_words(Metaspace::MetadataType mdtype);</span>
-<span class="new"> 307 </span>
-<span class="new"> 308   // Space reserved for Metaspace</span>
-<span class="new"> 309   static size_t reserved_words();</span>
-<span class="new"> 310   static size_t reserved_words(Metaspace::MetadataType mdtype);</span>
-<span class="new"> 311 </span>
-<span class="new"> 312   // _bytes() variants for convenience...</span>
-<span class="new"> 313   static size_t used_bytes()                                    { return used_words() * BytesPerWord; }</span>
-<span class="new"> 314   static size_t used_bytes(Metaspace::MetadataType mdtype)      { return used_words(mdtype) * BytesPerWord; }</span>
-<span class="new"> 315   static size_t committed_bytes()                               { return committed_words() * BytesPerWord; }</span>
-<span class="new"> 316   static size_t committed_bytes(Metaspace::MetadataType mdtype) { return committed_words(mdtype) * BytesPerWord; }</span>
-<span class="new"> 317   static size_t reserved_bytes()                                { return reserved_words() * BytesPerWord; }</span>
-<span class="new"> 318   static size_t reserved_bytes(Metaspace::MetadataType mdtype)  { return reserved_words(mdtype) * BytesPerWord; }</span>
-<span class="new"> 319 </span>
-<span class="new"> 320   // (See JDK-8251342). Implement or Consolidate.</span>
-<span class="new"> 321   static MetaspaceChunkFreeListSummary chunk_free_list_summary(Metaspace::MetadataType mdtype) {</span>
-<span class="new"> 322     return MetaspaceChunkFreeListSummary(0,0,0,0,0,0,0,0);</span>
-<span class="new"> 323   }</span>
-<span class="new"> 324 </span>
-<span class="new"> 325   // Log change in used metadata.</span>
-<span class="new"> 326   static void print_metaspace_change(const metaspace::MetaspaceSizesSnapshot&amp; pre_meta_values);</span>
-<span class="new"> 327 </span>
-<span class="new"> 328   // This will print out a basic metaspace usage report but</span>
-<span class="new"> 329   // unlike print_report() is guaranteed not to lock or to walk the CLDG.</span>
-<span class="new"> 330   static void print_basic_report(outputStream* st, size_t scale = 0);</span>
-<span class="new"> 331 </span>
-<span class="new"> 332   // Prints a report about the current metaspace state.</span>
-<span class="new"> 333   // Function will walk the CLDG and will lock the expand lock; if that is not</span>
-<span class="new"> 334   // convenient, use print_basic_report() instead.</span>
-<span class="new"> 335   static void print_report(outputStream* out, size_t scale = 0);</span>
-<span class="new"> 336 </span>
-<span class="new"> 337   static void print_on(outputStream * out);</span>
-<span class="new"> 338 </span>
-<span class="new"> 339   DEBUG_ONLY(static void verify(bool slow);)</span>
-<span class="new"> 340 </span>
- 341 };
- 342 
- 343 #endif // SHARE_MEMORY_METASPACE_HPP
+<span class="new"> 300 </span>
+<span class="new"> 301 </span>
+<span class="new"> 302 </span>
+<span class="new"> 303 class MetaspaceUtils : AllStatic {</span>
+<span class="new"> 304 public:</span>
+<span class="new"> 305 </span>
+<span class="new"> 306   // Committed space actually in use by Metadata</span>
+<span class="new"> 307   static size_t used_words();</span>
+<span class="new"> 308   static size_t used_words(Metaspace::MetadataType mdtype);</span>
+<span class="new"> 309 </span>
+<span class="new"> 310   // Space committed for Metaspace</span>
+<span class="new"> 311   static size_t committed_words();</span>
+<span class="new"> 312   static size_t committed_words(Metaspace::MetadataType mdtype);</span>
+<span class="new"> 313 </span>
+<span class="new"> 314   // Space reserved for Metaspace</span>
+<span class="new"> 315   static size_t reserved_words();</span>
+<span class="new"> 316   static size_t reserved_words(Metaspace::MetadataType mdtype);</span>
+<span class="new"> 317 </span>
+<span class="new"> 318   // _bytes() variants for convenience...</span>
+<span class="new"> 319   static size_t used_bytes()                                    { return used_words() * BytesPerWord; }</span>
+<span class="new"> 320   static size_t used_bytes(Metaspace::MetadataType mdtype)      { return used_words(mdtype) * BytesPerWord; }</span>
+<span class="new"> 321   static size_t committed_bytes()                               { return committed_words() * BytesPerWord; }</span>
+<span class="new"> 322   static size_t committed_bytes(Metaspace::MetadataType mdtype) { return committed_words(mdtype) * BytesPerWord; }</span>
+<span class="new"> 323   static size_t reserved_bytes()                                { return reserved_words() * BytesPerWord; }</span>
+<span class="new"> 324   static size_t reserved_bytes(Metaspace::MetadataType mdtype)  { return reserved_words(mdtype) * BytesPerWord; }</span>
+<span class="new"> 325 </span>
+<span class="new"> 326   // (See JDK-8251342). Implement or Consolidate.</span>
+<span class="new"> 327   static MetaspaceChunkFreeListSummary chunk_free_list_summary(Metaspace::MetadataType mdtype) {</span>
+<span class="new"> 328     return MetaspaceChunkFreeListSummary(0,0,0,0,0,0,0,0);</span>
+<span class="new"> 329   }</span>
+<span class="new"> 330 </span>
+<span class="new"> 331   // Log change in used metadata.</span>
+<span class="new"> 332   static void print_metaspace_change(const metaspace::MetaspaceSizesSnapshot&amp; pre_meta_values);</span>
+<span class="new"> 333 </span>
+<span class="new"> 334   // This will print out a basic metaspace usage report but</span>
+<span class="new"> 335   // unlike print_report() is guaranteed not to lock or to walk the CLDG.</span>
+<span class="new"> 336   static void print_basic_report(outputStream* st, size_t scale = 0);</span>
+<span class="new"> 337 </span>
+<span class="new"> 338   // Prints a report about the current metaspace state.</span>
+<span class="new"> 339   // Function will walk the CLDG and will lock the expand lock; if that is not</span>
+<span class="new"> 340   // convenient, use print_basic_report() instead.</span>
+<span class="new"> 341   static void print_report(outputStream* out, size_t scale = 0);</span>
+<span class="new"> 342 </span>
+<span class="new"> 343   static void print_on(outputStream * out);</span>
+<span class="new"> 344 </span>
+<span class="new"> 345   DEBUG_ONLY(static void verify();)</span>
+<span class="new"> 346 </span>
+ 347 };
+ 348 
+ 349 #endif // SHARE_MEMORY_METASPACE_HPP
 <a name="43" id="anc43"></a><b style="font-size: large; color: red">--- EOF ---</b>
 
 

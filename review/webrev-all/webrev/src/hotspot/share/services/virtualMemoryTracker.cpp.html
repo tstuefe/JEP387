@@ -749,16 +749,15 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  667   mss._committed_in_bytes[type]  = MetaspaceUtils::committed_bytes(type);
  668   mss._used_in_bytes[type]       = MetaspaceUtils::used_bytes(type);
  669 
- 670   size_t free_in_bytes = 0;// TODO fix(MetaspaceUtils::capacity_bytes(type) - MetaspaceUtils::used_bytes(type))
- 671                      //  + MetaspaceUtils::free_chunks_total_bytes(type)
- 672                      //  + MetaspaceUtils::free_in_vs_bytes(type);
- 673   mss._free_in_bytes[type] = free_in_bytes;
- 674 }
- 675 
- 676 void MetaspaceSnapshot::snapshot(MetaspaceSnapshot&amp; mss) {
- 677   snapshot(Metaspace::ClassType, mss);
- 678   if (Metaspace::using_class_space()) {
- 679     snapshot(Metaspace::NonClassType, mss);
- 680   }
- 681 }
+ 670   // The answer to "what is free" in metaspace is complex and cannot be answered with a single number.
+ 671   // Free as in available to all loaders? Free, pinned to one loader? For now, keep it simple.
+ 672   mss._free_in_bytes[type] = mss._committed_in_bytes[type] - mss._used_in_bytes[type];
+ 673 }
+ 674 
+ 675 void MetaspaceSnapshot::snapshot(MetaspaceSnapshot&amp; mss) {
+ 676   snapshot(Metaspace::ClassType, mss);
+ 677   if (Metaspace::using_class_space()) {
+ 678     snapshot(Metaspace::NonClassType, mss);
+ 679   }
+ 680 }
 </pre></body></html>

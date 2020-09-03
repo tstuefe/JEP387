@@ -91,7 +91,7 @@ span.new {
 <center><a href='../../../../../src/hotspot/share/gc/shared/gcVMOperations.hpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/generationSpec.cpp.udiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/gc/shared/genCollectedHeap.cpp</h2>
         <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre>
         <pre>
 </pre><hr /><pre>
 <span class="newmarker">@@ -57,10 +57,11 @@</span>
@@ -112,9 +112,9 @@ span.new {
      _young_gen-&gt;compute_new_size();
  
      // Delete metaspaces for unloaded class loaders and clean up loader_data graph
-     ClassLoaderDataGraph::purge();
+     ClassLoaderDataGraph::purge(/*at_safepoint*/true);
 <span class="removed">-    MetaspaceUtils::verify_metrics();</span>
-<span class="new">+    DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
+<span class="new">+    DEBUG_ONLY(MetaspaceUtils::verify();)</span>
      // Resize the metaspace capacity after full collections
      MetaspaceGC::compute_new_size();
      update_full_collections_completed();

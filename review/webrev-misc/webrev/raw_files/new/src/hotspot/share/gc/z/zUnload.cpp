@@ -157,12 +157,12 @@ void ZUnload::purge() {
     ZNMethod::purge(_workers);
   }
 
-  ClassLoaderDataGraph::purge();
+  ClassLoaderDataGraph::purge(/*at_safepoint*/false);
   CodeCache::purge_exception_caches();
 }
 
 void ZUnload::finish() {
   // Resize and verify metaspace
   MetaspaceGC::compute_new_size();
-  DEBUG_ONLY(MetaspaceUtils::verify(false);)
+  DEBUG_ONLY(MetaspaceUtils::verify();)
 }

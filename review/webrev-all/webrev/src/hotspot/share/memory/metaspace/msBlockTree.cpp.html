@@ -1,0 +1,292 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msBlockTree.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "memory/metaspace/msBlockTree.hpp"
+  29 #include "utilities/debug.hpp"
+  30 #include "utilities/globalDefinitions.hpp"
+  31 #include "utilities/growableArray.hpp"
+  32 #include "utilities/ostream.hpp"
+  33 
+  34 namespace metaspace {
+  35 
+  36 #ifdef ASSERT
+  37 
+  38 // Tree verification
+  39 
+  40 // These asserts prints the tree, then asserts
+  41 #define assrt(cond, format, ...) \
+  42   do { \
+  43     if (!(cond)) { \
+  44       print_tree(tty); \
+  45       assert(cond, format, __VA_ARGS__); \
+  46     } \
+  47   } while(0)
+  48 
+  49   // This assert prints the tree, then stops (generic message)
+  50 #define assrt0(cond) \
+  51   do { \
+  52     if (!(cond)) { \
+  53       print_tree(tty); \
+  54       assert(cond, "sanity"); \
+  55     } \
+  56   } while(0)
+  57 
+  58 
+  59 void BlockTree::verify() const {
+  60 
+  61   // Traverse the tree and test that all nodes are in the correct order.
+  62 
+  63   MemRangeCounter counter;
+  64   int longest_edge = 0;
+  65 
+  66   if (_root != NULL) {
+  67 
+  68     // walkinfo keeps a node plus the size corridor it and its children
+  69     //  are supposed to be in.
+  70     struct walkinfo {
+  71       Node* n;
+  72       size_t lim1; // (
+  73       size_t lim2; // )
+  74       int depth;
+  75     };
+  76 
+  77     ResourceMark rm;
+  78 
+  79     GrowableArray&lt;walkinfo&gt; stack;
+  80 
+  81     walkinfo info;
+  82     info.n = _root;
+  83     info.lim1 = 0;
+  84     info.lim2 = SIZE_MAX;
+  85     info.depth = 0;
+  86 
+  87     stack.push(info);
+  88 
+  89     while (stack.length() &gt; 0) {
+  90 
+  91       info = stack.pop();
+  92       const Node* n = info.n;
+  93 
+  94       // Assume a (ridiculously large) edge limit to catch cases
+  95       //  of badly degenerated or circular trees.
+  96       assrt0(info.depth &lt; 10000);
+  97 
+  98       counter.add(n-&gt;_word_size);
+  99 
+ 100       // Verify node.
+ 101       if (n == _root) {
+ 102         assrt0(n-&gt;_parent == NULL);
+ 103       } else {
+ 104         assrt0(n-&gt;_parent != NULL);
+ 105       }
+ 106 
+ 107       // check size and ordering
+ 108       assrt(n-&gt;_word_size &gt;= MinWordSize, "bad node size " SIZE_FORMAT, n-&gt;_word_size);
+ 109       assrt0(n-&gt;_word_size &gt; info.lim1);
+ 110       assrt0(n-&gt;_word_size &lt; info.lim2);
+ 111 
+ 112       // Check children
+ 113       if (n-&gt;_left != NULL) {
+ 114         assrt0(n-&gt;_left != n);
+ 115         assrt0(n-&gt;_left-&gt;_parent == n);
+ 116 
+ 117         walkinfo info2;
+ 118         info2.n = n-&gt;_left;
+ 119         info2.lim1 = info.lim1;
+ 120         info2.lim2 = n-&gt;_word_size;
+ 121         info2.depth = info.depth + 1;
+ 122         stack.push(info2);
+ 123       }
+ 124 
+ 125       if (n-&gt;_right != NULL) {
+ 126         assrt0(n-&gt;_right != n);
+ 127         assrt0(n-&gt;_right-&gt;_parent == n);
+ 128 
+ 129         walkinfo info2;
+ 130         info2.n = n-&gt;_right;
+ 131         info2.lim1 = n-&gt;_word_size;
+ 132         info2.lim2 = info.lim2;
+ 133         info2.depth = info.depth + 1;
+ 134         stack.push(info2);
+ 135       }
+ 136 
+ 137       // If node has same-sized siblings check those too.
+ 138       const Node* n2 = n-&gt;_next;
+ 139       while (n2 != NULL) {
+ 140         assrt0(n2 != n);
+ 141         assrt0(n2-&gt;_word_size == n-&gt;_word_size);
+ 142         counter.add(n2-&gt;_word_size);
+ 143         n2 = n2-&gt;_next;
+ 144       }
+ 145     }
+ 146   }
+ 147 
+ 148   // At the end, check that counters match
+ 149   _counter.check(counter);
+ 150 
+ 151 }
+ 152 
+ 153 void BlockTree::zap_range(MetaWord* p, size_t word_size) {
+ 154   memset(p, 0xF3, word_size * sizeof(MetaWord));
+ 155 }
+ 156 
+ 157 #undef assrt
+ 158 #undef assrt0
+ 159 
+ 160 void BlockTree::print_node(outputStream* st, Node* n, int lvl) {
+ 161   for (int i = 0; i &lt; lvl; i++) {
+ 162     st-&gt;print("---");
+ 163   }
+ 164   st-&gt;print_cr("&lt;" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n-&gt;_word_size);
+ 165 }
+ 166 
+ 167 void BlockTree::print_tree(outputStream* st) const {
+ 168 
+ 169   if (_root != NULL) {
+ 170 
+ 171     ResourceMark rm;
+ 172 
+ 173     struct walkinfo {
+ 174       Node* n;
+ 175       int depth;
+ 176     };
+ 177 
+ 178     GrowableArray&lt;walkinfo&gt; stack;
+ 179 
+ 180     walkinfo info;
+ 181     info.n = _root;
+ 182     info.depth = 0;
+ 183 
+ 184     stack.push(info);
+ 185     while (stack.length() &gt; 0) {
+ 186       info = stack.pop();
+ 187       print_node(st, info.n, info.depth);
+ 188       if (info.n-&gt;_right != NULL) {
+ 189         walkinfo info2;
+ 190         info2.n = info.n-&gt;_right;
+ 191         info2.depth = info.depth + 1;
+ 192         stack.push(info2);
+ 193       }
+ 194       if (info.n-&gt;_left != NULL) {
+ 195         walkinfo info2;
+ 196         info2.n = info.n-&gt;_left;
+ 197         info2.depth = info.depth + 1;
+ 198         stack.push(info2);
+ 199       }
+ 200     }
+ 201 
+ 202   } else {
+ 203     st-&gt;print_cr("&lt;no nodes&gt;");
+ 204   }
+ 205 }
+ 206 
+ 207 #endif // ASSERT
+ 208 
+ 209 } // namespace metaspace
+</pre></body></html>

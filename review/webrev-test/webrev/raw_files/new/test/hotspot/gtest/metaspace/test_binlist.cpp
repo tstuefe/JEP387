@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,10 +25,15 @@
 
 #include "precompiled.hpp"
 
+#include "memory/metaspace/msBinList.hpp"
+#include "memory/metaspace/msCounter.hpp"
+
 //#define LOG_PLEASE
+#include "metaspaceGtestCommon.hpp"
 
-#include "metaspaceTestsCommon.hpp"
-
+using metaspace::BinList32;
+using metaspace::BinListImpl;
+using metaspace::MemRangeCounter;
 
 #define CHECK_BL_CONTENT(bl, expected_num, expected_size) { \
   EXPECT_EQ(bl.count(), (unsigned)expected_num); \
@@ -39,7 +44,6 @@
     EXPECT_FALSE(bl.is_empty()); \
   } \
 }
-
 
 template <class BINLISTTYPE>
 struct BinListBasicTest {
@@ -59,7 +63,7 @@ struct BinListBasicTest {
 
     // Try to get a block from an empty list.
     size_t real_size = 4711;
-    MetaWord* p = bl.get_block(innocous_size, &real_size);
+    MetaWord* p = bl.remove_block(innocous_size, &real_size);
     EXPECT_EQ(p, (MetaWord*)NULL);
     EXPECT_EQ((size_t)0, real_size);
 
@@ -70,7 +74,7 @@ struct BinListBasicTest {
 
     // And retrieve it.
     real_size = 4711;
-    p = bl.get_block(innocous_size, &real_size);
+    p = bl.remove_block(innocous_size, &real_size);
     EXPECT_EQ(p, arr);
     EXPECT_EQ((size_t)innocous_size, real_size);
     CHECK_BL_CONTENT(bl, 0, 0);
@@ -86,15 +90,15 @@ struct BinListBasicTest {
 
     MetaWord arr[1000];
 
-    for (size_t s1 = minws; s1 < maxws; s1 ++) {
-      for (size_t s2 = minws; s2 < maxws; s2 ++) {
+    for (size_t s1 = minws; s1 <= maxws; s1++) {
+      for (size_t s2 = minws; s2 <= maxws; s2++) {
 
         bl.add_block(arr, s1);
         CHECK_BL_CONTENT(bl, 1, s1);
         DEBUG_ONLY(bl.verify();)
 
         size_t real_size = 4711;
-        MetaWord* p = bl.get_block(s2, &real_size);
+        MetaWord* p = bl.remove_block(s2, &real_size);
         if (s1 >= s2) {
           EXPECT_EQ(p, arr);
           EXPECT_EQ((size_t)s1, real_size);
@@ -106,7 +110,7 @@ struct BinListBasicTest {
           CHECK_BL_CONTENT(bl, 1, s1);
           DEBUG_ONLY(bl.verify();)
           // drain bl
-          p = bl.get_block(minws, &real_size);
+          p = bl.remove_block(minws, &real_size);
           EXPECT_EQ(p, arr);
           EXPECT_EQ((size_t)s1, real_size);
           CHECK_BL_CONTENT(bl, 0, 0);
@@ -127,7 +131,7 @@ struct BinListBasicTest {
   ASSERT_EQ(cnt[1].total_size(), bl[1].total_size());
 
     FeederBuffer fb(1024);
-    RandSizeGenerator rgen(minws, maxws);
+    RandSizeGenerator rgen(minws, maxws + 1);
 
     // feed all
     int which = 0;
@@ -148,13 +152,13 @@ struct BinListBasicTest {
     DEBUG_ONLY(bl[1].verify();)
 
     // play pingpong
-    for (int iter = 0; iter < 1000; iter ++) {
+    for (int iter = 0; iter < 1000; iter++) {
       size_t s = rgen.get();
       int taker = iter % 2;
       int giver = taker == 0 ? 1 : 0;
 
       size_t real_size = 4711;
-      MetaWord* p = bl[giver].get_block(s, &real_size);
+      MetaWord* p = bl[giver].remove_block(s, &real_size);
       if (p != NULL) {
 
         ASSERT_TRUE(fb.is_valid_range(p, real_size));
@@ -177,12 +181,12 @@ struct BinListBasicTest {
     DEBUG_ONLY(bl[1].verify();)
 
     // drain both lists.
-    for (int which = 0; which < 2; which ++) {
+    for (int which = 0; which < 2; which++) {
       size_t last_size = 0;
       while (bl[which].is_empty() == false) {
 
         size_t real_size = 4711;
-        MetaWord* p = bl[which].get_block(minws, &real_size);
+        MetaWord* p = bl[which].remove_block(minws, &real_size);
 
         ASSERT_NE(p, (MetaWord*) NULL);
         ASSERT_GE(real_size, minws);
@@ -200,33 +204,27 @@ struct BinListBasicTest {
       }
     }
 
-
   }
 };
 
-template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::minws = BINLISTTYPE::minimal_word_size;
-template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::maxws = BINLISTTYPE::maximal_word_size;
+template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::minws = BINLISTTYPE::MinWordSize;
+template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::maxws = BINLISTTYPE::MaxWordSize;
 
+TEST_VM(metaspace, BinList_basic_8)     { BinListBasicTest< BinListImpl<2, 8> >::basic_test(); }
+TEST_VM(metaspace, BinList_basic_16)    { BinListBasicTest< BinListImpl<2, 16> >::basic_test(); }
+TEST_VM(metaspace, BinList_basic_32)    { BinListBasicTest<BinList32>::basic_test(); }
+TEST_VM(metaspace, BinList_basic_1331)  { BinListBasicTest< BinListImpl<13, 31> >::basic_test(); }
+TEST_VM(metaspace, BinList_basic_131)   { BinListBasicTest< BinListImpl<13, 1> >::basic_test(); }
 
-TEST_VM(metaspace, BinList_basic_8)   { BinListBasicTest<metaspace::BinList8>::basic_test(); }
-TEST_VM(metaspace, BinList_basic_16)  { BinListBasicTest<metaspace::BinList16>::basic_test(); }
-TEST_VM(metaspace, BinList_basic_32)  { BinListBasicTest<metaspace::BinList32>::basic_test(); }
-//TEST_VM(metaspace, BinList_basic_64)  { BinListBasicTest<metaspace::BinList64>::basic_test(); }
+TEST_VM(metaspace, BinList_basic2_8)     { BinListBasicTest< BinListImpl<2, 8> >::basic_test_2(); }
+TEST_VM(metaspace, BinList_basic2_16)    { BinListBasicTest< BinListImpl<2, 16> >::basic_test_2(); }
+TEST_VM(metaspace, BinList_basic2_32)    { BinListBasicTest<BinList32 >::basic_test_2(); }
+TEST_VM(metaspace, BinList_basic2_1331)  { BinListBasicTest< BinListImpl<13, 31> >::basic_test_2(); }
+TEST_VM(metaspace, BinList_basic2_131)   { BinListBasicTest< BinListImpl<13, 1> >::basic_test_2(); }
 
-TEST_VM(metaspace, BinList_basic_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::basic_test(); }
-TEST_VM(metaspace, BinList_basic_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::basic_test(); }
-
-TEST_VM(metaspace, BinList_basic2_8)   { BinListBasicTest<metaspace::BinList8>::basic_test_2(); }
-TEST_VM(metaspace, BinList_basic2_16)  { BinListBasicTest<metaspace::BinList16>::basic_test_2(); }
-TEST_VM(metaspace, BinList_basic2_32)  { BinListBasicTest<metaspace::BinList32>::basic_test_2(); }
-
-TEST_VM(metaspace, BinList_basic2_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::basic_test_2(); }
-TEST_VM(metaspace, BinList_basic2_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::basic_test_2(); }
-
-TEST_VM(metaspace, BinList_random_test_8)   { BinListBasicTest<metaspace::BinList8>::random_test(); }
-TEST_VM(metaspace, BinList_random_test_16)  { BinListBasicTest<metaspace::BinList16>::random_test(); }
-TEST_VM(metaspace, BinList_random_test_32)  { BinListBasicTest<metaspace::BinList32>::random_test(); }
-
-TEST_VM(metaspace, BinList_random_test_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::random_test(); }
-TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::random_test(); }
+TEST_VM(metaspace, BinList_random_test_8)     { BinListBasicTest< BinListImpl<2, 8> >::random_test(); }
+TEST_VM(metaspace, BinList_random_test_16)    { BinListBasicTest< BinListImpl<2, 16> >::random_test(); }
+TEST_VM(metaspace, BinList_random_test_32)    { BinListBasicTest<BinList32>::random_test(); }
+TEST_VM(metaspace, BinList_random_test_1331)  { BinListBasicTest< BinListImpl<13, 31> >::random_test(); }
+TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest< BinListImpl<13, 1> >::random_test(); }
 

@@ -82,7 +82,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center><a href='../../../../src/hotspot/share/runtime/globals.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/vmStructs.cpp.sdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/runtime/vmOperations.cpp</h2>
 <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre>
 
 <table><tr valign="top">
 <td><pre>
@@ -98,7 +98,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   23  */
   24 
   25 #include "precompiled.hpp"
-  26 #include "classfile/symbolTable.hpp"
+  26 #include "classfile/classLoaderDataGraph.hpp"
   27 #include "classfile/vmSymbols.hpp"
   28 #include "code/codeCache.hpp"
   29 #include "compiler/compileBroker.hpp"
@@ -116,62 +116,62 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   40 #include "runtime/deoptimization.hpp"
   41 #include "runtime/frame.inline.hpp"
   42 #include "runtime/interfaceSupport.inline.hpp"
-  43 #include "runtime/sweeper.hpp"
-  44 #include "runtime/synchronizer.hpp"
-  45 #include "runtime/thread.inline.hpp"
-  46 #include "runtime/threadSMR.inline.hpp"
-  47 #include "runtime/vmOperations.hpp"
-  48 #include "services/threadService.hpp"
-  49 
-  50 #define VM_OP_NAME_INITIALIZE(name) #name,
-  51 
-  52 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
-  53   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
-  54 
-  55 void VM_Operation::set_calling_thread(Thread* thread) {
+  43 #include "runtime/synchronizer.hpp"
+  44 #include "runtime/thread.inline.hpp"
+  45 #include "runtime/threadSMR.inline.hpp"
+  46 #include "runtime/vmOperations.hpp"
+  47 #include "services/threadService.hpp"
+  48 
+  49 #define VM_OP_NAME_INITIALIZE(name) #name,
+  50 
+  51 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
+  52   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
+  53 
+  54 void VM_Operation::set_calling_thread(Thread* thread) {
+  55   _calling_thread = thread;
 
 </pre><hr></hr><pre>
- 166   }
- 167   return true;
- 168 }
- 169 
- 170 void VM_PrintThreads::doit() {
- 171   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
- 172 }
- 173 
- 174 void VM_PrintThreads::doit_epilogue() {
- 175   if (_print_concurrent_locks) {
- 176     // Release Heap_lock
- 177     Heap_lock-&gt;unlock();
- 178   }
- 179 }
- 180 
- 181 void VM_PrintJNI::doit() {
- 182   JNIHandles::print_on(_out);
- 183 }
- 184 
- 185 void VM_PrintMetadata::doit() {
-<span class="changed"> 186   MetaspaceUtils::print_report(_out, _scale, _flags);</span>
- 187 }
- 188 
- 189 VM_FindDeadlocks::~VM_FindDeadlocks() {
- 190   if (_deadlocks != NULL) {
- 191     DeadlockCycle* cycle = _deadlocks;
- 192     while (cycle != NULL) {
- 193       DeadlockCycle* d = cycle;
- 194       cycle = cycle-&gt;next();
- 195       delete d;
- 196     }
- 197   }
- 198 }
- 199 
- 200 void VM_FindDeadlocks::doit() {
- 201   // Update the hazard ptr in the originating thread to the current
- 202   // list of threads. This VM operation needs the current list of
- 203   // threads for proper deadlock detection and those are the
- 204   // JavaThreads we need to be protected when we return info to the
- 205   // originating thread.
- 206   _setter.set();
+ 169   }
+ 170   return true;
+ 171 }
+ 172 
+ 173 void VM_PrintThreads::doit() {
+ 174   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
+ 175 }
+ 176 
+ 177 void VM_PrintThreads::doit_epilogue() {
+ 178   if (_print_concurrent_locks) {
+ 179     // Release Heap_lock
+ 180     Heap_lock-&gt;unlock();
+ 181   }
+ 182 }
+ 183 
+ 184 void VM_PrintJNI::doit() {
+ 185   JNIHandles::print_on(_out);
+ 186 }
+ 187 
+ 188 void VM_PrintMetadata::doit() {
+<span class="changed"> 189   MetaspaceUtils::print_report(_out, _scale, _flags);</span>
+ 190 }
+ 191 
+ 192 VM_FindDeadlocks::~VM_FindDeadlocks() {
+ 193   if (_deadlocks != NULL) {
+ 194     DeadlockCycle* cycle = _deadlocks;
+ 195     while (cycle != NULL) {
+ 196       DeadlockCycle* d = cycle;
+ 197       cycle = cycle-&gt;next();
+ 198       delete d;
+ 199     }
+ 200   }
+ 201 }
+ 202 
+ 203 void VM_FindDeadlocks::doit() {
+ 204   // Update the hazard ptr in the originating thread to the current
+ 205   // list of threads. This VM operation needs the current list of
+ 206   // threads for proper deadlock detection and those are the
+ 207   // JavaThreads we need to be protected when we return info to the
+ 208   // originating thread.
+ 209   _setter.set();
 
 </pre><hr></hr>
 </pre></td><td><pre>
@@ -187,7 +187,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   23  */
   24 
   25 #include "precompiled.hpp"
-  26 #include "classfile/symbolTable.hpp"
+  26 #include "classfile/classLoaderDataGraph.hpp"
   27 #include "classfile/vmSymbols.hpp"
   28 #include "code/codeCache.hpp"
   29 #include "compiler/compileBroker.hpp"
@@ -197,7 +197,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   33 #include "logging/logStream.hpp"
   34 #include "logging/logConfiguration.hpp"
   35 #include "memory/heapInspection.hpp"
-<span class="new">  36 #include "memory/metaspace/metaspaceReport.hpp"</span>
+<span class="new">  36 #include "memory/metaspace/msReport.hpp"</span>
   37 #include "memory/resourceArea.hpp"
   38 #include "memory/universe.hpp"
   39 #include "oops/symbol.hpp"
@@ -205,62 +205,62 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   41 #include "runtime/deoptimization.hpp"
   42 #include "runtime/frame.inline.hpp"
   43 #include "runtime/interfaceSupport.inline.hpp"
-  44 #include "runtime/sweeper.hpp"
-  45 #include "runtime/synchronizer.hpp"
-  46 #include "runtime/thread.inline.hpp"
-  47 #include "runtime/threadSMR.inline.hpp"
-  48 #include "runtime/vmOperations.hpp"
-  49 #include "services/threadService.hpp"
-  50 
-  51 #define VM_OP_NAME_INITIALIZE(name) #name,
-  52 
-  53 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
-  54   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
-  55 
-  56 void VM_Operation::set_calling_thread(Thread* thread) {
+  44 #include "runtime/synchronizer.hpp"
+  45 #include "runtime/thread.inline.hpp"
+  46 #include "runtime/threadSMR.inline.hpp"
+  47 #include "runtime/vmOperations.hpp"
+  48 #include "services/threadService.hpp"
+  49 
+  50 #define VM_OP_NAME_INITIALIZE(name) #name,
+  51 
+  52 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
+  53   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
+  54 
+  55 void VM_Operation::set_calling_thread(Thread* thread) {
+  56   _calling_thread = thread;
 
 </pre><hr></hr><pre>
- 167   }
- 168   return true;
- 169 }
- 170 
- 171 void VM_PrintThreads::doit() {
- 172   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
- 173 }
- 174 
- 175 void VM_PrintThreads::doit_epilogue() {
- 176   if (_print_concurrent_locks) {
- 177     // Release Heap_lock
- 178     Heap_lock-&gt;unlock();
- 179   }
- 180 }
- 181 
- 182 void VM_PrintJNI::doit() {
- 183   JNIHandles::print_on(_out);
- 184 }
- 185 
- 186 void VM_PrintMetadata::doit() {
-<span class="changed"> 187   metaspace::MetaspaceReporter::print_report(_out, _scale, _flags);</span>
- 188 }
- 189 
- 190 VM_FindDeadlocks::~VM_FindDeadlocks() {
- 191   if (_deadlocks != NULL) {
- 192     DeadlockCycle* cycle = _deadlocks;
- 193     while (cycle != NULL) {
- 194       DeadlockCycle* d = cycle;
- 195       cycle = cycle-&gt;next();
- 196       delete d;
- 197     }
- 198   }
- 199 }
- 200 
- 201 void VM_FindDeadlocks::doit() {
- 202   // Update the hazard ptr in the originating thread to the current
- 203   // list of threads. This VM operation needs the current list of
- 204   // threads for proper deadlock detection and those are the
- 205   // JavaThreads we need to be protected when we return info to the
- 206   // originating thread.
- 207   _setter.set();
+ 170   }
+ 171   return true;
+ 172 }
+ 173 
+ 174 void VM_PrintThreads::doit() {
+ 175   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
+ 176 }
+ 177 
+ 178 void VM_PrintThreads::doit_epilogue() {
+ 179   if (_print_concurrent_locks) {
+ 180     // Release Heap_lock
+ 181     Heap_lock-&gt;unlock();
+ 182   }
+ 183 }
+ 184 
+ 185 void VM_PrintJNI::doit() {
+ 186   JNIHandles::print_on(_out);
+ 187 }
+ 188 
+ 189 void VM_PrintMetadata::doit() {
+<span class="changed"> 190   metaspace::MetaspaceReporter::print_report(_out, _scale, _flags);</span>
+ 191 }
+ 192 
+ 193 VM_FindDeadlocks::~VM_FindDeadlocks() {
+ 194   if (_deadlocks != NULL) {
+ 195     DeadlockCycle* cycle = _deadlocks;
+ 196     while (cycle != NULL) {
+ 197       DeadlockCycle* d = cycle;
+ 198       cycle = cycle-&gt;next();
+ 199       delete d;
+ 200     }
+ 201   }
+ 202 }
+ 203 
+ 204 void VM_FindDeadlocks::doit() {
+ 205   // Update the hazard ptr in the originating thread to the current
+ 206   // list of threads. This VM operation needs the current list of
+ 207   // threads for proper deadlock detection and those are the
+ 208   // JavaThreads we need to be protected when we return info to the
+ 209   // originating thread.
+ 210   _setter.set();
 
 </pre><hr></hr>
 </pre></td>

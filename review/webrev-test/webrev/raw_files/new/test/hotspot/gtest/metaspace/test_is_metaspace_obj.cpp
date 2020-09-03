@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -27,15 +27,13 @@
 
 #include "memory/allocation.inline.hpp"
 #include "memory/metaspace.hpp"
-#include "memory/metaspace/virtualSpaceList.hpp"
+#include "memory/metaspace/msVirtualSpaceList.hpp"
 #include "runtime/mutex.hpp"
 #include "runtime/mutexLocker.hpp"
 #include "runtime/os.hpp"
 #include "unittest.hpp"
 
 using namespace metaspace;
-
-
 
 // Test the cheerful multitude of metaspace-contains-functions.
 class MetaspaceIsMetaspaceObjTest {

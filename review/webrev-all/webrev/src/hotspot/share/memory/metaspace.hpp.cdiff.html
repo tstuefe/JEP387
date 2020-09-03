@@ -80,10 +80,10 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <title>source Cdiff src/hotspot/share/memory/metaspace.hpp</title>
 </head>
 <body id="SUNWwebrev">
-<center><a href='../../../../src/hotspot/share/memory/metaspace.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace/chunkManager.cpp.cdiff.html' target='_top'>next &gt</a></center>
+<center><a href='../../../../src/hotspot/share/memory/metaspace.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp.cdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/memory/metaspace.hpp</h2>
         <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre>
         <pre>
 <hr /><span class="oldmarker">*** 26,102 ****</span>
   
@@ -182,7 +182,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   namespace metaspace {
 <span class="changed">!   class MetaspaceArena;</span>
 <span class="changed">!   class MetaspaceSizesSnapshot;</span>
-<span class="changed">!   struct clms_stats_t;</span>
+<span class="changed">!   struct ClmsStats;</span>
   }
   
 <span class="changed">! ////////////////// Metaspace ///////////////////////</span>
@@ -216,14 +216,14 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   static size_t compressed_class_space_size() {</span>
 <span class="changed">!     return _compressed_class_space_size;</span>
 <span class="changed">!   }</span>
-<span class="changed">! </span>
-<span class="changed">!   static void set_compressed_class_space_size(size_t size) {</span>
-<span class="changed">!     _compressed_class_space_size = size;</span>
-<span class="changed">!   }</span>
-<span class="changed">! </span>
-<span class="changed">!   static size_t _first_chunk_word_size;</span>
-<span class="changed">!   static size_t _first_class_chunk_word_size;</span>
   
+<span class="removed">-   static void set_compressed_class_space_size(size_t size) {</span>
+<span class="removed">-     _compressed_class_space_size = size;</span>
+<span class="removed">-   }</span>
+<span class="removed">- </span>
+<span class="removed">-   static size_t _first_chunk_word_size;</span>
+<span class="removed">-   static size_t _first_class_chunk_word_size;</span>
+<span class="removed">- </span>
 <span class="removed">-   static size_t _commit_alignment;</span>
 <span class="removed">-   static size_t _reserve_alignment;</span>
     DEBUG_ONLY(static bool   _frozen;)
@@ -283,7 +283,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     static void freeze() {
       assert(DumpSharedSpaces, "sanity");
       DEBUG_ONLY(_frozen = true;)
-<hr /><span class="oldmarker">*** 186,447 ****</span>
+<hr /><span class="oldmarker">*** 186,227 ****</span>
   
     // Given a prereserved space, use that to set up the compressed class space list.
     static void initialize_class_space(ReservedSpace rs);
@@ -321,20 +321,62 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   
     static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
 <span class="changed">!                                    MetaspaceObj::Type type, MetadataType mdtype, TRAPS);</span>
-<span class="changed">! </span>
-<span class="changed">!   static const char* metadata_type_name(Metaspace::MetadataType mdtype);</span>
+  
+    static const char* metadata_type_name(Metaspace::MetadataType mdtype);
   
     static void print_compressed_class_space(outputStream* st) NOT_LP64({});
   
-    // Return TRUE only if UseCompressedClassPointers is True.
-    static bool using_class_space() {
-      return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
+<span class="newmarker">--- 100,143 ----</span>
+  
+    // Given a prereserved space, use that to set up the compressed class space list.
+    static void initialize_class_space(ReservedSpace rs);
+  
+    // Returns true if class space has been setup (initialize_class_space).
+<span class="changed">!   static bool class_space_is_initialized();</span>
+  
+  #endif
+  
+   public:
+  
+    static void ergo_initialize();
+    static void global_initialize();
+    static void post_initialize();
+  
+<span class="changed">!   // Alignment, in bytes, of metaspace mappings</span>
+<span class="changed">!   static size_t reserve_alignment()       { return reserve_alignment_words() * BytesPerWord; }</span>
+<span class="changed">!   // Alignment, in words, of metaspace mappings</span>
+<span class="changed">!   static size_t reserve_alignment_words();</span>
+<span class="changed">! </span>
+<span class="changed">!   // The granularity at which Metaspace is committed and uncommitted.</span>
+<span class="changed">!   // (Todo: Why does this have to be exposed?)</span>
+<span class="changed">!   static size_t commit_alignment()        { return commit_alignment_words() * BytesPerWord; }</span>
+<span class="changed">!   static size_t commit_alignment_words();</span>
+  
+<span class="changed">!   // The largest possible single allocation</span>
+<span class="changed">!   static size_t max_allocation_word_size();</span>
+  
+    static MetaWord* allocate(ClassLoaderData* loader_data, size_t word_size,
+                              MetaspaceObj::Type type, TRAPS);
+  
+    static bool contains(const void* ptr);
+    static bool contains_non_shared(const void* ptr);
+  
+    // Free empty virtualspaces
+    static void purge();
+  
+    static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
+<span class="changed">!                                    MetaspaceObj::Type type, Metaspace::MetadataType mdtype, TRAPS);</span>
+  
+    static const char* metadata_type_name(Metaspace::MetadataType mdtype);
+  
+    static void print_compressed_class_space(outputStream* st) NOT_LP64({});
+  
+<hr /><span class="oldmarker">*** 232,447 ****</span>
+  
+    static bool is_class_space_allocation(MetadataType mdType) {
+      return mdType == ClassType &amp;&amp; using_class_space();
     }
   
-<span class="changed">!   static bool is_class_space_allocation(MetadataType mdType) {</span>
-<span class="changed">!     return mdType == ClassType &amp;&amp; using_class_space();</span>
-<span class="changed">!   }</span>
-<span class="changed">! </span>
 <span class="changed">!   static bool initialized() { return _initialized; }</span>
   
   };
@@ -348,9 +390,9 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="removed">-   friend class MetaspaceUtils;</span>
 <span class="removed">-   friend class metaspace::PrintCLDMetaspaceInfoClosure;</span>
 <span class="removed">-   friend class VM_CollectForMetadataAllocation; // For expand_and_allocate()</span>
+<span class="removed">- </span>
+<span class="removed">-  private:</span>
   
-<span class="changed">!  private:</span>
-<span class="changed">! </span>
 <span class="changed">!   void initialize(Mutex* lock, Metaspace::MetaspaceType type);</span>
 <span class="changed">! </span>
 <span class="changed">!   // Initialize the first chunk for a Metaspace.  Used for</span>
@@ -376,14 +418,14 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   MetaWord* expand_and_allocate(size_t size, Metaspace::MetadataType mdtype);</span>
 <span class="changed">! </span>
 <span class="changed">!   size_t class_chunk_size(size_t word_size);</span>
-  
+<span class="changed">! </span>
 <span class="changed">!   // Adds to the given statistic object. Must be locked with CLD metaspace lock.</span>
 <span class="changed">!   void add_to_statistics_locked(metaspace::ClassLoaderMetaspaceStatistics* out) const;</span>
   
 <span class="changed">!   Metaspace::MetaspaceType space_type() const { return _space_type; }</span>
   
-<span class="removed">-  public:</span>
-<span class="removed">- </span>
+<span class="changed">!  public:</span>
+  
 <span class="removed">-   ClassLoaderMetaspace(Mutex* lock, Metaspace::MetaspaceType type);</span>
     ~ClassLoaderMetaspace();
   
@@ -394,18 +436,18 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">! </span>
 <span class="changed">!   size_t allocated_blocks_bytes() const;</span>
 <span class="changed">!   size_t allocated_chunks_bytes() const;</span>
-<span class="changed">! </span>
+  
 <span class="changed">!   void deallocate(MetaWord* ptr, size_t byte_size, bool is_class);</span>
-<span class="changed">! </span>
+  
 <span class="changed">!   void print_on(outputStream* st) const;</span>
 <span class="changed">!   // Debugging support</span>
 <span class="changed">!   void verify();</span>
-<span class="changed">! </span>
+  
 <span class="changed">!   // Adds to the given statistic object. Will lock with CLD metaspace lock.</span>
 <span class="changed">!   void add_to_statistics(metaspace::ClassLoaderMetaspaceStatistics* out) const;</span>
-<span class="changed">! </span>
+  
 <span class="changed">! }; // ClassLoaderMetaspace</span>
-<span class="changed">! </span>
+  
 <span class="changed">! class MetaspaceUtils : AllStatic {</span>
   
 <span class="changed">!   // Spacemanager updates running counters.</span>
@@ -437,13 +479,13 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   static size_t used_words(Metaspace::MetadataType mdtype)            { return _used_words[mdtype]; }</span>
 <span class="changed">!   static size_t overhead_words(Metaspace::MetadataType mdtype)        { return _overhead_words[mdtype]; }</span>
   
-<span class="changed">!   static size_t free_chunks_total_words(Metaspace::MetadataType mdtype);</span>
+<span class="removed">-   static size_t free_chunks_total_words(Metaspace::MetadataType mdtype);</span>
   
 <span class="changed">!   // Helper for print_xx_report.</span>
 <span class="changed">!   static void print_vs(outputStream* out, size_t scale);</span>
   
 <span class="changed">! public:</span>
-  
+<span class="changed">! </span>
 <span class="changed">!   // Collect used metaspace statistics. This involves walking the CLDG. The resulting</span>
 <span class="changed">!   // output will be the accumulated values for all live metaspaces.</span>
 <span class="changed">!   // Note: method does not do any locking.</span>
@@ -464,7 +506,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   static size_t capacity_bytes() {</span>
 <span class="changed">!     return capacity_words() * BytesPerWord;</span>
 <span class="changed">!   }</span>
-  
+<span class="changed">! </span>
 <span class="changed">!   static size_t used_words() {</span>
 <span class="changed">!     return used_words(Metaspace::NonClassType) +</span>
 <span class="changed">!            used_words(Metaspace::ClassType);</span>
@@ -475,23 +517,23 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   static size_t used_bytes() {</span>
 <span class="changed">!     return used_words() * BytesPerWord;</span>
 <span class="changed">!   }</span>
-  
-<span class="removed">-   // Space committed but yet unclaimed by any class loader.</span>
-<span class="removed">-   static size_t free_in_vs_bytes();</span>
-<span class="removed">-   static size_t free_in_vs_bytes(Metaspace::MetadataType mdtype);</span>
-<span class="removed">- </span>
-<span class="removed">-   static size_t reserved_bytes(Metaspace::MetadataType mdtype);</span>
-<span class="removed">-   static size_t reserved_bytes() {</span>
-<span class="removed">-     return reserved_bytes(Metaspace::ClassType) +</span>
-<span class="removed">-            reserved_bytes(Metaspace::NonClassType);</span>
-<span class="removed">-   }</span>
-  
+<span class="changed">! </span>
+<span class="changed">!   // Space committed but yet unclaimed by any class loader.</span>
+<span class="changed">!   static size_t free_in_vs_bytes();</span>
+<span class="changed">!   static size_t free_in_vs_bytes(Metaspace::MetadataType mdtype);</span>
+<span class="changed">! </span>
+<span class="changed">!   static size_t reserved_bytes(Metaspace::MetadataType mdtype);</span>
+<span class="changed">!   static size_t reserved_bytes() {</span>
+<span class="changed">!     return reserved_bytes(Metaspace::ClassType) +</span>
+<span class="changed">!            reserved_bytes(Metaspace::NonClassType);</span>
+<span class="changed">!   }</span>
+<span class="changed">! </span>
 <span class="changed">!   static size_t committed_bytes(Metaspace::MetadataType mdtype);</span>
 <span class="changed">!   static size_t committed_bytes() {</span>
 <span class="changed">!     return committed_bytes(Metaspace::ClassType) +</span>
 <span class="changed">!            committed_bytes(Metaspace::NonClassType);</span>
 <span class="changed">!   }</span>
-  
+<span class="changed">! </span>
 <span class="changed">!   static size_t min_chunk_size_words();</span>
   
 <span class="changed">!   // Flags for print_report().</span>
@@ -546,52 +588,10 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     // When committed memory of all metaspaces reaches this value,
     // a GC is induced and the value is increased. Size is in bytes.
     static volatile size_t _capacity_until_GC;
-<span class="newmarker">--- 100,261 ----</span>
+<span class="newmarker">--- 148,267 ----</span>
   
-    // Given a prereserved space, use that to set up the compressed class space list.
-    static void initialize_class_space(ReservedSpace rs);
-  
-    // Returns true if class space has been setup (initialize_class_space).
-<span class="changed">!   static bool class_space_is_initialized();</span>
-  
-  #endif
-  
-   public:
-  
-    static void ergo_initialize();
-    static void global_initialize();
-    static void post_initialize();
-  
-<span class="changed">!   // Alignment, in bytes, of metaspace mappings</span>
-<span class="changed">!   static size_t reserve_alignment()       { return reserve_alignment_words() * BytesPerWord; }</span>
-<span class="changed">!   // Alignment, in words, of metaspace mappings</span>
-<span class="changed">!   static size_t reserve_alignment_words();</span>
-<span class="changed">! </span>
-<span class="changed">!   // The granularity at which Metaspace is committed and uncommitted.</span>
-<span class="changed">!   // (Todo: Why does this have to be exposed?)</span>
-<span class="changed">!   static size_t commit_alignment()        { return commit_alignment_words() * BytesPerWord; }</span>
-<span class="changed">!   static size_t commit_alignment_words();</span>
-  
-<span class="changed">!   // The largest possible single allocation</span>
-<span class="changed">!   static size_t max_allocation_word_size();</span>
-  
-    static MetaWord* allocate(ClassLoaderData* loader_data, size_t word_size,
-                              MetaspaceObj::Type type, TRAPS);
-  
-    static bool contains(const void* ptr);
-    static bool contains_non_shared(const void* ptr);
-  
-    // Free empty virtualspaces
-    static void purge();
-  
-    static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
-<span class="changed">!                                    MetaspaceObj::Type type, Metaspace::MetadataType mdtype, TRAPS);</span>
-  
-    static void print_compressed_class_space(outputStream* st) NOT_LP64({});
-  
-    // Return TRUE only if UseCompressedClassPointers is True.
-    static bool using_class_space() {
-      return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
+    static bool is_class_space_allocation(MetadataType mdType) {
+      return mdType == ClassType &amp;&amp; using_class_space();
     }
   
 <span class="changed">!   static bool initialized();</span>
@@ -663,7 +663,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="changed">!   void deallocate(MetaWord* ptr, size_t word_size, bool is_class);</span>
   
 <span class="changed">!   // Update statistics. This walks all in-use chunks.</span>
-<span class="changed">!   void add_to_statistics(metaspace::clms_stats_t* out) const;</span>
+<span class="changed">!   void add_to_statistics(metaspace::ClmsStats* out) const;</span>
   
 <span class="changed">!   DEBUG_ONLY(void verify() const;)</span>
   
@@ -710,7 +710,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     // a GC is induced and the value is increased. Size is in bytes.
     static volatile size_t _capacity_until_GC;
 <hr /><span class="oldmarker">*** 475,480 ****</span>
-<span class="newmarker">--- 289,343 ----</span>
+<span class="newmarker">--- 295,349 ----</span>
     // Calculate the new high-water mark at which to induce
     // a GC.
     static void compute_new_size();
@@ -761,12 +761,12 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="new">+ </span>
 <span class="new">+   static void print_on(outputStream * out);</span>
 <span class="new">+ </span>
-<span class="new">+   DEBUG_ONLY(static void verify(bool slow);)</span>
+<span class="new">+   DEBUG_ONLY(static void verify();)</span>
 <span class="new">+ </span>
 <span class="new">+ };</span>
 <span class="new">+ </span>
   #endif // SHARE_MEMORY_METASPACE_HPP
 </pre>
-<center><a href='../../../../src/hotspot/share/memory/metaspace.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace/chunkManager.cpp.cdiff.html' target='_top'>next &gt</a></center>
+<center><a href='../../../../src/hotspot/share/memory/metaspace.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp.cdiff.html' target='_top'>next &gt</a></center>
 </body></html>
 

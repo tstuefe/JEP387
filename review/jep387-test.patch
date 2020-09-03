@@ -1,252 +1,3 @@
-diff --git a/src/hotspot/share/memory/metaspace/metaspace_test.cpp b/src/hotspot/share/memory/metaspace/metaspace_test.cpp
-new file mode 100644
---- /dev/null
-+++ b/src/hotspot/share/memory/metaspace/metaspace_test.cpp
-@@ -0,0 +1,119 @@
-+/*
-+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#include "precompiled.hpp"
-+
-+#include "memory/virtualspace.hpp"
-+#include "memory/metaspace/virtualSpaceList.hpp"
-+#include "memory/metaspace/chunkManager.hpp"
-+#include "memory/metaspace/arenaGrowthPolicy.hpp"
-+#include "memory/metaspace/commitLimiter.hpp"
-+#include "memory/metaspace/metaspace_test.hpp"
-+#include "memory/metaspace/metaspaceArena.hpp"
-+#include "memory/metaspace/metaspaceContext.hpp"
-+#include "memory/metaspace/runningCounters.hpp"
-+#include "runtime/mutexLocker.hpp"
-+#include "utilities/debug.hpp"
-+#include "utilities/ostream.hpp"
-+#include "utilities/globalDefinitions.hpp"
-+
-+namespace metaspace {
-+
-+///// MetaspaceTestArena //////
-+
-+MetaspaceTestArena::MetaspaceTestArena(Mutex* lock, MetaspaceArena* arena)
-+  : _lock(lock), _arena(arena) {}
-+
-+MetaspaceTestArena::~MetaspaceTestArena() {
-+  delete _arena;
-+  delete _lock;
-+}
-+
-+MetaWord* MetaspaceTestArena::allocate(size_t word_size) {
-+  return _arena->allocate(word_size);
-+}
-+
-+void MetaspaceTestArena::deallocate(MetaWord* p, size_t word_size) {
-+  return _arena->deallocate(p, word_size);
-+}
-+
-+///// MetaspaceTestArea //////
-+
-+MetaspaceTestContext::MetaspaceTestContext(const char* name, size_t commit_limit, size_t reserve_limit)
-+  : _name(name), _reserve_limit(reserve_limit), _commit_limit(commit_limit),
-+    _context(NULL),
-+    _commit_limiter(commit_limit == 0 ? max_uintx : commit_limit), // commit_limit == 0 -> no limit
-+    _used_words_counter()
-+{
-+  assert(is_aligned(reserve_limit, Metaspace::reserve_alignment_words()), "reserve_limit (" SIZE_FORMAT ") "
-+                    "not aligned to metaspace reserve alignment (" SIZE_FORMAT ")",
-+                    reserve_limit, Metaspace::reserve_alignment_words());
-+  if (reserve_limit > 0) {
-+    // have reserve limit -> non-expandable context
-+    ReservedSpace rs(reserve_limit * BytesPerWord, Metaspace::reserve_alignment(), false);
-+    _context = MetaspaceContext::create_nonexpandable_context(name, rs, &_commit_limiter);
-+  } else {
-+    // no reserve limit -> expandable vslist
-+    _context = MetaspaceContext::create_expandable_context(name, &_commit_limiter);
-+  }
-+
-+}
-+
-+MetaspaceTestContext::~MetaspaceTestContext() {
-+  DEBUG_ONLY(verify(true);)
-+  MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
-+  delete _context;
-+}
-+
-+// Create an arena, feeding off this area.
-+MetaspaceTestArena* MetaspaceTestContext::create_arena(Metaspace::MetaspaceType type) {
-+  const ArenaGrowthPolicy* growth_policy = ArenaGrowthPolicy::policy_for_space_type(type, false);
-+  Mutex* lock = new Mutex(Monitor::native, "MetaspaceTestArea-lock", false, Monitor::_safepoint_check_never);
-+  MetaspaceArena* arena = NULL;
-+  {
-+    MutexLocker ml(lock,  Mutex::_no_safepoint_check_flag);
-+    arena = new MetaspaceArena(_context->cm(), growth_policy, lock, &_used_words_counter, _name);
-+  }
-+  return new MetaspaceTestArena(lock, arena);
-+}
-+
-+void MetaspaceTestContext::purge_area() {
-+  _context->cm()->purge();
-+}
-+
-+#ifdef ASSERT
-+void MetaspaceTestContext::verify(bool slow) const {
-+  if (_context != NULL) {
-+    _context->verify(slow);
-+  }
-+}
-+#endif
-+
-+void MetaspaceTestContext::print_on(outputStream* st) const {
-+  _context->print_on(st);
-+}
-+
-+} // namespace metaspace
-+
-diff --git a/src/hotspot/share/memory/metaspace/metaspace_test.hpp b/src/hotspot/share/memory/metaspace/metaspace_test.hpp
-new file mode 100644
---- /dev/null
-+++ b/src/hotspot/share/memory/metaspace/metaspace_test.hpp
-@@ -0,0 +1,120 @@
-+/*
-+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#ifndef SHARE_MEMORY_METASPACE_METASPACE_TEST_HPP
-+#define SHARE_MEMORY_METASPACE_METASPACE_TEST_HPP
-+
-+
-+#include "memory/allocation.hpp"
-+#include "memory/metaspace.hpp"
-+#include "memory/metaspace/commitLimiter.hpp"
-+#include "memory/metaspace/counter.hpp"
-+#include "memory/metaspace/metaspaceContext.hpp"
-+#include "memory/virtualspace.hpp"
-+#include "utilities/globalDefinitions.hpp"
-+
-+// This is just convenience classes for metaspace-related tests
-+//  (jtreg, via whitebox API, and gtests)
-+
-+class ReservedSpace;
-+class Mutex;
-+class outputStream;
-+
-+namespace metaspace {
-+
-+class MetaspaceContext;
-+class MetaspaceArena;
-+
-+
-+// Wraps a MetaspaceTestArena with its own lock for testing purposes.
-+class MetaspaceTestArena : public CHeapObj<mtInternal> {
-+
-+  Mutex* const _lock;
-+  MetaspaceArena* const _arena;
-+
-+public:
-+
-+  const MetaspaceArena* arena() const {
-+    return _arena;
-+  }
-+
-+  MetaspaceTestArena(Mutex* lock, MetaspaceArena* arena);
-+  ~MetaspaceTestArena();
-+
-+  MetaWord* allocate(size_t word_size);
-+  void deallocate(MetaWord* p, size_t word_size);
-+
-+};
-+
-+
-+// Wraps an instance of a MetaspaceContext together with some side objects for easy use in test beds (whitebox, gtests)
-+class MetaspaceTestContext : public CHeapObj<mtInternal> {
-+
-+  const char* const _name;
-+  const size_t _reserve_limit;
-+  const size_t _commit_limit;
-+
-+  MetaspaceContext* _context;
-+  CommitLimiter _commit_limiter;
-+  SizeAtomicCounter _used_words_counter;
-+
-+public:
-+
-+  // Note: limit == 0 means unlimited
-+  // Reserve limit > 0 simulates a non-expandable VirtualSpaceList (like CompressedClassSpace)
-+  // Commit limit > 0 simulates a limit to max commitable space (like MaxMetaspaceSize)
-+  MetaspaceTestContext(const char* name, size_t commit_limit = 0, size_t reserve_limit = 0);
-+  ~MetaspaceTestContext();
-+
-+  // Create an arena, feeding off this area.
-+  MetaspaceTestArena* create_arena(Metaspace::MetaspaceType type);
-+
-+  void purge_area();
-+
-+  // Accessors
-+  const CommitLimiter& commit_limiter() const { return _commit_limiter; }
-+  const VirtualSpaceList& vslist() const      { return *(_context->vslist()); }
-+  ChunkManager& cm()                          { return *(_context->cm()); }
-+
-+  // Returns reserve- and commit limit we run the test with (in the real world,
-+  // these would be equivalent to CompressedClassSpaceSize resp MaxMetaspaceSize)
-+  size_t reserve_limit() const    { return _reserve_limit == 0 ? max_uintx : 0; }
-+  size_t commit_limit() const     { return _commit_limit == 0 ? max_uintx : 0; }
-+
-+  // Convenience function to retrieve total committed/used words
-+  size_t used_words() const       { return _used_words_counter.get(); }
-+  size_t committed_words() const  { return _commit_limiter.committed_words(); }
-+
-+  DEBUG_ONLY(void verify(bool slow = false) const;)
-+
-+  void print_on(outputStream* st) const;
-+
-+};
-+
-+
-+} // namespace metaspace
-+
-+#endif // SHARE_MEMORY_METASPACE_METASPACE_TEST_HPP
-+
 diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whitebox.cpp
 --- a/src/hotspot/share/prims/whitebox.cpp
 +++ b/src/hotspot/share/prims/whitebox.cpp
@@ -254,7 +5,7 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
  #include "memory/heapShared.inline.hpp"
  #include "memory/metaspaceShared.hpp"
  #include "memory/metadataFactory.hpp"
-+#include "memory/metaspace/metaspace_test.hpp"
++#include "memory/metaspace/msTestHelpers.hpp"
  #include "memory/iterator.hpp"
  #include "memory/resourceArea.hpp"
  #include "memory/universe.hpp"
@@ -266,7 +17,7 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
  #if INCLUDE_CDS
  #include "prims/cdsoffsets.hpp"
  #endif // INCLUDE_CDS
-@@ -1690,6 +1692,65 @@
+@@ -1692,6 +1694,65 @@
    return Array<u1>::bytes_to_length(bytes);
  }
  
@@ -332,7 +83,7 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
  WB_ENTRY(jlong, WB_AllocateMetaspace(JNIEnv* env, jobject wb, jobject class_loader, jlong size))
    if (size < 0) {
      THROW_MSG_0(vmSymbols::java_lang_IllegalArgumentException(),
-@@ -1706,15 +1767,6 @@
+@@ -1708,15 +1769,6 @@
    return (jlong)(uintptr_t)metadata;
  WB_END
  
@@ -348,7 +99,7 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
  WB_ENTRY(void, WB_DefineModule(JNIEnv* env, jobject o, jobject module, jboolean is_open,
                                  jstring version, jstring location, jobjectArray packages))
    Modules::define_module(module, is_open, version, location, packages, CHECK);
-@@ -2435,8 +2487,6 @@
+@@ -2416,8 +2468,6 @@
    {CC"readReservedMemory", CC"()V",                   (void*)&WB_ReadReservedMemory },
    {CC"allocateMetaspace",
       CC"(Ljava/lang/ClassLoader;J)J",                 (void*)&WB_AllocateMetaspace },
@@ -357,7 +108,7 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
    {CC"incMetaspaceCapacityUntilGC", CC"(J)J",         (void*)&WB_IncMetaspaceCapacityUntilGC },
    {CC"metaspaceCapacityUntilGC", CC"()J",             (void*)&WB_MetaspaceCapacityUntilGC },
    {CC"metaspaceReserveAlignment", CC"()J",            (void*)&WB_MetaspaceReserveAlignment },
-@@ -2533,6 +2583,19 @@
+@@ -2512,6 +2562,19 @@
    {CC"protectionDomainRemovedCount",   CC"()I",       (void*)&WB_ProtectionDomainRemovedCount },
    {CC"aotLibrariesCount", CC"()I",                    (void*)&WB_AotLibrariesCount },
    {CC"getKlassMetadataSize", CC"(Ljava/lang/Class;)I",(void*)&WB_GetKlassMetadataSize},
@@ -374,8 +125,8 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
 +  {CC"deallocateToMetaspaceTestArena", CC"(JJJ)V",    (void*)&WB_DeallocateToMetaspaceTestArena},
 +  {CC"maxMetaspaceAllocationSize", CC"()J",           (void*)&WB_GetMaxMetaspaceAllocationSize},
 +
+   {CC"isJVMTIIncluded", CC"()Z",                      (void*)&WB_IsJVMTIIncluded},
  };
- 
  
 diff --git a/test/hotspot/gtest/memory/test_chunkManager.cpp b/test/hotspot/gtest/memory/test_chunkManager.cpp
 deleted file mode 100644
@@ -1122,320 +873,14 @@ deleted file mode 100644
 -}
 -
 -#endif // ASSERT
-diff --git a/test/hotspot/gtest/metaspace/metaspaceTestContexts.cpp b/test/hotspot/gtest/metaspace/metaspaceTestContexts.cpp
+diff --git a/test/hotspot/gtest/metaspace/metaspaceGtestCommon.cpp b/test/hotspot/gtest/metaspace/metaspaceGtestCommon.cpp
 new file mode 100644
 --- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspaceTestContexts.cpp
-@@ -0,0 +1,173 @@
++++ b/test/hotspot/gtest/metaspace/metaspaceGtestCommon.cpp
+@@ -0,0 +1,101 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+
-+#include "precompiled.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
-+
-+using namespace metaspace::chunklevel;
-+
-+
-+void ChunkTestsContext::checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level,
-+                                                      size_t min_committed_size) {
-+
-+  *p_return_value = NULL;
-+
-+  Metachunk* c = cm().get_chunk(preferred_level, max_level, min_committed_size);
-+
-+  if (c != NULL) {
-+
-+    ASSERT_LE(c->level(), max_level);
-+    ASSERT_GE(c->level(), preferred_level);
-+    ASSERT_GE(c->committed_words(), min_committed_size);
-+    ASSERT_EQ(c->committed_words(), c->free_below_committed_words());
-+    ASSERT_EQ(c->used_words(), (size_t)0);
-+    ASSERT_TRUE(c->is_in_use());
-+    ASSERT_FALSE(c->is_free());
-+    ASSERT_FALSE(c->is_dead());
-+    ASSERT_NULL(c->next());
-+    ASSERT_NULL(c->prev());
-+    if (c->level() == HIGHEST_CHUNK_LEVEL) {
-+      ASSERT_TRUE(c->is_leaf_chunk());
-+    } else {
-+      ASSERT_FALSE(c->is_leaf_chunk());
-+    }
-+    if (c->level() == LOWEST_CHUNK_LEVEL) {
-+      ASSERT_TRUE(c->is_root_chunk());
-+    } else {
-+      ASSERT_FALSE(c->is_root_chunk());
-+    }
-+    if (_num_chunks_allocated == 0) { // First chunk? We can make more assumptions
-+      ASSERT_EQ(c->level(), preferred_level);
-+      // Needs lock EXPECT_NULL(c->next_in_vs());
-+      // Needs lock EXPECT_NULL(c->prev_in_vs());
-+      ASSERT_TRUE(c->is_root_chunk() || c->is_leader());
-+    }
-+    _num_chunks_allocated ++;
-+
-+  }
-+
-+  *p_return_value = c;
-+
-+}
-+
-+// Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
-+void ChunkTestsContext::test_pattern(Metachunk* c, size_t word_size) {
-+  check_range_for_pattern(c->base(), word_size, (uintx)c);
-+}
-+
-+void ChunkTestsContext::return_chunk(Metachunk* c) {
-+  test_pattern(c);
-+  c->set_in_use(); // Forestall assert in cm
-+  cm().return_chunk(c);
-+}
-+
-+ void ChunkTestsContext::allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size) {
-+
-+  size_t used_before = c->used_words();
-+  size_t free_before = c->free_words();
-+  size_t free_below_committed_before = c->free_below_committed_words();
-+  const MetaWord* top_before = c->top();
-+
-+  MetaWord* p = c->allocate(word_size);
-+  EXPECT_NOT_NULL(p);
-+  EXPECT_EQ(c->used_words(), used_before + word_size);
-+  EXPECT_EQ(c->free_words(), free_before - word_size);
-+  EXPECT_EQ(c->free_below_committed_words(), free_below_committed_before - word_size);
-+  EXPECT_EQ(c->top(), top_before + word_size);
-+
-+  // Old content should be preserved
-+  test_pattern(c, used_before);
-+
-+  // Fill newly allocated range too
-+  fill_range_with_pattern(p, word_size, (uintx)c);
-+
-+  *p_return_value = p;
-+}
-+
-+void ChunkTestsContext::commit_chunk_with_test(Metachunk* c, size_t additional_size) {
-+
-+  size_t used_before = c->used_words();
-+  size_t free_before = c->free_words();
-+  const MetaWord* top_before = c->top();
-+
-+  c->set_in_use();
-+  bool b = c->ensure_committed_additional(additional_size);
-+  EXPECT_TRUE(b);
-+
-+  // We should have enough committed size now
-+  EXPECT_GE(c->free_below_committed_words(), additional_size);
-+
-+  // used, free, top should be unchanged.
-+  EXPECT_EQ(c->used_words(), used_before);
-+  EXPECT_EQ(c->free_words(), free_before);
-+  EXPECT_EQ(c->top(), top_before);
-+
-+  test_pattern(c, used_before);
-+
-+}
-+
-+void ChunkTestsContext::commit_chunk_expect_failure(Metachunk* c, size_t additional_size) {
-+
-+  size_t used_before = c->used_words();
-+  size_t free_before = c->free_words();
-+  size_t free_below_committed_before = c->free_below_committed_words();
-+  const MetaWord* top_before = c->top();
-+
-+  c->set_in_use();
-+  bool b = c->ensure_committed_additional(additional_size);
-+  EXPECT_FALSE(b);
-+
-+  // Nothing should have changed
-+  EXPECT_EQ(c->used_words(), used_before);
-+  EXPECT_EQ(c->free_words(), free_before);
-+  EXPECT_EQ(c->free_below_committed_words(), free_below_committed_before);
-+  EXPECT_EQ(c->top(), top_before);
-+
-+  test_pattern(c, used_before);
-+
-+}
-+
-+void ChunkTestsContext::uncommit_chunk_with_test(Metachunk* c) {
-+  if (c->word_size() >= Settings::commit_granule_words()) {
-+    c->set_free();  // Forestall assert in uncommit
-+    c->reset_used_words();
-+    c->uncommit();
-+
-+    EXPECT_EQ(c->free_below_committed_words(), (size_t)0);
-+    EXPECT_EQ(c->used_words(), (size_t)0);
-+    EXPECT_EQ(c->free_words(), c->word_size());
-+    EXPECT_EQ(c->top(), c->base());
-+    EXPECT_TRUE(c->is_fully_uncommitted());
-+  }
-+}
-+
-+
-+
-+/////// SparseArray<T> ////////////////
-+
-+
-+
-diff --git a/test/hotspot/gtest/metaspace/metaspaceTestContexts.hpp b/test/hotspot/gtest/metaspace/metaspaceTestContexts.hpp
-new file mode 100644
---- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspaceTestContexts.hpp
-@@ -0,0 +1,123 @@
-+/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#ifndef GTEST_METASPACE_METASPACE_TESTHELPER_HPP
-+#define GTEST_METASPACE_METASPACE_TESTHELPER_HPP
-+
-+#include "memory/allocation.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+
-+using namespace metaspace::chunklevel;
-+
-+class MetaspaceTestContext : public metaspace::MetaspaceTestContext {
-+public:
-+  MetaspaceTestContext(size_t commit_limit = 0, size_t reserve_limit = 0)
-+  : metaspace::MetaspaceTestContext("gtest-metaspace-context", commit_limit, reserve_limit)
-+  {}
-+};
-+
-+class ChunkTestsContext : public metaspace::MetaspaceTestContext {
-+
-+  int _num_chunks_allocated;
-+
-+  void checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level,
-+                             chunklevel_t max_level, size_t min_committed_size);
-+
-+  // Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
-+  void test_pattern(Metachunk* c, size_t word_size);
-+  void test_pattern(Metachunk* c) { test_pattern(c, c->used_words()); }
-+
-+public:
-+
-+  ChunkTestsContext(size_t commit_limit = 0, size_t reserve_limit = 0)
-+    : metaspace::MetaspaceTestContext("metaspace-gtest-chunktestcontext", commit_limit, reserve_limit),
-+      _num_chunks_allocated(0)
-+  {}
-+
-+  /////
-+
-+  // Note: all test functions return void and return values are by pointer ref; this is awkward but otherwise we cannot
-+  // use gtest ASSERT macros inside those functions.
-+
-+  // Allocate a chunk (you do not know if it will succeed).
-+  void alloc_chunk(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
-+    checked_alloc_chunk_0(p_return_value, preferred_level, max_level, min_committed_size);
-+  }
-+
-+  // Allocate a chunk; do not expect success, but if it succeeds, test the chunk.
-+  void alloc_chunk(Metachunk** p_return_value, chunklevel_t level) {
-+    alloc_chunk(p_return_value, level, level, word_size_for_level(level));
-+  }
-+
-+  // Allocate a chunk; it must succeed. Test the chunk.
-+  void alloc_chunk_expect_success(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
-+    checked_alloc_chunk_0(p_return_value, preferred_level, max_level, min_committed_size);
-+    ASSERT_NOT_NULL(*p_return_value);
-+  }
-+
-+  // Allocate a chunk; it must succeed. Test the chunk.
-+  void alloc_chunk_expect_success(Metachunk** p_return_value, chunklevel_t level) {
-+    alloc_chunk_expect_success(p_return_value, level, level, word_size_for_level(level));
-+  }
-+
-+  // Allocate a chunk but expect it to fail.
-+  void alloc_chunk_expect_failure(chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
-+    Metachunk* c = NULL;
-+    checked_alloc_chunk_0(&c, preferred_level, max_level, min_committed_size);
-+    ASSERT_NULL(c);
-+  }
-+
-+  // Allocate a chunk but expect it to fail.
-+  void alloc_chunk_expect_failure(chunklevel_t level) {
-+    return alloc_chunk_expect_failure(level, level, word_size_for_level(level));
-+  }
-+
-+  /////
-+
-+  void return_chunk(Metachunk* c);
-+
-+  /////
-+
-+  // Allocates from a chunk; also, fills allocated area with test pattern which will be tested with test_pattern().
-+  void allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size);
-+
-+  // Convenience function: allocate from chunk for when you don't care for the result pointer
-+  void allocate_from_chunk(Metachunk* c, size_t word_size) {
-+    MetaWord* dummy;
-+    allocate_from_chunk(&dummy, c, word_size);
-+  }
-+
-+  void commit_chunk_with_test(Metachunk* c, size_t additional_size);
-+  void commit_chunk_expect_failure(Metachunk* c, size_t additional_size);
-+
-+  void uncommit_chunk_with_test(Metachunk* c);
-+
-+
-+};
-+
-+
-+#endif // GTEST_METASPACE_METASPACE_TESTHELPER_HPP
-+
-+
-diff --git a/test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp
-new file mode 100644
---- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.cpp
-@@ -0,0 +1,103 @@
-+/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -1460,11 +905,10 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspace_rangehelpers.hpp"
++#include "runtime/os.hpp"
 +
-+#include "utilities/debug.hpp"
-+#include "utilities/globalDefinitions.hpp"
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
 +
 +
 +void zap_range(MetaWord* p, size_t word_size) {
@@ -1473,7 +917,7 @@ new file mode 100644
 +  }
 +}
 +
-+// Writes a uniqe pattern to p
++// Writes a unique pattern to p
 +void mark_address(MetaWord* p, uintx pattern) {
 +  MetaWord x = (MetaWord)((uintx) p ^ pattern);
 +  *p = x;
@@ -1494,7 +938,7 @@ new file mode 100644
 +// a sub range of the original range.
 +void fill_range_with_pattern(MetaWord* p, size_t word_size, uintx pattern) {
 +  assert(word_size > 0 && p != NULL, "sanity");
-+  for (MetaWord* p2 = p; p2 < p + word_size; p2 ++) {
++  for (MetaWord* p2 = p; p2 < p + word_size; p2++) {
 +    mark_address(p2, pattern);
 +  }
 +}
@@ -1504,10 +948,9 @@ new file mode 100644
 +  const MetaWord* p2 = p;
 +  while (p2 < p + word_size) {
 +    check_marked_address(p2, pattern);
-+    p2 ++;
++    p2++;
 +  }
 +}
-+
 +
 +// Similar to fill_range_with_pattern, but only marks start and end. This is optimized for cases
 +// where fill_range_with_pattern just is too slow.
@@ -1536,14 +979,14 @@ new file mode 100644
 +  check_marked_range(p, word_size, pattern);
 +}
 +
-diff --git a/test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp
+diff --git a/test/hotspot/gtest/metaspace/metaspaceGtestCommon.hpp b/test/hotspot/gtest/metaspace/metaspaceGtestCommon.hpp
 new file mode 100644
 --- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspaceTestsCommon.hpp
-@@ -0,0 +1,273 @@
++++ b/test/hotspot/gtest/metaspace/metaspaceGtestCommon.hpp
+@@ -0,0 +1,212 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -1566,76 +1009,14 @@ new file mode 100644
 + *
 + */
 +
-+#ifndef GTEST_METASPACE_METASPACETESTCOMMON_HPP
-+#define GTEST_METASPACE_METASPACETESTCOMMON_HPP
++#ifndef GTEST_METASPACE_METASPACEGTESTCOMMON_HPP
++#define GTEST_METASPACE_METASPACEGTESTCOMMON_HPP
 +
 +#include "memory/allocation.hpp"
-+
-+
-+#include "memory/metaspace/arenaGrowthPolicy.hpp"
-+#include "memory/metaspace/binlist.hpp"
-+#include "memory/metaspace/blocktree.hpp"
-+#include "memory/metaspace/chunkHeaderPool.hpp"
-+#include "memory/metaspace/chunkLevel.hpp"
-+#include "memory/metaspace/chunkManager.hpp"
-+#include "memory/metaspace/counter.hpp"
-+#include "memory/metaspace/commitLimiter.hpp"
-+#include "memory/metaspace/commitMask.hpp"
-+#include "memory/metaspace/freeBlocks.hpp"
-+#include "memory/metaspace/freeChunkList.hpp"
-+#include "memory/metaspace/internStat.hpp"
-+#include "memory/metaspace/metachunk.hpp"
-+#include "memory/metaspace/metaspaceArena.hpp"
-+#include "memory/metaspace/metaspaceCommon.hpp"
-+#include "memory/metaspace/metaspaceEnums.hpp"
-+#include "memory/metaspace/metaspaceStatistics.hpp"
-+#include "memory/metaspace/metaspace_test.hpp"
-+#include "memory/metaspace/virtualSpaceList.hpp"
-+#include "memory/metaspace/settings.hpp"
-+#include "runtime/mutexLocker.hpp"
++#include "utilities/globalDefinitions.hpp"
 +#include "runtime/os.hpp"
 +
-+#include "utilities/align.hpp"
-+#include "utilities/debug.hpp"
-+#include "utilities/globalDefinitions.hpp"
-+
 +#include "unittest.hpp"
-+
-+
-+#include <stdio.h>
-+
-+
-+//////////////////////////////////////////////////////////
-+// handy aliases
-+
-+using metaspace::BinListImpl;
-+using metaspace::BlockTree;
-+using metaspace::ArenaGrowthPolicy;
-+using metaspace::ChunkHeaderPool;
-+using metaspace::ChunkManager;
-+using metaspace::CommitLimiter;
-+using metaspace::CommitMask;
-+using metaspace::SizeCounter;
-+using metaspace::SizeAtomicCounter;
-+using metaspace::IntCounter;
-+using metaspace::FreeBlocks;
-+using metaspace::FreeChunkList;
-+using metaspace::FreeChunkListVector;
-+using metaspace::MemRangeCounter;
-+using metaspace::Metachunk;
-+using metaspace::MetachunkList;
-+using metaspace::Settings;
-+using metaspace::arena_stats_t;
-+using metaspace::in_use_chunk_stats_t;
-+using metaspace::cm_stats_t;
-+using metaspace::SizeCounter;
-+using metaspace::MetaspaceArena;
-+using metaspace::VirtualSpaceList;
-+using metaspace::VirtualSpaceNode;
-+
-+using metaspace::chunklevel_t;
-+using namespace metaspace::chunklevel;
-+
 +
 +/////////////////////////////////////////////////////////////////////
 +// A little mockup to mimick and test the CommitMask in various tests
@@ -1652,9 +1033,9 @@ new file mode 100644
 +
 +  int get_num_set(size_t from, size_t to) const {
 +    int result = 0;
-+    for(size_t i = from; i < to; i ++) {
++    for(size_t i = from; i < to; i++) {
 +      if (_arr[i] > 0) {
-+        result ++;
++        result++;
 +      }
 +    }
 +    return result;
@@ -1675,7 +1056,6 @@ new file mode 100644
 +  }
 +
 +};
-+
 +
 +///////////////////////////////////////////////////////////
 +// Helper class for generating random allocation sizes
@@ -1755,6 +1135,8 @@ new file mode 100644
 +#define ASSERT_NOT_0(v)           ASSERT_NE((intptr_t)0, (intptr_t)v)
 +#define EXPECT_0(v)               EXPECT_EQ((intptr_t)0, (intptr_t)v)
 +#define EXPECT_NOT_0(v)           EXPECT_NE((intptr_t)0, (intptr_t)v)
++#define ASSERT_GT0(v)             ASSERT_GT((intptr_t)v, (intptr_t)0)
++#define EXPECT_GT0(v)             EXPECT_GT((intptr_t)v, (intptr_t)0)
 +
 +//////////////////////////////////////////////////////////
 +// logging
@@ -1813,15 +1195,15 @@ new file mode 100644
 +
 +};
 +
-+#endif // GTEST_METASPACE_METASPACETESTCOMMON_HPP
-diff --git a/test/hotspot/gtest/metaspace/metaspace_rangehelpers.hpp b/test/hotspot/gtest/metaspace/metaspace_rangehelpers.hpp
++#endif // GTEST_METASPACE_METASPACEGTESTCOMMON_HPP
+diff --git a/test/hotspot/gtest/metaspace/metaspaceGtestContexts.cpp b/test/hotspot/gtest/metaspace/metaspaceGtestContexts.cpp
 new file mode 100644
 --- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspace_rangehelpers.hpp
-@@ -0,0 +1,186 @@
++++ b/test/hotspot/gtest/metaspace/metaspaceGtestContexts.cpp
+@@ -0,0 +1,171 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -1844,23 +1226,328 @@ new file mode 100644
 + *
 + */
 +
-+#ifndef GTEST_METASPACE_METASPACE_RANGEHELPERS_HPP
-+#define GTEST_METASPACE_METASPACE_RANGEHELPERS_HPP
++#include "precompiled.hpp"
++
++#include "memory/metaspace/msChunkManager.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "metaspaceGtestContexts.hpp"
++
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::Settings;
++
++void ChunkGtestContext::checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level,
++                                                      size_t min_committed_size) {
++
++  *p_return_value = NULL;
++
++  Metachunk* c = cm().get_chunk(preferred_level, max_level, min_committed_size);
++
++  if (c != NULL) {
++
++    ASSERT_LE(c->level(), max_level);
++    ASSERT_GE(c->level(), preferred_level);
++    ASSERT_GE(c->committed_words(), min_committed_size);
++    ASSERT_EQ(c->committed_words(), c->free_below_committed_words());
++    ASSERT_EQ(c->used_words(), (size_t)0);
++    ASSERT_TRUE(c->is_in_use());
++    ASSERT_FALSE(c->is_free());
++    ASSERT_FALSE(c->is_dead());
++    ASSERT_NULL(c->next());
++    ASSERT_NULL(c->prev());
++    if (c->level() == HIGHEST_CHUNK_LEVEL) {
++      ASSERT_TRUE(c->is_leaf_chunk());
++    } else {
++      ASSERT_FALSE(c->is_leaf_chunk());
++    }
++    if (c->level() == LOWEST_CHUNK_LEVEL) {
++      ASSERT_TRUE(c->is_root_chunk());
++    } else {
++      ASSERT_FALSE(c->is_root_chunk());
++    }
++    if (_num_chunks_allocated == 0) { // First chunk? We can make more assumptions
++      ASSERT_EQ(c->level(), preferred_level);
++      // Needs lock EXPECT_NULL(c->next_in_vs());
++      // Needs lock EXPECT_NULL(c->prev_in_vs());
++      ASSERT_TRUE(c->is_root_chunk() || c->is_leader());
++    }
++    _num_chunks_allocated++;
++
++  }
++
++  *p_return_value = c;
++
++}
++
++// Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
++void ChunkGtestContext::test_pattern(Metachunk* c, size_t word_size) {
++  check_range_for_pattern(c->base(), word_size, (uintx)c);
++}
++
++void ChunkGtestContext::return_chunk(Metachunk* c) {
++  test_pattern(c);
++  c->set_in_use(); // Forestall assert in cm
++  cm().return_chunk(c);
++}
++
++ void ChunkGtestContext::allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size) {
++
++  size_t used_before = c->used_words();
++  size_t free_before = c->free_words();
++  size_t free_below_committed_before = c->free_below_committed_words();
++  const MetaWord* top_before = c->top();
++
++  MetaWord* p = c->allocate(word_size);
++  EXPECT_NOT_NULL(p);
++  EXPECT_EQ(c->used_words(), used_before + word_size);
++  EXPECT_EQ(c->free_words(), free_before - word_size);
++  EXPECT_EQ(c->free_below_committed_words(), free_below_committed_before - word_size);
++  EXPECT_EQ(c->top(), top_before + word_size);
++
++  // Old content should be preserved
++  test_pattern(c, used_before);
++
++  // Fill newly allocated range too
++  fill_range_with_pattern(p, word_size, (uintx)c);
++
++  *p_return_value = p;
++}
++
++void ChunkGtestContext::commit_chunk_with_test(Metachunk* c, size_t additional_size) {
++
++  size_t used_before = c->used_words();
++  size_t free_before = c->free_words();
++  const MetaWord* top_before = c->top();
++
++  c->set_in_use();
++  bool b = c->ensure_committed_additional(additional_size);
++  EXPECT_TRUE(b);
++
++  // We should have enough committed size now
++  EXPECT_GE(c->free_below_committed_words(), additional_size);
++
++  // used, free, top should be unchanged.
++  EXPECT_EQ(c->used_words(), used_before);
++  EXPECT_EQ(c->free_words(), free_before);
++  EXPECT_EQ(c->top(), top_before);
++
++  test_pattern(c, used_before);
++
++}
++
++void ChunkGtestContext::commit_chunk_expect_failure(Metachunk* c, size_t additional_size) {
++
++  size_t used_before = c->used_words();
++  size_t free_before = c->free_words();
++  size_t free_below_committed_before = c->free_below_committed_words();
++  const MetaWord* top_before = c->top();
++
++  c->set_in_use();
++  bool b = c->ensure_committed_additional(additional_size);
++  EXPECT_FALSE(b);
++
++  // Nothing should have changed
++  EXPECT_EQ(c->used_words(), used_before);
++  EXPECT_EQ(c->free_words(), free_before);
++  EXPECT_EQ(c->free_below_committed_words(), free_below_committed_before);
++  EXPECT_EQ(c->top(), top_before);
++
++  test_pattern(c, used_before);
++
++}
++
++void ChunkGtestContext::uncommit_chunk_with_test(Metachunk* c) {
++  if (c->word_size() >= Settings::commit_granule_words()) {
++    c->set_free();  // Forestall assert in uncommit
++    c->reset_used_words();
++    c->uncommit();
++
++    EXPECT_EQ(c->free_below_committed_words(), (size_t)0);
++    EXPECT_EQ(c->used_words(), (size_t)0);
++    EXPECT_EQ(c->free_words(), c->word_size());
++    EXPECT_EQ(c->top(), c->base());
++    EXPECT_TRUE(c->is_fully_uncommitted());
++  }
++}
++
++/////// SparseArray<T> ////////////////
++
+diff --git a/test/hotspot/gtest/metaspace/metaspaceGtestContexts.hpp b/test/hotspot/gtest/metaspace/metaspaceGtestContexts.hpp
+new file mode 100644
+--- /dev/null
++++ b/test/hotspot/gtest/metaspace/metaspaceGtestContexts.hpp
+@@ -0,0 +1,126 @@
++/*
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#ifndef GTEST_METASPACE_METASPACE_GTESTCONTEXTS_HPP
++#define GTEST_METASPACE_METASPACE_GTESTCONTEXTS_HPP
++
++#include "memory/allocation.hpp"
++#include "memory/metaspace/msChunklevel.hpp"
++#include "memory/metaspace/msMetachunk.hpp"
++#include "memory/metaspace/msTestHelpers.hpp"
++
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::Metachunk;
++using metaspace::chunklevel_t;
++using namespace metaspace::chunklevel;
++
++class MetaspaceGtestContext : public metaspace::MetaspaceTestContext {
++public:
++  MetaspaceGtestContext(size_t commit_limit = 0, size_t reserve_limit = 0)
++  : metaspace::MetaspaceTestContext("gtest-metaspace-context", commit_limit, reserve_limit)
++  {}
++};
++
++class ChunkGtestContext : public MetaspaceGtestContext {
++
++  int _num_chunks_allocated;
++
++  void checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level,
++                             chunklevel_t max_level, size_t min_committed_size);
++
++  // Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
++  void test_pattern(Metachunk* c, size_t word_size);
++  void test_pattern(Metachunk* c) { test_pattern(c, c->used_words()); }
++
++public:
++
++  ChunkGtestContext(size_t commit_limit = 0, size_t reserve_limit = 0)
++    : MetaspaceGtestContext(commit_limit, reserve_limit),
++      _num_chunks_allocated(0)
++  {}
++
++  /////
++
++  // Note: all test functions return void and return values are by pointer ref; this is awkward but otherwise we cannot
++  // use gtest ASSERT macros inside those functions.
++
++  // Allocate a chunk (you do not know if it will succeed).
++  void alloc_chunk(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
++    checked_alloc_chunk_0(p_return_value, preferred_level, max_level, min_committed_size);
++  }
++
++  // Allocate a chunk; do not expect success, but if it succeeds, test the chunk.
++  void alloc_chunk(Metachunk** p_return_value, chunklevel_t level) {
++    alloc_chunk(p_return_value, level, level, word_size_for_level(level));
++  }
++
++  // Allocate a chunk; it must succeed. Test the chunk.
++  void alloc_chunk_expect_success(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
++    checked_alloc_chunk_0(p_return_value, preferred_level, max_level, min_committed_size);
++    ASSERT_NOT_NULL(*p_return_value);
++  }
++
++  // Allocate a chunk; it must succeed. Test the chunk.
++  void alloc_chunk_expect_success(Metachunk** p_return_value, chunklevel_t level) {
++    alloc_chunk_expect_success(p_return_value, level, level, word_size_for_level(level));
++  }
++
++  // Allocate a chunk but expect it to fail.
++  void alloc_chunk_expect_failure(chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
++    Metachunk* c = NULL;
++    checked_alloc_chunk_0(&c, preferred_level, max_level, min_committed_size);
++    ASSERT_NULL(c);
++  }
++
++  // Allocate a chunk but expect it to fail.
++  void alloc_chunk_expect_failure(chunklevel_t level) {
++    return alloc_chunk_expect_failure(level, level, word_size_for_level(level));
++  }
++
++  /////
++
++  void return_chunk(Metachunk* c);
++
++  /////
++
++  // Allocates from a chunk; also, fills allocated area with test pattern which will be tested with test_pattern().
++  void allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size);
++
++  // Convenience function: allocate from chunk for when you don't care for the result pointer
++  void allocate_from_chunk(Metachunk* c, size_t word_size) {
++    MetaWord* dummy;
++    allocate_from_chunk(&dummy, c, word_size);
++  }
++
++  void commit_chunk_with_test(Metachunk* c, size_t additional_size);
++  void commit_chunk_expect_failure(Metachunk* c, size_t additional_size);
++
++  void uncommit_chunk_with_test(Metachunk* c);
++
++};
++
++#endif // GTEST_METASPACE_METASPACE_GTESTCONTEXTS_HPP
++
+diff --git a/test/hotspot/gtest/metaspace/metaspaceGtestRangeHelpers.hpp b/test/hotspot/gtest/metaspace/metaspaceGtestRangeHelpers.hpp
+new file mode 100644
+--- /dev/null
++++ b/test/hotspot/gtest/metaspace/metaspaceGtestRangeHelpers.hpp
+@@ -0,0 +1,184 @@
++/*
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
++ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
++ *
++ * This code is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License version 2 only, as
++ * published by the Free Software Foundation.
++ *
++ * This code is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
++ * version 2 for more details (a copy is included in the LICENSE file that
++ * accompanied this code).
++ *
++ * You should have received a copy of the GNU General Public License version
++ * 2 along with this work; if not, write to the Free Software Foundation,
++ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
++ *
++ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
++ * or visit www.oracle.com if you need additional information or have any
++ * questions.
++ *
++ */
++
++#ifndef GTEST_METASPACE_METASPACEGTESTRANGEHELPERS_HPP
++#define GTEST_METASPACE_METASPACEGTESTRANGEHELPERS_HPP
 +
 +// We use ranges-of-things in these tests a lot so some helpers help
 +// keeping the code small.
 +
 +#include "memory/allocation.hpp"
-+#include "memory/metaspace/chunkLevel.hpp"
-+#include "runtime/os.hpp"
++#include "memory/metaspace/msChunklevel.hpp"
++#include "runtime/os.hpp" // For os::random
 +#include "utilities/align.hpp"
 +#include "utilities/debug.hpp"
 +#include "utilities/globalDefinitions.hpp"
 +
-+
 +using metaspace::chunklevel_t;
 +using namespace metaspace::chunklevel;
-+
 +
 +// A range of numerical values.
 +template <typename T, typename Td>
@@ -2004,15 +1691,15 @@ new file mode 100644
 +  static ChunkLevelRange all_chunks()    { return ChunkLevelRange(CHUNK_LEVEL_4M, CHUNK_LEVEL_1K + 1); }
 +};
 +
-+#endif // GTEST_METASPACE_METASPACE_RANGEHELPERS_HPP
-diff --git a/test/hotspot/gtest/metaspace/metaspace_sparsearray.hpp b/test/hotspot/gtest/metaspace/metaspace_sparsearray.hpp
++#endif // GTEST_METASPACE_METASPACEGTESTRANGEHELPERS_HPP
+diff --git a/test/hotspot/gtest/metaspace/metaspaceGtestSparseArray.hpp b/test/hotspot/gtest/metaspace/metaspaceGtestSparseArray.hpp
 new file mode 100644
 --- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspace_sparsearray.hpp
-@@ -0,0 +1,166 @@
++++ b/test/hotspot/gtest/metaspace/metaspaceGtestSparseArray.hpp
+@@ -0,0 +1,165 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -2035,14 +1722,15 @@ new file mode 100644
 + *
 + */
 +
-+#ifndef GTEST_METASPACE_SPARSEARRAY_HPP
-+#define GTEST_METASPACE_SPARSEARRAY_HPP
++#ifndef GTEST_METASPACE_METASPACEGTESTSPARSEARRAY_HPP
++#define GTEST_METASPACE_METASPACEGTESTSPARSEARRAY_HPP
 +
 +#include "memory/allocation.hpp"
 +#include "runtime/os.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspace_rangehelpers.hpp"
++#include "utilities/debug.hpp"
 +
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
 +
 +/////// SparseArray<T> ////////////////
 +
@@ -2094,7 +1782,7 @@ new file mode 100644
 +      if (slot_matches(slot, c)) {
 +        return slot;
 +      }
-+      slot ++;
++      slot++;
 +    }
 +    return -1;
 +  }
@@ -2106,7 +1794,7 @@ new file mode 100644
 +      _num(num),
 +      _index_range(num)
 +  {
-+    for (int i = 0; i < _num; i ++) {
++    for (int i = 0; i < _num; i++) {
 +      _slots[i] = NULL;
 +    }
 +  }
@@ -2124,14 +1812,14 @@ new file mode 100644
 +
 +  // Shuffle all elements randomly
 +  void shuffle() {
-+    for (int i = 0; i < _num; i ++) {
++    for (int i = 0; i < _num; i++) {
 +      swap(i, random_slot_index());
 +    }
 +  }
 +
 +  // Reverse elements
 +  void reverse() {
-+    for (int i = 0; i < _num / 2; i ++) {
++    for (int i = 0; i < _num / 2; i++) {
 +      swap(i, _num - i);
 +    }
 +  }
@@ -2172,18 +1860,16 @@ new file mode 100644
 +
 +};
 +
++#endif // GTEST_METASPACE_METASPACEGTESTSPARSEARRAY_HPP
 +
-+#endif // GTEST_METASPACE_SPARSEARRAY_HPP
-+
-+
-diff --git a/test/hotspot/gtest/metaspace/metaspace_testhelper.cpp b/test/hotspot/gtest/metaspace/metaspace_testhelper.cpp
+diff --git a/test/hotspot/gtest/metaspace/test_allocationGuard.cpp b/test/hotspot/gtest/metaspace/test_allocationGuard.cpp
 new file mode 100644
 --- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspace_testhelper.cpp
-@@ -0,0 +1,178 @@
++++ b/test/hotspot/gtest/metaspace/test_allocationGuard.cpp
+@@ -0,0 +1,63 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -2208,284 +1894,50 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+#include "metaspace/metaspace_testhelper.hpp"
++#include "memory/metaspace/msArena.hpp"
++#include "memory/metaspace/msTestHelpers.hpp"
++#include "memory/metaspace/msSettings.hpp"
 +
-+using namespace metaspace::chunklevel;
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
 +
-+  // No reserve limit, and a commit limit.
-+MetaspaceTestHelper::MetaspaceTestHelper(size_t commit_limit, size_t reserve_limit)
-+: metaspace::MetaspaceTestContext("metaspace-gtest-context", commit_limit, reserve_limit),
-+  _num_chunks_allocated(0)
-+{
-+}
++#ifdef ASSERT
 +
-+void MetaspaceTestHelper::checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level,
-+                                                      size_t min_committed_size) {
++using metaspace::MetaspaceArena;
++using metaspace::MetaspaceTestArena;
++using metaspace::Settings;
 +
-+  *p_return_value = NULL;
 +
-+  Metachunk* c = cm().get_chunk(preferred_level, max_level, min_committed_size);
++// Test that overwriting memory triggers an assert if allocation guards are enabled.
++//  Note: We use TEST_VM_ASSERT_MSG. However, an assert is only triggered if allocation
++//  guards are enabled; if guards are disabled for the gtests, this test would fail.
++//  So for that case, we trigger a fake assert.
++TEST_VM_ASSERT_MSG(metaspace, test_overwriter, "Corrupt block") {
 +
-+  if (c != NULL) {
-+
-+    ASSERT_LE(c->level(), max_level);
-+    ASSERT_GE(c->level(), preferred_level);
-+    ASSERT_GE(c->committed_words(), min_committed_size);
-+    ASSERT_EQ(c->committed_words(), c->free_below_committed_words());
-+    ASSERT_EQ(c->used_words(), (size_t)0);
-+    ASSERT_TRUE(c->is_in_use());
-+    ASSERT_FALSE(c->is_free());
-+    ASSERT_FALSE(c->is_dead());
-+    ASSERT_NULL(c->next());
-+    ASSERT_NULL(c->prev());
-+    if (c->level() == HIGHEST_CHUNK_LEVEL) {
-+      ASSERT_TRUE(c->is_leaf_chunk());
-+    } else {
-+      ASSERT_FALSE(c->is_leaf_chunk());
-+    }
-+    if (c->level() == LOWEST_CHUNK_LEVEL) {
-+      ASSERT_TRUE(c->is_root_chunk());
-+    } else {
-+      ASSERT_FALSE(c->is_root_chunk());
-+    }
-+    if (_num_chunks_allocated == 0) { // First chunk? We can make more assumptions
-+      ASSERT_EQ(c->level(), preferred_level);
-+      // Needs lock EXPECT_NULL(c->next_in_vs());
-+      // Needs lock EXPECT_NULL(c->prev_in_vs());
-+      ASSERT_TRUE(c->is_root_chunk() || c->is_leader());
-+    }
-+    _num_chunks_allocated ++;
-+
++  if (Settings::use_allocation_guard()) {
++    MetaspaceGtestContext context;
++    MetaspaceTestArena* arena = context.create_arena(Metaspace::StandardMetaspaceType);
++    MetaWord* p = arena->allocate(10);
++    MetaWord* p2 = arena->allocate(10);
++    p[10] = (MetaWord)0x9345; // Overwriter
++    // Checks should run in destructor:
++    delete arena;
++  } else {
++    assert(false, "Corrupt block fake message to satisfy tests");
 +  }
-+
-+  *p_return_value = c;
 +
 +}
 +
-+// Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
-+void MetaspaceTestHelper::test_pattern(Metachunk* c, size_t word_size) {
-+  check_range_for_pattern(c->base(), word_size, (uintx)c);
-+}
-+
-+void MetaspaceTestHelper::return_chunk(Metachunk* c) {
-+  test_pattern(c);
-+  c->set_in_use(); // Forestall assert in cm
-+  cm().return_chunk(c);
-+}
-+
-+ void MetaspaceTestHelper::allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size) {
-+
-+  size_t used_before = c->used_words();
-+  size_t free_before = c->free_words();
-+  size_t free_below_committed_before = c->free_below_committed_words();
-+  const MetaWord* top_before = c->top();
-+
-+  MetaWord* p = c->allocate(word_size);
-+  EXPECT_NOT_NULL(p);
-+  EXPECT_EQ(c->used_words(), used_before + word_size);
-+  EXPECT_EQ(c->free_words(), free_before - word_size);
-+  EXPECT_EQ(c->free_below_committed_words(), free_below_committed_before - word_size);
-+  EXPECT_EQ(c->top(), top_before + word_size);
-+
-+  // Old content should be preserved
-+  test_pattern(c, used_before);
-+
-+  // Fill newly allocated range too
-+  fill_range_with_pattern(p, word_size, (uintx)c);
-+
-+  *p_return_value = p;
-+}
-+
-+void MetaspaceTestHelper::commit_chunk_with_test(Metachunk* c, size_t additional_size) {
-+
-+  size_t used_before = c->used_words();
-+  size_t free_before = c->free_words();
-+  const MetaWord* top_before = c->top();
-+
-+  c->set_in_use();
-+  bool b = c->ensure_committed_additional(additional_size);
-+  EXPECT_TRUE(b);
-+
-+  // We should have enough committed size now
-+  EXPECT_GE(c->free_below_committed_words(), additional_size);
-+
-+  // used, free, top should be unchanged.
-+  EXPECT_EQ(c->used_words(), used_before);
-+  EXPECT_EQ(c->free_words(), free_before);
-+  EXPECT_EQ(c->top(), top_before);
-+
-+  test_pattern(c, used_before);
-+
-+}
-+
-+void MetaspaceTestHelper::commit_chunk_expect_failure(Metachunk* c, size_t additional_size) {
-+
-+  size_t used_before = c->used_words();
-+  size_t free_before = c->free_words();
-+  size_t free_below_committed_before = c->free_below_committed_words();
-+  const MetaWord* top_before = c->top();
-+
-+  c->set_in_use();
-+  bool b = c->ensure_committed_additional(additional_size);
-+  EXPECT_FALSE(b);
-+
-+  // Nothing should have changed
-+  EXPECT_EQ(c->used_words(), used_before);
-+  EXPECT_EQ(c->free_words(), free_before);
-+  EXPECT_EQ(c->free_below_committed_words(), free_below_committed_before);
-+  EXPECT_EQ(c->top(), top_before);
-+
-+  test_pattern(c, used_before);
-+
-+}
-+
-+void MetaspaceTestHelper::uncommit_chunk_with_test(Metachunk* c) {
-+  if (c->word_size() >= Settings::commit_granule_words()) {
-+    c->set_free();  // Forestall assert in uncommit
-+    c->reset_used_words();
-+    c->uncommit();
-+
-+    EXPECT_EQ(c->free_below_committed_words(), (size_t)0);
-+    EXPECT_EQ(c->used_words(), (size_t)0);
-+    EXPECT_EQ(c->free_words(), c->word_size());
-+    EXPECT_EQ(c->top(), c->base());
-+    EXPECT_TRUE(c->is_fully_uncommitted());
-+  }
-+}
-+
-+
-+
-+/////// SparseArray<T> ////////////////
-+
-+
-+
-diff --git a/test/hotspot/gtest/metaspace/metaspace_testhelper.hpp b/test/hotspot/gtest/metaspace/metaspace_testhelper.hpp
-new file mode 100644
---- /dev/null
-+++ b/test/hotspot/gtest/metaspace/metaspace_testhelper.hpp
-@@ -0,0 +1,114 @@
-+/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#ifndef GTEST_METASPACE_METASPACE_TESTHELPER_HPP
-+#define GTEST_METASPACE_METASPACE_TESTHELPER_HPP
-+
-+#include "memory/allocation.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+
-+using namespace metaspace::chunklevel;
-+
-+class MetaspaceTestHelper : public metaspace::MetaspaceTestContext {
-+
-+  int _num_chunks_allocated;
-+
-+  void checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level,
-+                             chunklevel_t max_level, size_t min_committed_size);
-+
-+public:
-+
-+  // Note: limit = 0 means unlimited
-+  MetaspaceTestHelper(size_t commit_limit = 0, size_t reserve_limit = 0);
-+
-+  /////
-+
-+  // Note: all test functions return void and return values are by pointer ref; this is awkward but otherwise we cannot
-+  // use gtest ASSERT macros inside those functions.
-+
-+  // Allocate a chunk (you do not know if it will succeed).
-+  void alloc_chunk(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
-+    checked_alloc_chunk_0(p_return_value, preferred_level, max_level, min_committed_size);
-+  }
-+
-+  // Allocate a chunk; do not expect success, but if it succeeds, test the chunk.
-+  void alloc_chunk(Metachunk** p_return_value, chunklevel_t level) {
-+    alloc_chunk(p_return_value, level, level, word_size_for_level(level));
-+  }
-+
-+  // Allocate a chunk; it must succeed. Test the chunk.
-+  void alloc_chunk_expect_success(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
-+    checked_alloc_chunk_0(p_return_value, preferred_level, max_level, min_committed_size);
-+    ASSERT_NOT_NULL(*p_return_value);
-+  }
-+
-+  // Allocate a chunk; it must succeed. Test the chunk.
-+  void alloc_chunk_expect_success(Metachunk** p_return_value, chunklevel_t level) {
-+    alloc_chunk_expect_success(p_return_value, level, level, word_size_for_level(level));
-+  }
-+
-+  // Allocate a chunk but expect it to fail.
-+  void alloc_chunk_expect_failure(chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_size) {
-+    Metachunk* c = NULL;
-+    checked_alloc_chunk_0(&c, preferred_level, max_level, min_committed_size);
-+    ASSERT_NULL(c);
-+  }
-+
-+  // Allocate a chunk but expect it to fail.
-+  void alloc_chunk_expect_failure(chunklevel_t level) {
-+    return alloc_chunk_expect_failure(level, level, word_size_for_level(level));
-+  }
-+
-+  /////
-+
-+  void return_chunk(Metachunk* c);
-+
-+  /////
-+
-+  // Allocates from a chunk; also, fills allocated area with test pattern which will be tested with test_pattern().
-+  void allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size);
-+
-+  // Convenience function: allocate from chunk for when you don't care for the result pointer
-+  void allocate_from_chunk(Metachunk* c, size_t word_size) {
-+    MetaWord* dummy;
-+    allocate_from_chunk(&dummy, c, word_size);
-+  }
-+
-+  // Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
-+  void test_pattern(Metachunk* c, size_t word_size);
-+  void test_pattern(Metachunk* c) { test_pattern(c, c->used_words()); }
-+
-+  void commit_chunk_with_test(Metachunk* c, size_t additional_size);
-+  void commit_chunk_expect_failure(Metachunk* c, size_t additional_size);
-+
-+  void uncommit_chunk_with_test(Metachunk* c);
-+
-+
-+};
-+
-+
-+#endif // GTEST_METASPACE_METASPACE_TESTHELPER_HPP
-+
-+
++#endif // ASSERT
 diff --git a/test/hotspot/gtest/metaspace/test_arenagrowthpolicy.cpp b/test/hotspot/gtest/metaspace/test_arenagrowthpolicy.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_arenagrowthpolicy.cpp
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,74 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -2510,9 +1962,16 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+//#define LOG_PLEASE
++#include "memory/metaspace.hpp"
++#include "memory/metaspace/msArenaGrowthPolicy.hpp"
++#include "memory/metaspace/msChunklevel.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::ArenaGrowthPolicy;
++using metaspace::chunklevel_t;
++using namespace metaspace::chunklevel;
 +
 +static void test_arena_growth_policy(Metaspace::MetaspaceType spacetype, bool is_class) {
 +
@@ -2527,7 +1986,7 @@ new file mode 100644
 +    ASSERT_GE(lvl, CHUNK_LEVEL_4K);
 +  }
 +
-+  for (int step = 1; step < 100; step ++) {
++  for (int step = 1; step < 100; step++) {
 +    chunklevel_t lvl2 = a->get_level_at_step(step);
 +    ASSERT_TRUE(is_valid_level(lvl2));
 +    // limit steepness: no growth allowed beyond last chunksize * 2
@@ -2538,7 +1997,7 @@ new file mode 100644
 +
 +#define DEFINE_GROWTH_POLICY_TEST(spacetype, is_class) \
 +TEST_VM(metaspace, arena_growth_policy_##spacetype##_##is_class) { \
-+	test_arena_growth_policy(Metaspace::spacetype, is_class); \
++  test_arena_growth_policy(Metaspace::spacetype, is_class); \
 +}
 +
 +DEFINE_GROWTH_POLICY_TEST(ReflectionMetaspaceType, true)
@@ -2550,18 +2009,14 @@ new file mode 100644
 +DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, true)
 +DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, false)
 +
-+
-+
-+
-+
 diff --git a/test/hotspot/gtest/metaspace/test_binlist.cpp b/test/hotspot/gtest/metaspace/test_binlist.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_binlist.cpp
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,230 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -2586,10 +2041,15 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
++#include "memory/metaspace/msBinList.hpp"
++#include "memory/metaspace/msCounter.hpp"
++
 +//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
-+
++using metaspace::BinList32;
++using metaspace::BinListImpl;
++using metaspace::MemRangeCounter;
 +
 +#define CHECK_BL_CONTENT(bl, expected_num, expected_size) { \
 +  EXPECT_EQ(bl.count(), (unsigned)expected_num); \
@@ -2600,7 +2060,6 @@ new file mode 100644
 +    EXPECT_FALSE(bl.is_empty()); \
 +  } \
 +}
-+
 +
 +template <class BINLISTTYPE>
 +struct BinListBasicTest {
@@ -2620,7 +2079,7 @@ new file mode 100644
 +
 +    // Try to get a block from an empty list.
 +    size_t real_size = 4711;
-+    MetaWord* p = bl.get_block(innocous_size, &real_size);
++    MetaWord* p = bl.remove_block(innocous_size, &real_size);
 +    EXPECT_EQ(p, (MetaWord*)NULL);
 +    EXPECT_EQ((size_t)0, real_size);
 +
@@ -2631,7 +2090,7 @@ new file mode 100644
 +
 +    // And retrieve it.
 +    real_size = 4711;
-+    p = bl.get_block(innocous_size, &real_size);
++    p = bl.remove_block(innocous_size, &real_size);
 +    EXPECT_EQ(p, arr);
 +    EXPECT_EQ((size_t)innocous_size, real_size);
 +    CHECK_BL_CONTENT(bl, 0, 0);
@@ -2647,15 +2106,15 @@ new file mode 100644
 +
 +    MetaWord arr[1000];
 +
-+    for (size_t s1 = minws; s1 < maxws; s1 ++) {
-+      for (size_t s2 = minws; s2 < maxws; s2 ++) {
++    for (size_t s1 = minws; s1 <= maxws; s1++) {
++      for (size_t s2 = minws; s2 <= maxws; s2++) {
 +
 +        bl.add_block(arr, s1);
 +        CHECK_BL_CONTENT(bl, 1, s1);
 +        DEBUG_ONLY(bl.verify();)
 +
 +        size_t real_size = 4711;
-+        MetaWord* p = bl.get_block(s2, &real_size);
++        MetaWord* p = bl.remove_block(s2, &real_size);
 +        if (s1 >= s2) {
 +          EXPECT_EQ(p, arr);
 +          EXPECT_EQ((size_t)s1, real_size);
@@ -2667,7 +2126,7 @@ new file mode 100644
 +          CHECK_BL_CONTENT(bl, 1, s1);
 +          DEBUG_ONLY(bl.verify();)
 +          // drain bl
-+          p = bl.get_block(minws, &real_size);
++          p = bl.remove_block(minws, &real_size);
 +          EXPECT_EQ(p, arr);
 +          EXPECT_EQ((size_t)s1, real_size);
 +          CHECK_BL_CONTENT(bl, 0, 0);
@@ -2688,7 +2147,7 @@ new file mode 100644
 +  ASSERT_EQ(cnt[1].total_size(), bl[1].total_size());
 +
 +    FeederBuffer fb(1024);
-+    RandSizeGenerator rgen(minws, maxws);
++    RandSizeGenerator rgen(minws, maxws + 1);
 +
 +    // feed all
 +    int which = 0;
@@ -2709,13 +2168,13 @@ new file mode 100644
 +    DEBUG_ONLY(bl[1].verify();)
 +
 +    // play pingpong
-+    for (int iter = 0; iter < 1000; iter ++) {
++    for (int iter = 0; iter < 1000; iter++) {
 +      size_t s = rgen.get();
 +      int taker = iter % 2;
 +      int giver = taker == 0 ? 1 : 0;
 +
 +      size_t real_size = 4711;
-+      MetaWord* p = bl[giver].get_block(s, &real_size);
++      MetaWord* p = bl[giver].remove_block(s, &real_size);
 +      if (p != NULL) {
 +
 +        ASSERT_TRUE(fb.is_valid_range(p, real_size));
@@ -2738,12 +2197,12 @@ new file mode 100644
 +    DEBUG_ONLY(bl[1].verify();)
 +
 +    // drain both lists.
-+    for (int which = 0; which < 2; which ++) {
++    for (int which = 0; which < 2; which++) {
 +      size_t last_size = 0;
 +      while (bl[which].is_empty() == false) {
 +
 +        size_t real_size = 4711;
-+        MetaWord* p = bl[which].get_block(minws, &real_size);
++        MetaWord* p = bl[which].remove_block(minws, &real_size);
 +
 +        ASSERT_NE(p, (MetaWord*) NULL);
 +        ASSERT_GE(real_size, minws);
@@ -2761,44 +2220,38 @@ new file mode 100644
 +      }
 +    }
 +
-+
 +  }
 +};
 +
-+template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::minws = BINLISTTYPE::minimal_word_size;
-+template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::maxws = BINLISTTYPE::maximal_word_size;
++template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::minws = BINLISTTYPE::MinWordSize;
++template <typename BINLISTTYPE> const size_t BinListBasicTest<BINLISTTYPE>::maxws = BINLISTTYPE::MaxWordSize;
 +
++TEST_VM(metaspace, BinList_basic_8)     { BinListBasicTest< BinListImpl<2, 8> >::basic_test(); }
++TEST_VM(metaspace, BinList_basic_16)    { BinListBasicTest< BinListImpl<2, 16> >::basic_test(); }
++TEST_VM(metaspace, BinList_basic_32)    { BinListBasicTest<BinList32>::basic_test(); }
++TEST_VM(metaspace, BinList_basic_1331)  { BinListBasicTest< BinListImpl<13, 31> >::basic_test(); }
++TEST_VM(metaspace, BinList_basic_131)   { BinListBasicTest< BinListImpl<13, 1> >::basic_test(); }
 +
-+TEST_VM(metaspace, BinList_basic_8)   { BinListBasicTest<metaspace::BinList8>::basic_test(); }
-+TEST_VM(metaspace, BinList_basic_16)  { BinListBasicTest<metaspace::BinList16>::basic_test(); }
-+TEST_VM(metaspace, BinList_basic_32)  { BinListBasicTest<metaspace::BinList32>::basic_test(); }
-+//TEST_VM(metaspace, BinList_basic_64)  { BinListBasicTest<metaspace::BinList64>::basic_test(); }
++TEST_VM(metaspace, BinList_basic2_8)     { BinListBasicTest< BinListImpl<2, 8> >::basic_test_2(); }
++TEST_VM(metaspace, BinList_basic2_16)    { BinListBasicTest< BinListImpl<2, 16> >::basic_test_2(); }
++TEST_VM(metaspace, BinList_basic2_32)    { BinListBasicTest<BinList32 >::basic_test_2(); }
++TEST_VM(metaspace, BinList_basic2_1331)  { BinListBasicTest< BinListImpl<13, 31> >::basic_test_2(); }
++TEST_VM(metaspace, BinList_basic2_131)   { BinListBasicTest< BinListImpl<13, 1> >::basic_test_2(); }
 +
-+TEST_VM(metaspace, BinList_basic_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::basic_test(); }
-+TEST_VM(metaspace, BinList_basic_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::basic_test(); }
-+
-+TEST_VM(metaspace, BinList_basic2_8)   { BinListBasicTest<metaspace::BinList8>::basic_test_2(); }
-+TEST_VM(metaspace, BinList_basic2_16)  { BinListBasicTest<metaspace::BinList16>::basic_test_2(); }
-+TEST_VM(metaspace, BinList_basic2_32)  { BinListBasicTest<metaspace::BinList32>::basic_test_2(); }
-+
-+TEST_VM(metaspace, BinList_basic2_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::basic_test_2(); }
-+TEST_VM(metaspace, BinList_basic2_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::basic_test_2(); }
-+
-+TEST_VM(metaspace, BinList_random_test_8)   { BinListBasicTest<metaspace::BinList8>::random_test(); }
-+TEST_VM(metaspace, BinList_random_test_16)  { BinListBasicTest<metaspace::BinList16>::random_test(); }
-+TEST_VM(metaspace, BinList_random_test_32)  { BinListBasicTest<metaspace::BinList32>::random_test(); }
-+
-+TEST_VM(metaspace, BinList_random_test_1331)   { BinListBasicTest< metaspace::BinListImpl<13, 31> >::random_test(); }
-+TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest< metaspace::BinListImpl<13, 1> >::random_test(); }
++TEST_VM(metaspace, BinList_random_test_8)     { BinListBasicTest< BinListImpl<2, 8> >::random_test(); }
++TEST_VM(metaspace, BinList_random_test_16)    { BinListBasicTest< BinListImpl<2, 16> >::random_test(); }
++TEST_VM(metaspace, BinList_random_test_32)    { BinListBasicTest<BinList32>::random_test(); }
++TEST_VM(metaspace, BinList_random_test_1331)  { BinListBasicTest< BinListImpl<13, 31> >::random_test(); }
++TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest< BinListImpl<13, 1> >::random_test(); }
 +
 diff --git a/test/hotspot/gtest/metaspace/test_blocktree.cpp b/test/hotspot/gtest/metaspace/test_blocktree.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_blocktree.cpp
-@@ -0,0 +1,364 @@
+@@ -0,0 +1,410 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -2823,10 +2276,24 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+//#define LOG_PLEASE
++#include "memory/metaspace/msBlockTree.hpp"
++#include "memory/metaspace/msCounter.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
++#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
 +
++using metaspace::BlockTree;
++using metaspace::MemRangeCounter;
++
++// Small helper. Given a 0-terminated array of sizes, a feeder buffer and a tree,
++//  add blocks of these sizes to the tree in the order they appear in the array.
++static void create_nodes(const size_t sizes[], FeederBuffer& fb, BlockTree& bt) {
++  for (int i = 0; sizes[i] > 0; i ++) {
++    size_t s = sizes[i];
++    MetaWord* p = fb.get(s);
++    bt.add_block(p, s);
++  }
++}
 +
 +#define CHECK_BT_CONTENT(bt, expected_num, expected_size) { \
 +  EXPECT_EQ(bt.count(), (unsigned)expected_num); \
@@ -2847,31 +2314,32 @@ new file mode 100644
 +  MetaWord* p = NULL;
 +  MetaWord arr[10000];
 +
-+  const size_t minws = BlockTree::minimal_word_size;
-+  const size_t maxws = 4096;
++  ASSERT_LE(BlockTree::MinWordSize, (size_t)6); // Sanity check. Adjust if Node is changed.
 +
-+  // get_block from empty tree should yield nothing
-+  p = bt.get_block(minws, &real_size);
-+  EXPECT_EQ(p, (MetaWord*)NULL);
-+  EXPECT_EQ(real_size, (size_t)0);
++  const size_t minws = BlockTree::MinWordSize;
++
++  // remove_block from empty tree should yield nothing
++  p = bt.remove_block(minws, &real_size);
++  EXPECT_NULL(p);
++  EXPECT_0(real_size);
 +  CHECK_BT_CONTENT(bt, 0, 0);
 +
 +  // Add some blocks and retrieve them right away.
 +  size_t sizes[] = {
-+      minws + 10,
-+      maxws - 10,
 +      minws, // smallest possible
-+      maxws - 1, // largest possible
++      minws + 10,
++      1024,
++      4711,
 +      0
 +  };
 +
-+  for (int i = 0; sizes[i] > 0; i ++) {
++  for (int i = 0; sizes[i] > 0; i++) {
 +    bt.add_block(arr, sizes[i]);
 +    CHECK_BT_CONTENT(bt, 1, sizes[i]);
 +
 +    DEBUG_ONLY(bt.verify();)
 +
-+    MetaWord* p = bt.get_block(sizes[i], &real_size);
++    MetaWord* p = bt.remove_block(sizes[i], &real_size);
 +    EXPECT_EQ(p, arr);
 +    EXPECT_EQ(real_size, (size_t)sizes[i]);
 +    CHECK_BT_CONTENT(bt, 0, 0);
@@ -2879,73 +2347,91 @@ new file mode 100644
 +
 +}
 +
-+TEST_VM(metaspace, BlockTree_closest_fit) {
-+
-+  // Test the fact that getting blocks should always return the closest fit
-+  BlockTree bt;
-+  FeederBuffer fb(10000);
-+
-+  const size_t minws = BlockTree::minimal_word_size;
-+  const size_t maxws = 256;
-+
-+  size_t sizes[] = {
-+      minws + 9,
-+      minws + 3,
-+      minws + 9,
-+      minws,
-+      minws + 8,
-+      maxws - 2,
-+      minws,
-+      maxws - 1,
-+      0
-+  };
-+
-+  size_t size_added = 0;
-+  int num_added = 0;
-+
-+  for (int i = 0; sizes[i] > 0; i ++) {
-+    const size_t s = sizes[i];
-+    MetaWord* p = fb.get(s);
-+    bt.add_block(p, s);
-+    num_added ++; size_added += s;
-+    CHECK_BT_CONTENT(bt, num_added, size_added);
++// Helper for test_find_nearest_fit_with_tree.
++// Out of an array of sizes return the closest upper match to a requested size.
++// Returns SIZE_MAX if none found.
++static size_t helper_find_nearest_fit(const size_t sizes[], size_t request_size) {
++  size_t best = SIZE_MAX;
++  for (int i = 0; sizes[i] > 0; i++) {
++    if (sizes[i] >= request_size && sizes[i] < best) {
++      best = sizes[i];
++    }
 +  }
++  return best;
++}
++
++// Given a sequence of (0-terminated) sizes, add blocks of those sizes to the tree in the order given. Then, ask
++// for a request size and check that it is the expected result.
++static void test_find_nearest_fit_with_tree(const size_t sizes[], size_t request_size) {
++
++  BlockTree bt;
++  FeederBuffer fb(4 * K);
++
++  create_nodes(sizes, fb, bt);
 +
 +  DEBUG_ONLY(bt.verify();)
 +
-+  size_t last_size = 0;
-+  while (bt.is_empty() == false) {
-+    size_t real_size = 0;
-+    MetaWord* p = bt.get_block(minws, &real_size);
-+    EXPECT_TRUE(fb.is_valid_range(p, real_size));
++  size_t expected_size = helper_find_nearest_fit(sizes, request_size);
++  size_t real_size = 0;
++  MetaWord* p = bt.remove_block(request_size, &real_size);
 +
-+    EXPECT_GE(real_size, last_size);
-+    last_size = real_size;
-+
-+    num_added --;
-+    size_added -= real_size;
-+    CHECK_BT_CONTENT(bt, num_added, size_added);
++  if (expected_size != SIZE_MAX) {
++    EXPECT_NOT_NULL(p);
++    EXPECT_EQ(real_size, expected_size);
++  } else {
++    EXPECT_NULL(p);
++    EXPECT_0(real_size);
 +  }
 +
-+  CHECK_BT_CONTENT(bt, 0, 0);
++  LOG(SIZE_FORMAT ": " SIZE_FORMAT ".", request_size, real_size);
 +
 +}
 +
++TEST_VM(metaspace, BlockTree_find_nearest_fit) {
 +
++  // Test tree for test_find_nearest_fit looks like this
++  //                30
++  //               /  \
++  //              /    \
++  //             /      \
++  //            17       50
++  //           /  \     /  \
++  //          /    \   /    \
++  //         10    28 32     51
++  //                    \
++  //                     35
++
++  static const size_t sizes[] = {
++    30, 17, 10, 28,
++    50, 32, 51, 35,
++    0 // stop
++  };
++
++  BlockTree bt;
++  FeederBuffer fb(4 * K);
++
++  create_nodes(sizes, fb, bt);
++
++  for (int i = BlockTree::MinWordSize; i <= 60; i ++) {
++    test_find_nearest_fit_with_tree(sizes, i);
++  }
++
++}
++
++// Test repeated adding and removing of blocks of the same size, which
++// should exercise the list-part of the tree.
 +TEST_VM(metaspace, BlockTree_basic_siblings)
 +{
 +  BlockTree bt;
++  FeederBuffer fb(4 * K);
++
 +  CHECK_BT_CONTENT(bt, 0, 0);
 +
-+  const size_t minws = BlockTree::minimal_word_size;
-+  const size_t maxws = 256;
-+  const size_t test_size = minws + 17;
++  const size_t test_size = BlockTree::MinWordSize;
 +  const int num = 10;
 +
-+  MetaWord* arr = NEW_C_HEAP_ARRAY(MetaWord, num * test_size, mtInternal);
-+
-+  for (int i = 0; i < num; i ++) {
-+    bt.add_block(arr + (i * test_size), test_size);
++  for (int i = 0; i < num; i++) {
++    bt.add_block(fb.get(test_size), test_size);
 +    CHECK_BT_CONTENT(bt, i + 1, (i + 1) * test_size);
 +  }
 +
@@ -2953,15 +2439,37 @@ new file mode 100644
 +
 +  for (int i = num; i > 0; i --) {
 +    size_t real_size = 4711;
-+    MetaWord* p = bt.get_block(test_size, &real_size);
-+    EXPECT_LT(p, arr + num * test_size);
-+    EXPECT_GE(p, arr);
++    MetaWord* p = bt.remove_block(test_size, &real_size);
++    EXPECT_TRUE(fb.is_valid_pointer(p));
 +    EXPECT_EQ(real_size, (size_t)test_size);
 +    CHECK_BT_CONTENT(bt, i - 1, (i - 1) * test_size);
 +  }
 +
-+  FREE_C_HEAP_ARRAY(MetaWord, arr);
 +}
++
++#ifdef ASSERT
++TEST_VM(metaspace, BlockTree_print_test) {
++
++  static const size_t sizes[] = {
++    30, 17, 10, 28,
++    50, 32, 51, 35,
++    0 // stop
++  };
++
++  BlockTree bt;
++  FeederBuffer fb(4 * K);
++
++  create_nodes(sizes, fb, bt);
++
++  ResourceMark rm;
++
++  stringStream ss;
++  bt.print_tree(&ss);
++
++  LOG("%s", ss.as_string());
++
++}
++#endif
 +
 +class BlockTreeTest {
 +
@@ -2973,12 +2481,12 @@ new file mode 100644
 +  RandSizeGenerator _rgen;
 +
 +#define CHECK_COUNTERS \
-+		CHECK_BT_CONTENT(_bt[0], _cnt[0].count(), _cnt[0].total_size()) \
-+    CHECK_BT_CONTENT(_bt[1], _cnt[1].count(), _cnt[1].total_size())
++  CHECK_BT_CONTENT(_bt[0], _cnt[0].count(), _cnt[0].total_size()) \
++  CHECK_BT_CONTENT(_bt[1], _cnt[1].count(), _cnt[1].total_size())
 +
 +#define CHECK_COUNTERS_ARE_0 \
-+    CHECK_BT_CONTENT(_bt[0], 0, 0) \
-+    CHECK_BT_CONTENT(_bt[1], 0, 0)
++  CHECK_BT_CONTENT(_bt[0], 0, 0) \
++  CHECK_BT_CONTENT(_bt[1], 0, 0)
 +
 +#ifdef ASSERT
 +  void verify_trees() {
@@ -2993,9 +2501,9 @@ new file mode 100644
 +    right_left = 3
 +  };
 +
++  // Feed the whole feeder buffer to the trees, according to feeding_pattern.
 +  void feed_all(feeding_pattern_t feeding_pattern) {
 +
-+    // Feed the whole feaderbuffer space to the trees.
 +    MetaWord* p = NULL;
 +    unsigned added = 0;
 +
@@ -3011,7 +2519,7 @@ new file mode 100644
 +        s =_rgen.get();
 +        break;
 +      case left_right:
-+        // fill in ascending order to annoy trees.
++        // fill in ascending order to provoke a misformed tree.
 +        s = MIN2(_rgen.get(), old_feeding_size);
 +        old_feeding_size = s;
 +        break;
@@ -3022,28 +2530,29 @@ new file mode 100644
 +        break;
 +      }
 +
++      // Get a block from the feeder buffer; feed it alternatingly to either tree.
 +      p = _fb.get(s);
 +      if (p != NULL) {
 +        int which = added % 2;
-+        added ++;
++        added++;
 +        _bt[which].add_block(p, s);
 +        _cnt[which].add(s);
 +        CHECK_COUNTERS
 +      }
-+      DEBUG_ONLY(verify_trees();)
-+      CHECK_COUNTERS;
 +    } while (p != NULL && added < max_blocks);
 +
-+    // Trees should be populated in a balanced way, and not empty
-+    EXPECT_TRUE( _bt[0].count() == _bt[1].count() ||
-+                (_bt[0].count() == _bt[1].count() + 1 && _bt[0].count() > 0));
++    DEBUG_ONLY(verify_trees();)
++
++    // Trees should contain the same number of nodes (+-1)
++    EXPECT_TRUE(_bt[0].count() == _bt[1].count() ||
++                _bt[0].count() == _bt[1].count() + 1);
 +
 +  }
 +
 +  void ping_pong_loop(int iterations) {
 +
 +    // We loop and in each iteration randomly retrieve a block from one tree and add it to another.
-+    for (int i = 0; i < iterations; i ++) {
++    for (int i = 0; i < iterations; i++) {
 +      int taker = 0;
 +      int giver = 1;
 +      if ((os::random() % 10) > 5) {
@@ -3051,10 +2560,8 @@ new file mode 100644
 +      }
 +      size_t s =_rgen.get();
 +      size_t real_size = 0;
-+      MetaWord* p = _bt[giver].get_block(s, &real_size);
-+      if (p == NULL) {
-+        // Todo: check that bt really has no larger block than this.
-+      } else {
++      MetaWord* p = _bt[giver].remove_block(s, &real_size);
++      if (p != NULL) {
 +        ASSERT_TRUE(_fb.is_valid_range(p, real_size));
 +        ASSERT_GE(real_size, s);
 +        _bt[taker].add_block(p, real_size);
@@ -3074,15 +2581,15 @@ new file mode 100644
 +  // Drain the trees. While draining, observe the order of the drained items.
 +  void drain_all() {
 +
-+    for (int which = 0; which < 2; which ++) {
++    for (int which = 0; which < 2; which++) {
 +      BlockTree* bt = _bt + which;
 +      size_t last_size = 0;
 +      while(!bt->is_empty()) {
 +
 +        // We only query for the minimal size. Actually returned size should be
-+        // monotonously growing since get_block should always return the closest fit.
++        // monotonously growing since remove_block should always return the closest fit.
 +        size_t real_size = 4711;
-+        MetaWord* p = bt->get_block(BlockTree::minimal_word_size, &real_size);
++        MetaWord* p = bt->remove_block(BlockTree::MinWordSize, &real_size);
 +        ASSERT_TRUE(_fb.is_valid_range(p, real_size));
 +
 +        ASSERT_GE(real_size, last_size);
@@ -3091,11 +2598,8 @@ new file mode 100644
 +        _cnt[which].sub(real_size);
 +        CHECK_COUNTERS;
 +
-+#ifdef ASSERT
-+        if (true) {//i % 1000 == 0) {
-+          bt->verify();
-+        }
-+#endif
++        DEBUG_ONLY(bt->verify();)
++
 +      }
 +    }
 +
@@ -3111,7 +2615,7 @@ new file mode 100644
 +        _bt[0].count(), _bt[0].total_size(),
 +        _bt[1].count(), _bt[1].total_size());
 +
-+    ping_pong_loop(2000);
++    ping_pong_loop(5000);
 +
 +    LOG("After Pingpong: bt1=%d:" SIZE_FORMAT ", bt2=%d:" SIZE_FORMAT ".",
 +        _bt[0].count(), _bt[0].total_size(),
@@ -3121,7 +2625,6 @@ new file mode 100644
 +
 +    CHECK_COUNTERS_ARE_0
 +  }
-+
 +
 +public:
 +
@@ -3134,7 +2637,6 @@ new file mode 100644
 +    DEBUG_ONLY(verify_trees();)
 +  }
 +
-+
 +  void test_scatter()      { test(scatter); }
 +  void test_right_left()   { test(right_left); }
 +  void test_left_right()   { test(left_right); }
@@ -3142,331 +2644,29 @@ new file mode 100644
 +};
 +
 +#define DO_TEST(name, feedingpattern, min, max) \
-+		TEST_VM(metaspace, BlockTree_##name##_##feedingpattern) { \
-+      BlockTreeTest btt(min, max); \
-+      btt.test_##feedingpattern(); \
-+    }
++  TEST_VM(metaspace, BlockTree_##name##_##feedingpattern) { \
++    BlockTreeTest btt(min, max); \
++    btt.test_##feedingpattern(); \
++  }
 +
 +#define DO_TEST_ALL_PATTERNS(name, min, max) \
 +  DO_TEST(name, scatter, min, max) \
 +  DO_TEST(name, right_left, min, max) \
 +  DO_TEST(name, left_right, min, max)
 +
-+
-+DO_TEST_ALL_PATTERNS(wide, BlockTree::minimal_word_size, 128 * K);
-+DO_TEST_ALL_PATTERNS(narrow, BlockTree::minimal_word_size, 16)
-+DO_TEST_ALL_PATTERNS(129, BlockTree::minimal_word_size, 129)
-+DO_TEST_ALL_PATTERNS(4K, BlockTree::minimal_word_size, 4*K)
-+
-+
-+
-diff --git a/test/hotspot/gtest/metaspace/test_chunkManager.cpp b/test/hotspot/gtest/metaspace/test_chunkManager.cpp
-new file mode 100644
---- /dev/null
-+++ b/test/hotspot/gtest/metaspace/test_chunkManager.cpp
-@@ -0,0 +1,294 @@
-+/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#include "precompiled.hpp"
-+
-+//#define LOG_PLEASE
-+
-+#include "metaspace/metaspace_sparsearray.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
-+
-+
-+
-+class ChunkManagerRandomChunkAllocTest {
-+
-+  static const size_t max_footprint_words = 8 * M;
-+
-+  ChunkTestsContext _helper;
-+
-+  // All allocated live chunks
-+  typedef SparseArray<Metachunk*> SparseArrayOfChunks;
-+  SparseArrayOfChunks _chunks;
-+
-+  const ChunkLevelRange _chunklevel_range;
-+  const float _commit_factor;
-+
-+  // Depending on a probability pattern, come up with a reasonable limit to number of live chunks
-+  static int max_num_live_chunks(ChunkLevelRange r, float commit_factor) {
-+    // Assuming we allocate only the largest type of chunk, committed to the fullest commit factor,
-+    // how many chunks can we accomodate before hitting max_footprint_words?
-+    const size_t largest_chunk_size = word_size_for_level(r.lowest());
-+    int max_chunks = (max_footprint_words * commit_factor) / largest_chunk_size;
-+    // .. but cap at (min) 50 and (max) 1000
-+    max_chunks = MIN2(1000, max_chunks);
-+    max_chunks = MAX2(50, max_chunks);
-+    return max_chunks;
-+  }
-+
-+  // Return true if, after an allocation error happened, a reserve error seems likely.
-+  bool could_be_reserve_error() {
-+    return _helper.vslist().is_full();
-+  }
-+
-+  // Return true if, after an allocation error happened, a commit error seems likely.
-+  bool could_be_commit_error(size_t additional_word_size) {
-+
-+    // could it be commit limit hit?
-+
-+    if (Settings::new_chunks_are_fully_committed()) {
-+      // For all we know we may have just failed to fully-commit a new root chunk.
-+      additional_word_size = MAX_CHUNK_WORD_SIZE;
-+    }
-+
-+    // Note that this is difficult to verify precisely, since there are
-+    // several layers of truth:
-+    // a) at the lowest layer (RootChunkArea) we have a bitmap of committed granules;
-+    // b) at the vslist layer, we keep running counters of committed/reserved words;
-+    // c) at the chunk layer, we keep a commit watermark (committed_words).
-+    //
-+    // (a) should mirror reality.
-+    // (a) and (b) should be precisely in sync. This is tested by
-+    // VirtualSpaceList::verify().
-+    // (c) can be, by design, imprecise (too low).
-+    //
-+    // Here, I check (b) and trust it to be correct. We also call vslist::verify().
-+    DEBUG_ONLY(_helper.verify();)
-+
-+    const size_t commit_add = align_up(additional_word_size, Settings::commit_granule_words());
-+    if (_helper.commit_limit() <= (commit_add + _helper.vslist().committed_words())) {
-+      return true;
-+    }
-+
-+    return false;
-+
-+  }
-+
-+  // Given a chunk level and a factor, return a random commit size.
-+  static size_t random_committed_words(chunklevel_t lvl, float commit_factor) {
-+    const size_t sz = word_size_for_level(lvl) * commit_factor;
-+    if (sz < 2) {
-+      return 0;
-+    }
-+    return MIN2(SizeRange(sz).random_value(), sz);
-+  }
-+
-+
-+  //// Chunk allocation ////
-+
-+  // Given an slot index, allocate a random chunk and set it into that slot. Slot must be empty.
-+  // Returns false if allocation fails.
-+  bool allocate_random_chunk_at(int slot) {
-+
-+    DEBUG_ONLY(_chunks.check_slot_is_null(slot);)
-+
-+    const ChunkLevelRange r = _chunklevel_range.random_subrange();
-+    const chunklevel_t pref_level = r.lowest();
-+    const chunklevel_t max_level = r.highest();
-+    const size_t min_committed = random_committed_words(max_level, _commit_factor);
-+
-+    Metachunk* c = NULL;
-+    _helper.alloc_chunk(&c, r.lowest(), r.highest(), min_committed);
-+    if (c == NULL) {
-+      EXPECT_TRUE(could_be_reserve_error() ||
-+                  could_be_commit_error(min_committed));
-+      LOG("Alloc chunk at %d failed.", slot);
-+      return false;
-+    }
-+
-+    _chunks.set_at(slot, c);
-+
-+    LOG("Allocated chunk at %d: " METACHUNK_FORMAT ".", slot, METACHUNK_FORMAT_ARGS(c));
-+
-+    return true;
-+
-+  }
-+
-+  // Allocates a random number of random chunks
-+  bool allocate_random_chunks() {
-+    int to_alloc = 1 + IntRange(MAX2(1, _chunks.size() / 8)).random_value();
-+    bool success = true;
-+    int slot = _chunks.first_null_slot();
-+    while (to_alloc > 0 && slot != -1 && success) {
-+      success = allocate_random_chunk_at(slot);
-+      slot = _chunks.next_null_slot(slot);
-+      to_alloc --;
-+    }
-+    return success && to_alloc == 0;
-+  }
-+
-+  bool fill_all_slots_with_random_chunks() {
-+    bool success = true;
-+    for (int slot = _chunks.first_null_slot();
-+         slot != -1 && success; slot = _chunks.next_null_slot(slot)) {
-+      success = allocate_random_chunk_at(slot);
-+    }
-+    return success;
-+  }
-+
-+  //// Chunk return ////
-+
-+  // Given an slot index, return the chunk in that slot to the chunk manager.
-+  void return_chunk_at(int slot) {
-+    Metachunk* c = _chunks.at(slot);
-+    LOG("Returning chunk at %d: " METACHUNK_FORMAT ".", slot, METACHUNK_FORMAT_ARGS(c));
-+    _helper.return_chunk(c);
-+    _chunks.set_at(slot, NULL);
-+  }
-+
-+  // return a random number of chunks (at most a quarter of the full slot range)
-+  void return_random_chunks() {
-+    int to_free = 1 + IntRange(MAX2(1, _chunks.size() / 8)).random_value();
-+    int index = _chunks.first_non_null_slot();
-+    while (to_free > 0 && index != -1) {
-+      return_chunk_at(index);
-+      index = _chunks.next_non_null_slot(index);
-+      to_free --;
-+    }
-+  }
-+
-+  void return_all_chunks() {
-+    for (int slot = _chunks.first_non_null_slot();
-+         slot != -1; slot = _chunks.next_non_null_slot(slot)) {
-+      return_chunk_at(slot);
-+    }
-+  }
-+
-+  // adjust test if we change levels
-+  STATIC_ASSERT(HIGHEST_CHUNK_LEVEL == CHUNK_LEVEL_1K);
-+  STATIC_ASSERT(LOWEST_CHUNK_LEVEL == CHUNK_LEVEL_4M);
-+
-+  void one_test() {
-+
-+    fill_all_slots_with_random_chunks();
-+    _chunks.shuffle();
-+
-+    IntRange rand(100);
-+
-+    for (int j = 0; j < 1000; j ++) {
-+
-+      bool force_alloc = false;
-+      bool force_free = true;
-+
-+      bool do_alloc =
-+          force_alloc ? true :
-+              (force_free ? false : rand.random_value() >= 50);
-+      force_alloc = force_free = false;
-+
-+      if (do_alloc) {
-+        if (!allocate_random_chunks()) {
-+          force_free = true;
-+        }
-+      } else {
-+        return_random_chunks();
-+      }
-+
-+      _chunks.shuffle();
-+
-+    }
-+
-+    return_all_chunks();
-+
-+  }
-+
-+
-+public:
-+
-+  // A test with no limits
-+  ChunkManagerRandomChunkAllocTest(ChunkLevelRange r, float commit_factor)
-+    : _helper(),
-+      _chunks(max_num_live_chunks(r, commit_factor)),
-+      _chunklevel_range(r),
-+      _commit_factor(commit_factor)
-+  {}
-+
-+  // A test with no reserve limit but commit limit
-+  ChunkManagerRandomChunkAllocTest(size_t commit_limit,
-+                                   ChunkLevelRange r, float commit_factor)
-+    : _helper(commit_limit),
-+      _chunks(max_num_live_chunks(r, commit_factor)),
-+      _chunklevel_range(r),
-+      _commit_factor(commit_factor)
-+  {}
-+
-+  // A test with both reserve and commit limit
-+  // ChunkManagerRandomChunkAllocTest(size_t commit_limit, size_t reserve_limit,
-+  //                                  ChunkLevelRange r, float commit_factor)
-+  // : _helper(commit_limit, reserve_limit),
-+  // _chunks(max_num_live_chunks(r, commit_factor)),
-+  // _chunklevel_range(r),
-+  // _commit_factor(commit_factor)
-+  // {}
-+
-+
-+  void do_tests() {
-+    const int num_runs = 5;
-+    for (int n = 0; n < num_runs; n ++) {
-+      one_test();
-+    }
-+  }
-+
-+};
-+
-+#define DEFINE_TEST(name, range, commit_factor) \
-+TEST_VM(metaspace, chunkmanager_##name) { \
-+	ChunkManagerRandomChunkAllocTest test(range, commit_factor); \
-+	test.do_tests(); \
-+}
-+
-+DEFINE_TEST(test_nolimit_1, ChunkLevelRanges::small_chunks(), 0.0f)
-+DEFINE_TEST(test_nolimit_2, ChunkLevelRanges::small_chunks(), 0.5f)
-+DEFINE_TEST(test_nolimit_3, ChunkLevelRanges::small_chunks(), 1.0f)
-+
-+DEFINE_TEST(test_nolimit_4, ChunkLevelRanges::all_chunks(), 0.0f)
-+DEFINE_TEST(test_nolimit_5, ChunkLevelRanges::all_chunks(), 0.5f)
-+DEFINE_TEST(test_nolimit_6, ChunkLevelRanges::all_chunks(), 1.0f)
-+
-+#define DEFINE_TEST_2(name, range, commit_factor) \
-+TEST_VM(metaspace, chunkmanager_##name) { \
-+  const size_t commit_limit = 256 * K; \
-+  ChunkManagerRandomChunkAllocTest test(commit_limit, range, commit_factor); \
-+  test.do_tests(); \
-+}
-+
-+DEFINE_TEST_2(test_with_limit_1, ChunkLevelRanges::small_chunks(), 0.0f)
-+DEFINE_TEST_2(test_with_limit_2, ChunkLevelRanges::small_chunks(), 0.5f)
-+DEFINE_TEST_2(test_with_limit_3, ChunkLevelRanges::small_chunks(), 1.0f)
-+
-+DEFINE_TEST_2(test_with_limit_4, ChunkLevelRanges::all_chunks(), 0.0f)
-+DEFINE_TEST_2(test_with_limit_5, ChunkLevelRanges::all_chunks(), 0.5f)
-+DEFINE_TEST_2(test_with_limit_6, ChunkLevelRanges::all_chunks(), 1.0f)
-+
++DO_TEST_ALL_PATTERNS(wide, BlockTree::MinWordSize, 128 * K);
++DO_TEST_ALL_PATTERNS(narrow, BlockTree::MinWordSize, 16)
++DO_TEST_ALL_PATTERNS(129, BlockTree::MinWordSize, 129)
++DO_TEST_ALL_PATTERNS(4K, BlockTree::MinWordSize, 4*K)
 +
 diff --git a/test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp b/test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,296 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -3491,18 +2691,25 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
++#include "memory/metaspace/msChunkManager.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "memory/metaspace/msVirtualSpaceList.hpp"
++
 +//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
++#include "metaspaceGtestSparseArray.hpp"
 +
-+#include "metaspace/metaspace_sparsearray.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
 +
++using metaspace::ChunkManager;
++using metaspace::Settings;
 +
 +class ChunkManagerRandomChunkAllocTest {
 +
 +  static const size_t max_footprint_words = 8 * M;
 +
-+  ChunkTestsContext _helper;
++  ChunkGtestContext _context;
 +
 +  // All allocated live chunks
 +  typedef SparseArray<Metachunk*> SparseArrayOfChunks;
@@ -3525,7 +2732,7 @@ new file mode 100644
 +
 +  // Return true if, after an allocation error happened, a reserve error seems likely.
 +  bool could_be_reserve_error() {
-+    return _helper.vslist().is_full();
++    return _context.vslist().is_full();
 +  }
 +
 +  // Return true if, after an allocation error happened, a commit error seems likely.
@@ -3550,10 +2757,10 @@ new file mode 100644
 +    // (c) can be, by design, imprecise (too low).
 +    //
 +    // Here, I check (b) and trust it to be correct. We also call vslist::verify().
-+    DEBUG_ONLY(_helper.verify();)
++    DEBUG_ONLY(_context.verify();)
 +
 +    const size_t commit_add = align_up(additional_word_size, Settings::commit_granule_words());
-+    if (_helper.commit_limit() <= (commit_add + _helper.vslist().committed_words())) {
++    if (_context.commit_limit() <= (commit_add + _context.vslist().committed_words())) {
 +      return true;
 +    }
 +
@@ -3570,7 +2777,6 @@ new file mode 100644
 +    return MIN2(SizeRange(sz).random_value(), sz);
 +  }
 +
-+
 +  //// Chunk allocation ////
 +
 +  // Given an slot index, allocate a random chunk and set it into that slot. Slot must be empty.
@@ -3585,7 +2791,7 @@ new file mode 100644
 +    const size_t min_committed = random_committed_words(max_level, _commit_factor);
 +
 +    Metachunk* c = NULL;
-+    _helper.alloc_chunk(&c, r.lowest(), r.highest(), min_committed);
++    _context.alloc_chunk(&c, r.lowest(), r.highest(), min_committed);
 +    if (c == NULL) {
 +      EXPECT_TRUE(could_be_reserve_error() ||
 +                  could_be_commit_error(min_committed));
@@ -3629,7 +2835,7 @@ new file mode 100644
 +  void return_chunk_at(int slot) {
 +    Metachunk* c = _chunks.at(slot);
 +    LOG("Returning chunk at %d: " METACHUNK_FORMAT ".", slot, METACHUNK_FORMAT_ARGS(c));
-+    _helper.return_chunk(c);
++    _context.return_chunk(c);
 +    _chunks.set_at(slot, NULL);
 +  }
 +
@@ -3662,7 +2868,7 @@ new file mode 100644
 +
 +    IntRange rand(100);
 +
-+    for (int j = 0; j < 1000; j ++) {
++    for (int j = 0; j < 1000; j++) {
 +
 +      bool force_alloc = false;
 +      bool force_free = true;
@@ -3688,12 +2894,11 @@ new file mode 100644
 +
 +  }
 +
-+
 +public:
 +
 +  // A test with no limits
 +  ChunkManagerRandomChunkAllocTest(ChunkLevelRange r, float commit_factor)
-+    : _helper(),
++    : _context(),
 +      _chunks(max_num_live_chunks(r, commit_factor)),
 +      _chunklevel_range(r),
 +      _commit_factor(commit_factor)
@@ -3702,7 +2907,7 @@ new file mode 100644
 +  // A test with no reserve limit but commit limit
 +  ChunkManagerRandomChunkAllocTest(size_t commit_limit,
 +                                   ChunkLevelRange r, float commit_factor)
-+    : _helper(commit_limit),
++    : _context(commit_limit),
 +      _chunks(max_num_live_chunks(r, commit_factor)),
 +      _chunklevel_range(r),
 +      _commit_factor(commit_factor)
@@ -3717,10 +2922,9 @@ new file mode 100644
 +  // _commit_factor(commit_factor)
 +  // {}
 +
-+
 +  void do_tests() {
 +    const int num_runs = 5;
-+    for (int n = 0; n < num_runs; n ++) {
++    for (int n = 0; n < num_runs; n++) {
 +      one_test();
 +    }
 +  }
@@ -3729,8 +2933,8 @@ new file mode 100644
 +
 +#define DEFINE_TEST(name, range, commit_factor) \
 +TEST_VM(metaspace, chunkmanager_random_alloc_##name) { \
-+	ChunkManagerRandomChunkAllocTest test(range, commit_factor); \
-+	test.do_tests(); \
++  ChunkManagerRandomChunkAllocTest test(range, commit_factor); \
++  test.do_tests(); \
 +}
 +
 +DEFINE_TEST(test_nolimit_1, ChunkLevelRanges::small_chunks(), 0.0f)
@@ -3756,15 +2960,14 @@ new file mode 100644
 +DEFINE_TEST_2(test_with_limit_5, ChunkLevelRanges::all_chunks(), 0.5f)
 +DEFINE_TEST_2(test_with_limit_6, ChunkLevelRanges::all_chunks(), 1.0f)
 +
-+
 diff --git a/test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp b/test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,156 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -3789,7 +2992,17 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
++
++#include "memory/metaspace/msChunkHeaderPool.hpp"
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msMetachunk.hpp"
++
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::ChunkHeaderPool;
++using metaspace::Metachunk;
++using metaspace::SizeCounter;
 +
 +class ChunkHeaderPoolTest {
 +
@@ -3815,7 +3028,7 @@ new file mode 100644
 +    _num_allocated.decrement();
 +    DEBUG_ONLY(_num_allocated.check(_pool.used());)
 +
-+    DEBUG_ONLY(_pool.verify(true);)
++    DEBUG_ONLY(_pool.verify();)
 +
 +  }
 +
@@ -3835,7 +3048,7 @@ new file mode 100644
 +    _num_allocated.increment();
 +    DEBUG_ONLY(_num_allocated.check(_pool.used());)
 +
-+    DEBUG_ONLY(_pool.verify(true);)
++    DEBUG_ONLY(_pool.verify();)
 +  }
 +
 +  void attempt_allocate_or_free_at(size_t index) {
@@ -3849,12 +3062,12 @@ new file mode 100644
 +  // Randomly allocate from the pool and free. Slight preference for allocation.
 +  void test_random_alloc_free(int num_iterations) {
 +
-+    for (int iter = 0; iter < num_iterations; iter ++) {
++    for (int iter = 0; iter < num_iterations; iter++) {
 +      size_t index = (size_t)os::random() % max_cap;
 +      attempt_allocate_or_free_at(index);
 +    }
 +
-+    DEBUG_ONLY(_pool.verify(true);)
++    DEBUG_ONLY(_pool.verify();)
 +
 +  }
 +
@@ -3863,7 +3076,6 @@ new file mode 100644
 +    test.test_random_alloc_free(100);
 +  }
 +
-+
 +public:
 +
 +  ChunkHeaderPoolTest() : _pool() {
@@ -3871,7 +3083,7 @@ new file mode 100644
 +  }
 +
 +  static void run_tests() {
-+    for (int i = 0; i < 1000; i ++) {
++    for (int i = 0; i < 1000; i++) {
 +      test_once();
 +    }
 +  }
@@ -3906,7 +3118,6 @@ new file mode 100644
 +
 +}
 +
-+
 +TEST_VM(metaspace, chunk_header_pool) {
 +  ChunkHeaderPoolTest::run_tests();
 +}
@@ -3914,10 +3125,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_commitmask.cpp b/test/hotspot/gte
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_commitmask.cpp
-@@ -0,0 +1,346 @@
+@@ -0,0 +1,350 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -3941,10 +3152,18 @@ new file mode 100644
 + */
 +
 +#include "precompiled.hpp"
-+#include "runtime/os.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspace_rangehelpers.hpp"
++#include "memory/metaspace/msCommitMask.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "runtime/os.hpp"
++#include "utilities/align.hpp"
++#include "utilities/debug.hpp"
++
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
++
++using metaspace::CommitMask;
++using metaspace::Settings;
 +
 +static int get_random(int limit) { return os::random() % limit; }
 +
@@ -3957,7 +3176,7 @@ new file mode 100644
 +  void verify_mask() {
 +    // Note: we omit the touch test since we operate on fictional
 +    // memory
-+    DEBUG_ONLY(_mask.verify(false);)
++    DEBUG_ONLY(_mask.verify();)
 +  }
 +
 +  // Return a random sub range within [_base.._base + word_size),
@@ -4002,7 +3221,7 @@ new file mode 100644
 +    ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
 +              _word_size);
 +
-+    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
 +      ASSERT_TRUE(_mask.is_committed_address(p));
 +    }
 +
@@ -4028,7 +3247,7 @@ new file mode 100644
 +              _word_size - sr_word_size);
 +    ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
 +              _word_size - sr_word_size);
-+    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
 +      if (p >= sr_base && p < sr_base + sr_word_size) {
 +        ASSERT_FALSE(_mask.is_committed_address(p));
 +      } else {
@@ -4047,7 +3266,7 @@ new file mode 100644
 +              _word_size);
 +    ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
 +              _word_size);
-+    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
 +      ASSERT_TRUE(_mask.is_committed_address(p));
 +    }
 +
@@ -4080,7 +3299,7 @@ new file mode 100644
 +
 +    ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
 +              (size_t)0);
-+    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
 +      ASSERT_FALSE(_mask.is_committed_address(p));
 +    }
 +
@@ -4099,7 +3318,7 @@ new file mode 100644
 +        sr_word_size);
 +    ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
 +        sr_word_size);
-+    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
 +      if (p >= sr_base && p < sr_base + sr_word_size) {
 +        ASSERT_TRUE(_mask.is_committed_address(p));
 +      } else {
@@ -4118,12 +3337,11 @@ new file mode 100644
 +        (size_t)0);
 +    EXPECT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
 +        (size_t)0);
-+    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
 +      ASSERT_FALSE(_mask.is_committed_address(p));
 +    }
 +
 +  }
-+
 +
 +  void test3() {
 +
@@ -4132,7 +3350,7 @@ new file mode 100644
 +
 +    _mask.clear_large();
 +
-+    for (int run = 0; run < 100; run ++) {
++    for (int run = 0; run < 100; run++) {
 +
 +      // A random range
 +      SizeRange r = SizeRange(_word_size).random_aligned_subrange(Settings::commit_granule_words());
@@ -4154,7 +3372,6 @@ new file mode 100644
 +
 +  }
 +
-+
 +public:
 +
 +  CommitMaskTest(const MetaWord* base, size_t size)
@@ -4165,11 +3382,10 @@ new file mode 100644
 +    LOG("mask range: " PTR_FORMAT "-" PTR_FORMAT
 +         " (" SIZE_FORMAT " words).",
 +         p2i(_base), p2i(_base + _word_size), _word_size);
-+    for (int i = 0; i < 5; i ++) {
++    for (int i = 0; i < 5; i++) {
 +      test1(); test2(); test3();
 +    }
 +  }
-+
 +
 +};
 +
@@ -4190,7 +3406,7 @@ new file mode 100644
 +  mask3.mark_range_as_committed(base + (Settings::commit_granule_words() * 42), Settings::commit_granule_words());
 +
 +  ASSERT_EQ(mask3.at(0), 1);
-+  for (int i = 1; i < 42; i ++) {
++  for (int i = 1; i < 42; i++) {
 +    ASSERT_EQ(mask3.at(i), 0);
 +  }
 +  ASSERT_EQ(mask3.at(42), 1);
@@ -4243,10 +3459,9 @@ new file mode 100644
 +
 +}
 +
-+
 +TEST_VM(metaspace, commit_mask_random) {
 +
-+  for (int i = 0; i < 5; i ++) {
++  for (int i = 0; i < 5; i++) {
 +
 +    // make up a range out of thin air
 +    const MetaWord* const base =
@@ -4265,10 +3480,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_freeblocks.cpp b/test/hotspot/gte
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_freeblocks.cpp
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,231 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -4293,9 +3508,14 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+//#define LOG_PLEASE
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msFreeBlocks.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::FreeBlocks;
++using metaspace::SizeCounter;
 +
 +#define CHECK_CONTENT(fb, num_blocks_expected, word_size_expected) \
 +{ \
@@ -4358,8 +3578,8 @@ new file mode 100644
 +
 +  bool allocate() {
 +
-+    size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.minimal_word_size);
-+    MetaWord* p = _freeblocks.get_block(word_size);
++    size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.MinWordSize);
++    MetaWord* p = _freeblocks.remove_block(word_size);
 +    if (p != NULL) {
 +      _allocated_words.increment_by(word_size);
 +      allocation_t* a = new allocation_t;
@@ -4381,11 +3601,11 @@ new file mode 100644
 +
 +  void test_loop() {
 +    // We loop and in each iteration execute one of three operations:
-+    // - allocation from lom
-+    // - deallocation to lom of a previously allocated block
-+    // - feeding a new larger block into the lom (mimicks chunk retiring)
-+    // When we have fed all large blocks into the lom (feedbuffer empty), we
-+    //  switch to draining the lom completely (only allocs)
++    // - allocation from fbl
++    // - deallocation to fbl of a previously allocated block
++    // - feeding a new larger block into the fbl (mimicks chunk retiring)
++    // When we have fed all large blocks into the fbl (feedbuffer empty), we
++    //  switch to draining the fbl completely (only allocs)
 +    bool forcefeed = false;
 +    bool draining = false;
 +    bool stop = false;
@@ -4396,17 +3616,17 @@ new file mode 100644
 +      if (!draining && (surprise >= 7 || forcefeed)) {
 +        forcefeed = false;
 +        if (feed_some()) {
-+          _num_feeds ++;
++          _num_feeds++;
 +        } else {
-+          // We fed all input memory into the LOM. Now lets proceed until the lom is drained.
++          // We fed all input memory into the fbl. Now lets proceed until the fbl is drained.
 +          draining = true;
 +        }
 +      } else if (!draining && surprise < 1) {
 +        deallocate_top();
-+        _num_deallocs ++;
++        _num_deallocs++;
 +      } else {
 +        if (allocate()) {
-+          _num_allocs ++;
++          _num_allocs++;
 +        } else {
 +          if (draining) {
 +            stop = _freeblocks.total_size() < 512;
@@ -4428,10 +3648,7 @@ new file mode 100644
 +
 +    // Drain
 +
-+
 +  }
-+
-+
 +
 +public:
 +
@@ -4448,7 +3665,6 @@ new file mode 100644
 +    CHECK_CONTENT(_freeblocks, 1, 1024);
 +  }
 +
-+
 +  static void test_small_allocations() {
 +    FreeBlocksTest test(10);
 +    test.test_loop();
@@ -4464,25 +3680,23 @@ new file mode 100644
 +    test.test_loop();
 +  }
 +
-+
 +};
-+
 +
 +TEST_VM(metaspace, freeblocks_basics) {
 +
-+  FreeBlocks lom;
++  FreeBlocks fbl;
 +  MetaWord tmp[1024];
-+  CHECK_CONTENT(lom, 0, 0);
++  CHECK_CONTENT(fbl, 0, 0);
 +
-+  lom.add_block(tmp, 1024);
-+  DEBUG_ONLY(lom.verify();)
-+  ASSERT_FALSE(lom.is_empty());
-+  CHECK_CONTENT(lom, 1, 1024);
++  fbl.add_block(tmp, 1024);
++  DEBUG_ONLY(fbl.verify();)
++  ASSERT_FALSE(fbl.is_empty());
++  CHECK_CONTENT(fbl, 1, 1024);
 +
-+  MetaWord* p = lom.get_block(1024);
++  MetaWord* p = fbl.remove_block(1024);
 +  EXPECT_EQ(p, tmp);
-+  DEBUG_ONLY(lom.verify();)
-+  CHECK_CONTENT(lom, 0, 0);
++  DEBUG_ONLY(fbl.verify();)
++  CHECK_CONTENT(fbl, 0, 0);
 +
 +}
 +
@@ -4504,8 +3718,8 @@ new file mode 100644
 +++ b/test/hotspot/gtest/metaspace/test_internstats.cpp
 @@ -0,0 +1,45 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -4530,10 +3744,10 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+//#define LOG_PLEASE
++#include "memory/metaspace/msInternalStats.hpp"
 +
-+#include "metaspaceTestsCommon.hpp"
-+#include "memory/metaspace/internStat.hpp"
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
 +
 +// Very simple test, since the VM is fired up we should see a little
 +// Metaspace activity already which should show up in the stats.
@@ -4552,10 +3766,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_is_metaspace_obj.cpp b/test/hotsp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_is_metaspace_obj.cpp
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,112 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -4582,15 +3796,13 @@ new file mode 100644
 +
 +#include "memory/allocation.inline.hpp"
 +#include "memory/metaspace.hpp"
-+#include "memory/metaspace/virtualSpaceList.hpp"
++#include "memory/metaspace/msVirtualSpaceList.hpp"
 +#include "runtime/mutex.hpp"
 +#include "runtime/mutexLocker.hpp"
 +#include "runtime/os.hpp"
 +#include "unittest.hpp"
 +
 +using namespace metaspace;
-+
-+
 +
 +// Test the cheerful multitude of metaspace-contains-functions.
 +class MetaspaceIsMetaspaceObjTest {
@@ -4671,10 +3883,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_metachunk.cpp b/test/hotspot/gtes
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metachunk.cpp
-@@ -0,0 +1,412 @@
+@@ -0,0 +1,424 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -4698,26 +3910,39 @@ new file mode 100644
 + */
 +
 +#include "precompiled.hpp"
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
++
++#include "memory/metaspace/msChunkManager.hpp"
++#include "memory/metaspace/msFreeChunkList.hpp"
++#include "memory/metaspace/msMetachunk.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "memory/metaspace/msVirtualSpaceNode.hpp"
 +#include "runtime/mutexLocker.hpp"
 +
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++
++
++using metaspace::ChunkManager;
++using metaspace::FreeChunkListVector;
++using metaspace::Metachunk;
++using metaspace::Settings;
++using metaspace::VirtualSpaceNode;
 +using namespace metaspace::chunklevel;
 +
 +// Test ChunkManager::get_chunk
 +TEST_VM(metaspace, get_chunk) {
 +
-+  ChunkTestsContext helper(8 * M);
++  ChunkGtestContext context(8 * M);
 +  Metachunk* c = NULL;
 +
-+  for (chunklevel_t pref_lvl = LOWEST_CHUNK_LEVEL; pref_lvl <= HIGHEST_CHUNK_LEVEL; pref_lvl ++) {
++  for (chunklevel_t pref_lvl = LOWEST_CHUNK_LEVEL; pref_lvl <= HIGHEST_CHUNK_LEVEL; pref_lvl++) {
 +
-+    for (chunklevel_t max_lvl = pref_lvl; max_lvl <= HIGHEST_CHUNK_LEVEL; max_lvl ++) {
++    for (chunklevel_t max_lvl = pref_lvl; max_lvl <= HIGHEST_CHUNK_LEVEL; max_lvl++) {
 +
 +      for (size_t min_committed_words = Settings::commit_granule_words();
 +           min_committed_words <= word_size_for_level(max_lvl); min_committed_words *= 2) {
-+        helper.alloc_chunk_expect_success(&c, pref_lvl, max_lvl, min_committed_words);
-+        helper.return_chunk(c);
++        context.alloc_chunk_expect_success(&c, pref_lvl, max_lvl, min_committed_words);
++        context.return_chunk(c);
 +      }
 +    }
 +  }
@@ -4727,21 +3952,21 @@ new file mode 100644
 +TEST_VM(metaspace, get_chunk_with_commit_limit) {
 +
 +  const size_t commit_limit_words = 1 * M;
-+  ChunkTestsContext helper(commit_limit_words);
++  ChunkGtestContext context(commit_limit_words);
 +  Metachunk* c = NULL;
 +
-+  for (chunklevel_t pref_lvl = LOWEST_CHUNK_LEVEL; pref_lvl <= HIGHEST_CHUNK_LEVEL; pref_lvl ++) {
++  for (chunklevel_t pref_lvl = LOWEST_CHUNK_LEVEL; pref_lvl <= HIGHEST_CHUNK_LEVEL; pref_lvl++) {
 +
-+    for (chunklevel_t max_lvl = pref_lvl; max_lvl <= HIGHEST_CHUNK_LEVEL; max_lvl ++) {
++    for (chunklevel_t max_lvl = pref_lvl; max_lvl <= HIGHEST_CHUNK_LEVEL; max_lvl++) {
 +
 +      for (size_t min_committed_words = Settings::commit_granule_words();
 +           min_committed_words <= word_size_for_level(max_lvl); min_committed_words *= 2) {
 +
 +        if (min_committed_words <= commit_limit_words) {
-+          helper.alloc_chunk_expect_success(&c, pref_lvl, max_lvl, min_committed_words);
-+          helper.return_chunk(c);
++          context.alloc_chunk_expect_success(&c, pref_lvl, max_lvl, min_committed_words);
++          context.return_chunk(c);
 +        } else {
-+          helper.alloc_chunk_expect_failure(pref_lvl, max_lvl, min_committed_words);
++          context.alloc_chunk_expect_failure(pref_lvl, max_lvl, min_committed_words);
 +        }
 +
 +      }
@@ -4752,13 +3977,13 @@ new file mode 100644
 +// Test that recommitting the used portion of a chunk will preserve the original content.
 +TEST_VM(metaspace, get_chunk_recommit) {
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +  Metachunk* c = NULL;
-+  helper.alloc_chunk_expect_success(&c, ROOT_CHUNK_LEVEL, ROOT_CHUNK_LEVEL, 0);
-+  helper.uncommit_chunk_with_test(c);
++  context.alloc_chunk_expect_success(&c, ROOT_CHUNK_LEVEL, ROOT_CHUNK_LEVEL, 0);
++  context.uncommit_chunk_with_test(c);
 +
-+  helper.commit_chunk_with_test(c, Settings::commit_granule_words());
-+  helper.allocate_from_chunk(c, Settings::commit_granule_words());
++  context.commit_chunk_with_test(c, Settings::commit_granule_words());
++  context.allocate_from_chunk(c, Settings::commit_granule_words());
 +
 +  c->ensure_committed(Settings::commit_granule_words());
 +  check_range_for_pattern(c->base(), c->used_words(), (uintx)c);
@@ -4766,7 +3991,7 @@ new file mode 100644
 +  c->ensure_committed(Settings::commit_granule_words() * 2);
 +  check_range_for_pattern(c->base(), c->used_words(), (uintx)c);
 +
-+  helper.return_chunk(c);
++  context.return_chunk(c);
 +
 +}
 +
@@ -4776,7 +4001,7 @@ new file mode 100644
 +
 +  const size_t reserve_limit_words = word_size_for_level(ROOT_CHUNK_LEVEL);
 +  const size_t commit_limit_words = 1024 * M; // just very high
-+  ChunkTestsContext helper(commit_limit_words, reserve_limit_words);
++  ChunkGtestContext context(commit_limit_words, reserve_limit_words);
 +
 +  // Reserve limit works at root chunk size granularity: if the chunk manager cannot satisfy
 +  //  a request for a chunk from its freelists, it will acquire a new root chunk from the
@@ -4787,25 +4012,25 @@ new file mode 100644
 +
 +  // Cause allocation of the firstone root chunk, should still work:
 +  Metachunk* c = NULL;
-+  helper.alloc_chunk_expect_success(&c, HIGHEST_CHUNK_LEVEL);
++  context.alloc_chunk_expect_success(&c, HIGHEST_CHUNK_LEVEL);
 +
 +  // and this should need a new root chunk and hence fail:
-+  helper.alloc_chunk_expect_failure(ROOT_CHUNK_LEVEL);
++  context.alloc_chunk_expect_failure(ROOT_CHUNK_LEVEL);
 +
-+  helper.return_chunk(c);
++  context.return_chunk(c);
 +
 +}
 +
 +// Test MetaChunk::allocate
 +TEST_VM(metaspace, chunk_allocate_full) {
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +
-+  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl ++) {
++  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl++) {
 +    Metachunk* c = NULL;
-+    helper.alloc_chunk_expect_success(&c, lvl);
-+    helper.allocate_from_chunk(c, c->word_size());
-+    helper.return_chunk(c);
++    context.alloc_chunk_expect_success(&c, lvl);
++    context.allocate_from_chunk(c, c->word_size());
++    context.return_chunk(c);
 +  }
 +
 +}
@@ -4813,13 +4038,13 @@ new file mode 100644
 +// Test MetaChunk::allocate
 +TEST_VM(metaspace, chunk_allocate_random) {
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +
-+  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl ++) {
++  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl++) {
 +
 +    Metachunk* c = NULL;
-+    helper.alloc_chunk_expect_success(&c, lvl);
-+    helper.uncommit_chunk_with_test(c); // start out fully uncommitted
++    context.alloc_chunk_expect_success(&c, lvl);
++    context.uncommit_chunk_with_test(c); // start out fully uncommitted
 +
 +    RandSizeGenerator rgen(1, c->word_size() / 30);
 +    bool stop = false;
@@ -4827,14 +4052,14 @@ new file mode 100644
 +    while (!stop) {
 +      const size_t s = rgen.get();
 +      if (s <= c->free_words()) {
-+        helper.commit_chunk_with_test(c, s);
-+        helper.allocate_from_chunk(c, s);
++        context.commit_chunk_with_test(c, s);
++        context.allocate_from_chunk(c, s);
 +      } else {
 +        stop = true;
 +      }
 +
 +    }
-+    helper.return_chunk(c);
++    context.return_chunk(c);
 +
 +  }
 +
@@ -4842,9 +4067,9 @@ new file mode 100644
 +
 +TEST_VM(metaspace, chunk_buddy_stuff) {
 +
-+  for (chunklevel_t l = ROOT_CHUNK_LEVEL + 1; l <= HIGHEST_CHUNK_LEVEL; l ++) {
++  for (chunklevel_t l = ROOT_CHUNK_LEVEL + 1; l <= HIGHEST_CHUNK_LEVEL; l++) {
 +
-+    ChunkTestsContext helper;
++    ChunkGtestContext context;
 +
 +    // Allocate two chunks; since we know the first chunk is the first in its area,
 +    // it has to be a leader, and the next one of the same size its buddy.
@@ -4853,11 +4078,11 @@ new file mode 100644
 +    //  we know how the placement works so these tests make sense).
 +
 +    Metachunk* c1 = NULL;
-+    helper.alloc_chunk(&c1, CHUNK_LEVEL_1K);
++    context.alloc_chunk(&c1, CHUNK_LEVEL_1K);
 +    EXPECT_TRUE(c1->is_leader());
 +
 +    Metachunk* c2 = NULL;
-+    helper.alloc_chunk(&c2, CHUNK_LEVEL_1K);
++    context.alloc_chunk(&c2, CHUNK_LEVEL_1K);
 +    EXPECT_FALSE(c2->is_leader());
 +
 +    // buddies are adjacent in memory
@@ -4870,13 +4095,12 @@ new file mode 100644
 +      EXPECT_EQ(c2->prev_in_vs(), c1);
 +    }
 +
-+    helper.return_chunk(c1);
-+    helper.return_chunk(c2);
++    context.return_chunk(c1);
++    context.return_chunk(c2);
 +
 +  }
 +
 +}
-+
 +
 +TEST_VM(metaspace, chunk_allocate_with_commit_limit) {
 +
@@ -4887,29 +4111,29 @@ new file mode 100644
 +
 +  const size_t granule_sz = Settings::commit_granule_words();
 +  const size_t commit_limit = granule_sz * 3;
-+  ChunkTestsContext helper(commit_limit);
++  ChunkGtestContext context(commit_limit);
 +
 +  // A big chunk, but uncommitted.
 +  Metachunk* c = NULL;
-+  helper.alloc_chunk_expect_success(&c, ROOT_CHUNK_LEVEL, ROOT_CHUNK_LEVEL, 0);
-+  helper.uncommit_chunk_with_test(c); // ... just to make sure.
++  context.alloc_chunk_expect_success(&c, ROOT_CHUNK_LEVEL, ROOT_CHUNK_LEVEL, 0);
++  context.uncommit_chunk_with_test(c); // ... just to make sure.
 +
 +  // first granule...
-+  helper.commit_chunk_with_test(c, granule_sz);
-+  helper.allocate_from_chunk(c, granule_sz);
++  context.commit_chunk_with_test(c, granule_sz);
++  context.allocate_from_chunk(c, granule_sz);
 +
 +  // second granule...
-+  helper.commit_chunk_with_test(c, granule_sz);
-+  helper.allocate_from_chunk(c, granule_sz);
++  context.commit_chunk_with_test(c, granule_sz);
++  context.allocate_from_chunk(c, granule_sz);
 +
 +  // third granule...
-+  helper.commit_chunk_with_test(c, granule_sz);
-+  helper.allocate_from_chunk(c, granule_sz);
++  context.commit_chunk_with_test(c, granule_sz);
++  context.allocate_from_chunk(c, granule_sz);
 +
 +  // This should fail now.
-+  helper.commit_chunk_expect_failure(c, granule_sz);
++  context.commit_chunk_expect_failure(c, granule_sz);
 +
-+  helper.return_chunk(c);
++  context.return_chunk(c);
 +
 +}
 +
@@ -4947,7 +4171,7 @@ new file mode 100644
 +  // with a follower chunk, not a leader). Also, at any point in the merge
 +  // process we may arrive at a follower chunk. So, the fact that in this test
 +  // we only expect a leader merge is a feature of the test, and of the fact that we
-+  // start each split test with a fresh MetaspaceTestHelper.
++  // start each split test with a fresh ChunkTestsContext.
 +
 +  // Note: Splitting and merging chunks is usually done from within the ChunkManager and
 +  //  subject to a lot of assumptions and hence asserts. Here, we have to explicitly use
@@ -4959,18 +4183,18 @@ new file mode 100644
 +  //   in ~RootChunkArea()
 +  // - finally we have to lock manually
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +
 +  const chunklevel_t orig_lvl = ROOT_CHUNK_LEVEL;
-+  for (chunklevel_t target_lvl = orig_lvl + 1; target_lvl <= HIGHEST_CHUNK_LEVEL; target_lvl ++) {
++  for (chunklevel_t target_lvl = orig_lvl + 1; target_lvl <= HIGHEST_CHUNK_LEVEL; target_lvl++) {
 +
 +    // Split a fully committed chunk. The resulting chunk should be fully
 +    //  committed as well, and have its content preserved.
 +    Metachunk* c = NULL;
-+    helper.alloc_chunk_expect_success(&c, orig_lvl);
++    context.alloc_chunk_expect_success(&c, orig_lvl);
 +
 +    // We allocate from this chunk to be able to completely paint the payload.
-+    helper.allocate_from_chunk(c, c->word_size());
++    context.allocate_from_chunk(c, c->word_size());
 +
 +    const uintx canary = os::random();
 +    fill_range_with_pattern(c->base(), c->word_size(), canary);
@@ -4987,7 +4211,7 @@ new file mode 100644
 +      c->vsnode()->split(target_lvl, c, &splinters);
 +    }
 +
-+    DEBUG_ONLY(helper.verify();)
++    DEBUG_ONLY(context.verify();)
 +
 +    EXPECT_EQ(c->level(), target_lvl);
 +    EXPECT_TRUE(c->is_fully_committed());
@@ -4998,14 +4222,14 @@ new file mode 100644
 +
 +    // I expect splinter chunks (one for each splinter level:
 +    //  e.g. splitting a 1M chunk to get a 64K chunk should yield splinters: [512K, 256K, 128K, 64K]
-+    for (chunklevel_t l = LOWEST_CHUNK_LEVEL; l < HIGHEST_CHUNK_LEVEL; l ++) {
++    for (chunklevel_t l = LOWEST_CHUNK_LEVEL; l < HIGHEST_CHUNK_LEVEL; l++) {
 +      const Metachunk* c2 = splinters.first_at_level(l);
 +      if (l > orig_lvl && l <= target_lvl) {
 +        EXPECT_NOT_NULL(c2);
 +        EXPECT_EQ(c2->level(), l);
 +        EXPECT_TRUE(c2->is_free());
 +        EXPECT_TRUE(!c2->is_leader());
-+        DEBUG_ONLY(c2->verify(false));
++        DEBUG_ONLY(c2->verify());
 +        check_range_for_pattern(c2->base(), c2->word_size(), canary);
 +      } else {
 +        EXPECT_NULL(c2);
@@ -5030,7 +4254,7 @@ new file mode 100644
 +      EXPECT_EQ(splinters.num_chunks(), 0);
 +    }
 +
-+    helper.return_chunk(c);
++    context.return_chunk(c);
 +
 +  }
 +
@@ -5038,13 +4262,13 @@ new file mode 100644
 +
 +TEST_VM(metaspace, chunk_enlarge_in_place) {
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +
 +  // Starting with the smallest chunk size, attempt to enlarge the chunk in place until we arrive
 +  // at root chunk size. Since the state is clean, this should work.
 +
 +  Metachunk* c = NULL;
-+  helper.alloc_chunk_expect_success(&c, HIGHEST_CHUNK_LEVEL);
++  context.alloc_chunk_expect_success(&c, HIGHEST_CHUNK_LEVEL);
 +
 +  chunklevel_t l = c->level();
 +
@@ -5052,15 +4276,15 @@ new file mode 100644
 +
 +    // commit and allocate from chunk to pattern it...
 +    const size_t original_chunk_size = c->word_size();
-+    helper.commit_chunk_with_test(c, c->free_words());
-+    helper.allocate_from_chunk(c, c->free_words());
++    context.commit_chunk_with_test(c, c->free_words());
++    context.allocate_from_chunk(c, c->free_words());
 +
 +    size_t used_before = c->used_words();
 +    size_t free_before = c->free_words();
 +    size_t free_below_committed_before = c->free_below_committed_words();
 +    const MetaWord* top_before = c->top();
 +
-+    EXPECT_TRUE(helper.cm().attempt_enlarge_chunk(c));
++    EXPECT_TRUE(context.cm().attempt_enlarge_chunk(c));
 +    EXPECT_EQ(l - 1, c->level());
 +    EXPECT_EQ(c->word_size(), original_chunk_size * 2);
 +
@@ -5080,7 +4304,7 @@ new file mode 100644
 +    l = c->level();
 +  }
 +
-+  helper.return_chunk(c);
++  context.return_chunk(c);
 +
 +}
 +
@@ -5088,10 +4312,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_metachunklist.cpp b/test/hotspot/
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metachunklist.cpp
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,148 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -5116,23 +4340,32 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msFreeChunkList.hpp"
++#include "memory/metaspace/msMetachunkList.hpp"
++
 +//#define LOG_PLEASE
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
-+#include "metaspace/metaspace_rangehelpers.hpp"
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
++
++using metaspace::MemRangeCounter;
++using metaspace::MetachunkList;
++using metaspace::FreeChunkListVector;
++
 +
 +TEST_VM(metaspace, metachunklist) {
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +
 +  MetachunkList lst;
 +
 +  Metachunk* chunks[10];
 +  size_t total_size = 0;
 +
-+  for (int i = 0; i < 10; i ++) {
++  for (int i = 0; i < 10; i++) {
 +    Metachunk* c = NULL;
-+    helper.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
++    context.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
 +    chunks[i] = c;
 +    total_size += c->committed_words();
 +
@@ -5149,14 +4382,14 @@ new file mode 100644
 +
 +  }
 +
-+  for (int i = 0; i < 10; i ++) {
++  for (int i = 0; i < 10; i++) {
 +    DEBUG_ONLY(EXPECT_TRUE(lst.contains(chunks[i]));)
 +  }
 +
-+  for (int i = 0; i < 10; i ++) {
++  for (int i = 0; i < 10; i++) {
 +    Metachunk* c = lst.remove_first();
 +    DEBUG_ONLY(EXPECT_FALSE(lst.contains(c));)
-+    helper.return_chunk(c);
++    context.return_chunk(c);
 +  }
 +
 +  EXPECT_EQ(lst.count(), 0);
@@ -5164,10 +4397,9 @@ new file mode 100644
 +
 +}
 +
-+
 +TEST_VM(metaspace, freechunklist) {
 +
-+  ChunkTestsContext helper;
++  ChunkGtestContext context;
 +
 +  FreeChunkListVector lst;
 +
@@ -5177,12 +4409,12 @@ new file mode 100644
 +  // Add random chunks to list and check the counter apis (word_size, commited_word_size, num_chunks)
 +  // Make every other chunk randomly uncommitted, and later we check that committed chunks are sorted in at the front
 +  // of the lists.
-+  for (int i = 0; i < 100; i ++) {
++  for (int i = 0; i < 100; i++) {
 +    Metachunk* c = NULL;
-+    helper.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
++    context.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
 +    bool uncommitted_chunk = i % 3;
 +    if (uncommitted_chunk) {
-+      helper.uncommit_chunk_with_test(c);
++      context.uncommit_chunk_with_test(c);
 +      c->set_in_use();
 +    }
 +
@@ -5199,7 +4431,7 @@ new file mode 100644
 +  }
 +
 +  // Drain each list separately
-+  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl ++) {
++  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl++) {
 +    Metachunk* c = lst.remove_first(lvl);
 +    bool found_uncommitted = false;
 +    while (c != NULL) {
@@ -5220,7 +4452,7 @@ new file mode 100644
 +      EXPECT_EQ(lst.word_size(), cnt.total_size());
 +      EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
 +
-+      helper.return_chunk(c);
++      context.return_chunk(c);
 +
 +      c = lst.remove_first(lvl);
 +    }
@@ -5233,10 +4465,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp b/test/hotspot
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,74 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -5262,7 +4494,6 @@ new file mode 100644
 +#include "precompiled.hpp"
 +#include "memory/metaspace.hpp"
 +#include "unittest.hpp"
-+
 +
 +TEST_VM(MetaspaceUtils, reserved) {
 +  size_t reserved = MetaspaceUtils::reserved_bytes();
@@ -5309,67 +4540,14 @@ new file mode 100644
 +  EXPECT_LE(committed_class, committed);
 +}
 +
-diff --git a/test/hotspot/gtest/metaspace/test_metaspace_counters.cpp b/test/hotspot/gtest/metaspace/test_metaspace_counters.cpp
-new file mode 100644
---- /dev/null
-+++ b/test/hotspot/gtest/metaspace/test_metaspace_counters.cpp
-@@ -0,0 +1,48 @@
-+/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#include "precompiled.hpp"
-+
-+//#define LOG_PLEASE
-+
-+#include "classfile/classLoaderData.hpp"
-+#include "metaspaceTestsCommon.hpp"
-+#include "metaspace_rangehelpers.hpp"
-+#include "threadHelper.inline.hpp"
-+
-+
-+TEST_VM(metaspace, counters_basic)   {
-+
-+  IntCounter cnt;
-+  ASSERT_0(cnt.get());
-+  cnt.increment();
-+  ASSERT_EQ(cnt.get(), (unsigned)1);
-+  cnt.increment_by(100);
-+  ASSERT_EQ(cnt.get(), (unsigned)101);
-+  cnt.decrement_by(101);
-+  ASSERT_0(cnt.get());
-+
-+}
-+
 diff --git a/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp b/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,111 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -5394,12 +4572,18 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+// #define LOG_PLEASE
 +
 +#include "classfile/classLoaderData.hpp"
-+#include "metaspaceTestsCommon.hpp"
++#include "memory/metaspace/msChunklevel.hpp"
++#include "memory/metaspace/msSettings.hpp"
 +#include "utilities/powerOfTwo.hpp"
 +
++// #define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::chunklevel_t;
++using namespace metaspace::chunklevel;
++using metaspace::Settings;
 +
 +TEST_VM(metaspace, misc_sizes)   {
 +
@@ -5417,7 +4601,6 @@ new file mode 100644
 +            Metaspace::reserve_alignment_words());
 +
 +}
-+
 +
 +TEST_VM(metaspace, misc_max_alloc_size)   {
 +
@@ -5471,17 +4654,16 @@ new file mode 100644
 +  EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
 +  EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
 +
-+
 +}
 +
 diff --git a/test/hotspot/gtest/metaspace/test_metaspacearena.cpp b/test/hotspot/gtest/metaspace/test_metaspacearena.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metaspacearena.cpp
-@@ -0,0 +1,607 @@
+@@ -0,0 +1,737 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -5506,44 +4688,71 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
++#include "memory/metaspace/msArena.hpp"
++#include "memory/metaspace/msArenaGrowthPolicy.hpp"
++#include "memory/metaspace/msCommitLimiter.hpp"
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msInternalStats.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "memory/metaspace/msStatistics.hpp"
++#include "runtime/mutex.hpp"
++#include "runtime/mutexLocker.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
 +//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
 +
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
-+#include "metaspace/metaspace_sparsearray.hpp"
-+#include "utilities/ostream.hpp"
++using metaspace::ArenaGrowthPolicy;
++using metaspace::CommitLimiter;
++using metaspace::InternalStats;
++using metaspace::MemRangeCounter;
++using metaspace::MetaspaceArena;
++using metaspace::SizeAtomicCounter;
++using metaspace::Settings;
++using metaspace::ArenaStats;
 +
-+
-+// TODO: this class is very similar to MetaspaceArenaTestBed in test_metaspacearena_stress.cpp.
-+// should be unified.
 +class MetaspaceArenaTestHelper {
 +
-+  MetaspaceTestContext& _helper;
++  MetaspaceGtestContext& _context;
 +
 +  Mutex* _lock;
 +  const ArenaGrowthPolicy* _growth_policy;
 +  SizeAtomicCounter _used_words_counter;
 +  MetaspaceArena* _arena;
 +
-+public:
-+
-+  MetaspaceArenaTestHelper(MetaspaceTestContext& helper, Metaspace::MetaspaceType space_type, bool is_class,
-+                         const char* name = "gtest-MetaspaceArena")
-+    : _helper(helper),
-+      _lock(NULL),
-+      _growth_policy(NULL),
-+      _used_words_counter(),
-+      _arena(NULL)
-+  {
-+    _growth_policy = ArenaGrowthPolicy::policy_for_space_type(space_type, is_class);
++  void initialize(const ArenaGrowthPolicy* growth_policy, const char* name = "gtest-MetaspaceArena") {
++    _growth_policy = growth_policy;
 +    _lock = new Mutex(Monitor::native, "gtest-MetaspaceArenaTest-lock", false, Monitor::_safepoint_check_never);
 +    // Lock during space creation, since this is what happens in the VM too
 +    //  (see ClassLoaderData::metaspace_non_null(), which we mimick here).
 +    {
 +      MutexLocker ml(_lock,  Mutex::_no_safepoint_check_flag);
-+      _arena = new MetaspaceArena(&_helper.cm(), _growth_policy, _lock, &_used_words_counter, name);
++      _arena = new MetaspaceArena(&_context.cm(), _growth_policy, _lock, &_used_words_counter, name);
 +    }
-+    DEBUG_ONLY(_arena->verify(true));
++    DEBUG_ONLY(_arena->verify());
++
++  }
++
++public:
++
++  // Create a helper; growth policy for arena is determined by the given spacetype|class tupel
++  MetaspaceArenaTestHelper(MetaspaceGtestContext& helper,
++                            Metaspace::MetaspaceType space_type, bool is_class,
++                            const char* name = "gtest-MetaspaceArena")
++    :_context(helper)
++  {
++    initialize(ArenaGrowthPolicy::policy_for_space_type(space_type, is_class), name);
++  }
++
++  // Create a helper; growth policy is directly specified
++  MetaspaceArenaTestHelper(MetaspaceGtestContext& helper, const ArenaGrowthPolicy* growth_policy,
++                            const char* name = "gtest-MetaspaceArena")
++    :_context(helper)
++  {
++    initialize(growth_policy, name);
 +  }
 +
 +  ~MetaspaceArenaTestHelper() {
@@ -5551,7 +4760,7 @@ new file mode 100644
 +    delete _lock;
 +  }
 +
-+  const CommitLimiter& limiter() const { return _helper.commit_limiter(); }
++  const CommitLimiter& limiter() const { return _context.commit_limiter(); }
 +  MetaspaceArena* arena() const { return _arena; }
 +  SizeAtomicCounter& used_words_counter() { return _used_words_counter; }
 +
@@ -5562,7 +4771,7 @@ new file mode 100644
 +    if (_arena != NULL) {
 +      size_t used_words_before = _used_words_counter.get();
 +      size_t committed_words_before = limiter().committed_words();
-+      DEBUG_ONLY(_arena->verify(true));
++      DEBUG_ONLY(_arena->verify());
 +      delete _arena;
 +      _arena = NULL;
 +      size_t used_words_after = _used_words_counter.get();
@@ -5620,7 +4829,7 @@ new file mode 100644
 +
 +    MetaWord* p = _arena->allocate(word_size);
 +
-+    SOMETIMES(DEBUG_ONLY(_arena->verify(true);))
++    SOMETIMES(DEBUG_ONLY(_arena->verify();))
 +
 +    size_t used2 = 0, committed2 = 0, capacity2 = 0;
 +    usage_numbers_with_test(&used2, &committed2, &capacity2);
@@ -5657,14 +4866,13 @@ new file mode 100644
 +    allocate_from_arena_with_tests(&dummy, word_size);
 +  }
 +
-+
 +  void deallocate_with_tests(MetaWord* p, size_t word_size) {
 +    size_t used = 0, committed = 0, capacity = 0;
 +    usage_numbers_with_test(&used, &committed, &capacity);
 +
 +    _arena->deallocate(p, word_size);
 +
-+    SOMETIMES(DEBUG_ONLY(_arena->verify(true);))
++    SOMETIMES(DEBUG_ONLY(_arena->verify();))
 +
 +    size_t used2 = 0, committed2 = 0, capacity2 = 0;
 +    usage_numbers_with_test(&used2, &committed2, &capacity2);
@@ -5676,13 +4884,22 @@ new file mode 100644
 +    ASSERT_EQ(capacity2, capacity);
 +  }
 +
++  ArenaStats get_arena_statistics() const {
++    ArenaStats stats;
++    _arena->add_to_statistics(&stats);
++    return stats;
++  }
++
++  // Convenience method to return number of chunks in arena (including current chunk)
++  int get_number_of_chunks() const {
++    return get_arena_statistics().totals()._num;
++  }
 +
 +};
 +
-+
 +static void test_basics(size_t commit_limit, bool is_micro) {
-+  MetaspaceTestContext msthelper(commit_limit);
-+  MetaspaceArenaTestHelper helper(msthelper, is_micro ? Metaspace::ReflectionMetaspaceType : Metaspace::StandardMetaspaceType, false);
++  MetaspaceGtestContext context(commit_limit);
++  MetaspaceArenaTestHelper helper(context, is_micro ? Metaspace::ReflectionMetaspaceType : Metaspace::StandardMetaspaceType, false);
 +
 +  helper.allocate_from_arena_with_tests(1);
 +  helper.allocate_from_arena_with_tests(128);
@@ -5708,59 +4925,155 @@ new file mode 100644
 +  test_basics(256 * K, false);
 +}
 +
++// Test chunk enlargement:
++//  A single MetaspaceArena, left undisturbed with place to grow. Slowly fill arena up.
++//  We should see at least some occurrences of chunk-in-place enlargement.
++static void test_chunk_enlargment_simple(Metaspace::MetaspaceType spacetype, bool is_class) {
 +
-+// Test: in a single undisturbed MetaspaceArena (so, we should have chunks enlarged in place)
-+// we allocate a small amount, then the full amount possible. The sum of first and second
-+// allocation bring us above root chunk size. This should work - chunk enlargement should
-+// fail and a new root chunk should be allocated instead.
-+TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place) {
++  MetaspaceGtestContext context;
++  MetaspaceArenaTestHelper helper(context, (Metaspace::MetaspaceType)spacetype, is_class);
 +
-+  if (Settings::use_allocation_guard()) {
-+    return;
++  uint64_t n1 = metaspace::InternalStats::num_chunks_enlarged();
++
++  size_t allocated = 0;
++  while (allocated <= MAX_CHUNK_WORD_SIZE &&
++         metaspace::InternalStats::num_chunks_enlarged() == n1) {
++    size_t s = IntRange(32, 128).random_value();
++    helper.allocate_from_arena_with_tests_expect_success(s);
++    allocated += s;
 +  }
 +
-+  MetaspaceTestContext msthelper;
-+  MetaspaceArenaTestHelper helper(msthelper, Metaspace::StandardMetaspaceType, false);
-+  helper.allocate_from_arena_with_tests_expect_success(1);
-+  helper.allocate_from_arena_with_tests_expect_success(MAX_CHUNK_WORD_SIZE);
-+  helper.allocate_from_arena_with_tests_expect_success(MAX_CHUNK_WORD_SIZE / 2);
-+  helper.allocate_from_arena_with_tests_expect_success(MAX_CHUNK_WORD_SIZE);
++  EXPECT_GT(metaspace::InternalStats::num_chunks_enlarged(), n1);
++
 +}
 +
-+// Test allocating from smallest to largest chunk size, and one step beyond.
-+// The first n allocations should happen in place, the ladder should open a new chunk.
-+TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_ladder_1) {
++// Do this test for some of the standard types; don't do it for the boot loader type
++//  since that one starts out with max chunk size so we would not see any enlargement.
 +
-+  if (Settings::use_allocation_guard()) {
-+    return;
-+  }
-+
-+  MetaspaceTestContext msthelper;
-+  MetaspaceArenaTestHelper helper(msthelper, Metaspace::StandardMetaspaceType, false);
-+  size_t size = MIN_CHUNK_WORD_SIZE;
-+  while (size <= MAX_CHUNK_WORD_SIZE) {
-+    helper.allocate_from_arena_with_tests_expect_success(size);
-+    size *= 2;
-+  }
-+  helper.allocate_from_arena_with_tests_expect_success(MAX_CHUNK_WORD_SIZE);
++TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_standard_c) {
++  test_chunk_enlargment_simple(Metaspace::StandardMetaspaceType, true);
 +}
 +
-+// Same as MetaspaceArena_test_enlarge_in_place_ladder_1, but increase in *4 step size;
-+// this way chunk-in-place-enlargement does not work and we should have new chunks at each allocation.
-+TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_ladder_2) {
++TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_standard_nc) {
++  test_chunk_enlargment_simple(Metaspace::StandardMetaspaceType, false);
++}
++
++TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_micro_c) {
++  test_chunk_enlargment_simple(Metaspace::ReflectionMetaspaceType, true);
++}
++
++TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_micro_nc) {
++  test_chunk_enlargment_simple(Metaspace::ReflectionMetaspaceType, false);
++}
++
++// Test chunk enlargement:
++// A single MetaspaceArena, left undisturbed with place to grow. Slowly fill arena up.
++//  We should see occurrences of chunk-in-place enlargement.
++//  Here, we give it an ideal policy which should enable the initial chunk to grow unmolested
++//  until finish.
++TEST_VM(metaspace, MetaspaceArena_test_enlarge_in_place_2) {
 +
 +  if (Settings::use_allocation_guard()) {
 +    return;
 +  }
 +
-+  MetaspaceTestContext msthelper;
-+  MetaspaceArenaTestHelper helper(msthelper, Metaspace::StandardMetaspaceType, false);
-+  size_t size = MIN_CHUNK_WORD_SIZE;
-+  while (size <= MAX_CHUNK_WORD_SIZE) {
-+    helper.allocate_from_arena_with_tests_expect_success(size);
-+    size *= 4;
++  // Note: internally, chunk in-place enlargement is disallowed if growing the chunk
++  //  would cause the arena to claim more memory than its growth policy allows. This
++  //  is done to prevent the arena to grow too fast.
++  //
++  // In order to test in-place growth here without that restriction I give it an
++  //  artificial growth policy which starts out with a tiny chunk size, then balloons
++  //  right up to max chunk size. This will cause the initial chunk to be tiny, and
++  //  then the arena is able to grow it without violating growth policy.
++  chunklevel_t growth[] = { HIGHEST_CHUNK_LEVEL, ROOT_CHUNK_LEVEL };
++  ArenaGrowthPolicy growth_policy(growth, 2);
++
++  MetaspaceGtestContext context;
++  MetaspaceArenaTestHelper helper(context, &growth_policy);
++
++  uint64_t n1 = metaspace::InternalStats::num_chunks_enlarged();
++
++  size_t allocated = 0;
++  while (allocated <= MAX_CHUNK_WORD_SIZE) {
++    size_t s = IntRange(32, 128).random_value();
++    helper.allocate_from_arena_with_tests_expect_success(s);
++    allocated += s;
++    if (allocated <= MAX_CHUNK_WORD_SIZE) {
++      // Chunk should have been enlarged in place
++      ASSERT_EQ(1, helper.get_number_of_chunks());
++    } else {
++      // Next chunk should have started
++      ASSERT_EQ(2, helper.get_number_of_chunks());
++    }
 +  }
-+  helper.allocate_from_arena_with_tests_expect_success(MAX_CHUNK_WORD_SIZE);
++
++  int times_chunk_were_enlarged = metaspace::InternalStats::num_chunks_enlarged() - n1;
++  LOG("chunk was enlarged %d times.", times_chunk_were_enlarged);
++
++  ASSERT_GT0(times_chunk_were_enlarged);
++
++}
++
++// Regression test: Given a single MetaspaceArena, left undisturbed with place to grow,
++//  test that in place enlargement correctly fails if growing the chunk would bring us
++//  beyond the max. size of a chunk.
++TEST_VM(metaspace, MetaspaceArena_test_failing_to_enlarge_in_place_max_chunk_size) {
++
++  if (Settings::use_allocation_guard()) {
++    return;
++  }
++
++  MetaspaceGtestContext context;
++
++  for (size_t first_allocation_size = 1; first_allocation_size <= MAX_CHUNK_WORD_SIZE / 2; first_allocation_size *= 2) {
++
++    MetaspaceArenaTestHelper helper(context, Metaspace::StandardMetaspaceType, false);
++
++    // we allocate first a small amount, then the full amount possible.
++    // The sum of first and second allocation should bring us above root chunk size.
++    // This should work, we should not see any problems, but no chunk enlargement should
++    // happen.
++    int n1 = metaspace::InternalStats::num_chunks_enlarged();
++
++    helper.allocate_from_arena_with_tests_expect_success(first_allocation_size);
++    EXPECT_EQ(helper.get_number_of_chunks(), 1);
++
++    helper.allocate_from_arena_with_tests_expect_success(MAX_CHUNK_WORD_SIZE - first_allocation_size + 1);
++    EXPECT_EQ(helper.get_number_of_chunks(), 2);
++
++    int times_chunk_were_enlarged = metaspace::InternalStats::num_chunks_enlarged() - n1;
++    LOG("chunk was enlarged %d times.", times_chunk_were_enlarged);
++
++    EXPECT_0(times_chunk_were_enlarged);
++
++  }
++}
++
++// Regression test: Given a single MetaspaceArena, left undisturbed with place to grow,
++//  test that in place enlargement correctly fails if growing the chunk would cause more
++//  than doubling its size
++TEST_VM(metaspace, MetaspaceArena_test_failing_to_enlarge_in_place_doubling_chunk_size) {
++
++  if (Settings::use_allocation_guard()) {
++    return;
++  }
++
++  MetaspaceGtestContext context;
++  MetaspaceArenaTestHelper helper(context, Metaspace::StandardMetaspaceType, false);
++
++  int n1 = metaspace::InternalStats::num_chunks_enlarged();
++
++  helper.allocate_from_arena_with_tests_expect_success(1000);
++  EXPECT_EQ(helper.get_number_of_chunks(), 1);
++
++  helper.allocate_from_arena_with_tests_expect_success(4000);
++  EXPECT_EQ(helper.get_number_of_chunks(), 2);
++
++  int times_chunk_were_enlarged = metaspace::InternalStats::num_chunks_enlarged() - n1;
++  LOG("chunk was enlarged %d times.", times_chunk_were_enlarged);
++
++  EXPECT_0(times_chunk_were_enlarged);
++
 +}
 +
 +// Test the MetaspaceArenas' free block list:
@@ -5771,8 +5084,8 @@ new file mode 100644
 +    return;
 +  }
 +  for (size_t s = 2; s <= MAX_CHUNK_WORD_SIZE; s *= 2) {
-+    MetaspaceTestContext msthelper;
-+    MetaspaceArenaTestHelper helper(msthelper, Metaspace::StandardMetaspaceType, false);
++    MetaspaceGtestContext context;
++    MetaspaceArenaTestHelper helper(context, Metaspace::StandardMetaspaceType, false);
 +
 +    MetaWord* p1 = NULL;
 +    helper.allocate_from_arena_with_tests_expect_success(&p1, s);
@@ -5819,22 +5132,22 @@ new file mode 100644
 +  // retire it and take a fresh chunk from the freelist.
 +
 +  const size_t commit_limit = Settings::commit_granule_words() * 10;
-+  MetaspaceTestContext msthelper(commit_limit);
++  MetaspaceGtestContext context(commit_limit);
 +
 +  // The first MetaspaceArena mimicks a micro loader. This will fill the free
 +  //  chunk list with very small chunks. We allocate from them in an interleaved
 +  //  way to cause fragmentation.
-+  MetaspaceArenaTestHelper helper1(msthelper, Metaspace::ReflectionMetaspaceType, false);
-+  MetaspaceArenaTestHelper helper2(msthelper, Metaspace::ReflectionMetaspaceType, false);
++  MetaspaceArenaTestHelper helper1(context, Metaspace::ReflectionMetaspaceType, false);
++  MetaspaceArenaTestHelper helper2(context, Metaspace::ReflectionMetaspaceType, false);
 +
 +  // This MetaspaceArena should hit the limit. We use BootMetaspaceType here since
 +  // it gets a large initial chunk which is committed
 +  // on demand and we are likely to hit a commit limit while trying to expand it.
-+  MetaspaceArenaTestHelper helper3(msthelper, Metaspace::BootMetaspaceType, false);
++  MetaspaceArenaTestHelper helper3(context, Metaspace::BootMetaspaceType, false);
 +
 +  // Allocate space until we have below two but above one granule left
 +  size_t allocated_from_1_and_2 = 0;
-+  while (msthelper.commit_limiter().possible_expansion_words() >= Settings::commit_granule_words() * 2 &&
++  while (context.commit_limiter().possible_expansion_words() >= Settings::commit_granule_words() * 2 &&
 +      allocated_from_1_and_2 < commit_limit) {
 +    helper1.allocate_from_arena_with_tests_expect_success(1);
 +    helper2.allocate_from_arena_with_tests_expect_success(1);
@@ -5850,7 +5163,7 @@ new file mode 100644
 +  EXPECT_LE(allocated_from_3, Settings::commit_granule_words() * 2);
 +
 +  // We expect the freelist to be empty of committed space...
-+  EXPECT_0(msthelper.cm().total_committed_word_size());
++  EXPECT_0(context.cm().total_committed_word_size());
 +
 +  //msthelper.cm().print_on(tty);
 +
@@ -5861,13 +5174,12 @@ new file mode 100644
 +
 +  // Should have populated the freelist with committed space
 +  // We expect the freelist to be empty of committed space...
-+  EXPECT_GT(msthelper.cm().total_committed_word_size(), (size_t)0);
++  EXPECT_GT(context.cm().total_committed_word_size(), (size_t)0);
 +
 +  // Repeat allocation from helper3, should now work.
 +  helper3.allocate_from_arena_with_tests_expect_success(1);
 +
 +}
-+
 +
 +TEST_VM(metaspace, MetaspaceArena_recover_from_limit_hit) {
 +  test_recover_from_commit_limit_hit();
@@ -5887,10 +5199,10 @@ new file mode 100644
 +  // large jumps. Also, different types of MetaspaceArena should
 +  // have different initial capacities.
 +
-+  MetaspaceTestContext msthelper;
-+  MetaspaceArenaTestHelper smhelper(msthelper, type, is_class, "Grower");
++  MetaspaceGtestContext context;
++  MetaspaceArenaTestHelper smhelper(context, type, is_class, "Grower");
 +
-+  MetaspaceArenaTestHelper smhelper_harrasser(msthelper, Metaspace::ReflectionMetaspaceType, true, "Harasser");
++  MetaspaceArenaTestHelper smhelper_harrasser(context, Metaspace::ReflectionMetaspaceType, true, "Harasser");
 +
 +  size_t used = 0, committed = 0, capacity = 0;
 +  const size_t alloc_words = 16;
@@ -5914,7 +5226,7 @@ new file mode 100644
 +
 +  if (!(Settings::new_chunks_are_fully_committed() && type == Metaspace::BootMetaspaceType)) {
 +    // Initial commit charge for the whole context should be one granule
-+    ASSERT_EQ(msthelper.committed_words(), Settings::commit_granule_words());
++    ASSERT_EQ(context.committed_words(), Settings::commit_granule_words());
 +    // Initial commit number for the arena should be less since - apart from boot loader - no
 +    //  space type has large initial chunks.
 +    ASSERT_LE(committed, Settings::commit_granule_words());
@@ -5943,7 +5255,7 @@ new file mode 100644
 +
 +    smhelper.allocate_from_arena_with_tests_expect_success(alloc_words);
 +    words_allocated += alloc_words;
-+    num_allocated ++;
++    num_allocated++;
 +
 +    size_t used2 = 0, committed2 = 0, capacity2 = 0;
 +
@@ -5982,7 +5294,7 @@ new file mode 100644
 +        */
 +        highest_capacity_jump = capacity_jump;
 +      }
-+      num_capacity_jumps ++;
++      num_capacity_jumps++;
 +    }
 +
 +    capacity = capacity2;
@@ -6090,10 +5402,10 @@ diff --git a/test/hotspot/gtest/metaspace/test_metaspacearena_stress.cpp b/test/
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metaspacearena_stress.cpp
-@@ -0,0 +1,437 @@
+@@ -0,0 +1,447 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -6118,10 +5430,28 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
++#include "memory/metaspace/msArena.hpp"
++#include "memory/metaspace/msArenaGrowthPolicy.hpp"
++#include "memory/metaspace/msChunkManager.hpp"
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msStatistics.hpp"
++#include "runtime/mutexLocker.hpp"
++#include "utilities/debug.hpp"
++#include "utilities/globalDefinitions.hpp"
++
 +//#define LOG_PLEASE
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspaceTestContexts.hpp"
-+#include "metaspace/metaspace_sparsearray.hpp"
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++#include "metaspaceGtestSparseArray.hpp"
++
++using metaspace::ArenaGrowthPolicy;
++using metaspace::ChunkManager;
++using metaspace::IntCounter;
++using metaspace::MemRangeCounter;
++using metaspace::MetaspaceArena;
++using metaspace::SizeAtomicCounter;
++using metaspace::ArenaStats;
++using metaspace::InUseChunkStats;
 +
 +// Little randomness helper
 +static bool fifty_fifty() {
@@ -6171,18 +5501,18 @@ new file mode 100644
 +  // overhead.
 +  void verify_arena_statistics() const {
 +
-+    arena_stats_t stats;
++    ArenaStats stats;
 +    _arena->add_to_statistics(&stats);
-+    in_use_chunk_stats_t in_use_stats = stats.totals();
++    InUseChunkStats in_use_stats = stats.totals();
 +
 +    assert(_dealloc_count.total_size() <= _alloc_count.total_size() &&
 +           _dealloc_count.count() <= _alloc_count.count(), "Sanity");
 +
 +    // Check consistency of stats
-+    ASSERT_GE(in_use_stats.word_size, in_use_stats.committed_words);
-+    ASSERT_EQ(in_use_stats.committed_words,
-+              in_use_stats.used_words + in_use_stats.free_words + in_use_stats.waste_words);
-+    ASSERT_GE(in_use_stats.used_words, stats.free_blocks_word_size);
++    ASSERT_GE(in_use_stats._word_size, in_use_stats._committed_words);
++    ASSERT_EQ(in_use_stats._committed_words,
++              in_use_stats._used_words + in_use_stats._free_words + in_use_stats._waste_words);
++    ASSERT_GE(in_use_stats._used_words, stats._free_blocks_word_size);
 +
 +    // Note: reasons why the outside alloc counter and the inside used counter can differ:
 +    // - alignment/padding of allocations
@@ -6197,8 +5527,8 @@ new file mode 100644
 +    const size_t max_word_overhead_per_alloc = 4;
 +    const size_t at_most_allocated = _alloc_count.total_size() + max_word_overhead_per_alloc * _alloc_count.count();
 +
-+    ASSERT_LE(at_least_allocated, in_use_stats.used_words - stats.free_blocks_word_size);
-+    ASSERT_GE(at_most_allocated, in_use_stats.used_words - stats.free_blocks_word_size);
++    ASSERT_LE(at_least_allocated, in_use_stats._used_words - stats._free_blocks_word_size);
++    ASSERT_GE(at_most_allocated, in_use_stats._used_words - stats._free_blocks_word_size);
 +
 +  }
 +
@@ -6234,7 +5564,7 @@ new file mode 100644
 +      a = b;
 +    }
 +
-+    DEBUG_ONLY(_arena->verify(true);)
++    DEBUG_ONLY(_arena->verify();)
 +
 +    // Delete MetaspaceArena. That should clean up all metaspace.
 +    delete _arena;
@@ -6262,7 +5592,7 @@ new file mode 100644
 +      _alloc_count.add(word_size);
 +      if ((_alloc_count.count() % 20) == 0) {
 +        verify_arena_statistics();
-+        DEBUG_ONLY(_arena->verify(true);)
++        DEBUG_ONLY(_arena->verify();)
 +      }
 +      return true;
 +    } else {
@@ -6284,17 +5614,16 @@ new file mode 100644
 +      a->p = NULL; a->word_size = 0;
 +      if ((_dealloc_count.count() % 20) == 0) {
 +        verify_arena_statistics();
-+        DEBUG_ONLY(_arena->verify(true);)
++        DEBUG_ONLY(_arena->verify();)
 +      }
 +    }
 +  }
 +
 +}; // End: MetaspaceArenaTestBed
 +
-+
 +class MetaspaceArenaTest {
 +
-+  MetaspaceTestContext _helper;
++  MetaspaceGtestContext _context;
 +
 +  SizeAtomicCounter _used_words_counter;
 +
@@ -6305,7 +5634,7 @@ new file mode 100644
 +
 +  void create_new_test_bed_at(int slotindex, const ArenaGrowthPolicy* growth_policy, SizeRange allocation_range) {
 +    DEBUG_ONLY(_testbeds.check_slot_is_null(slotindex));
-+    MetaspaceArenaTestBed* bed = new MetaspaceArenaTestBed(&_helper.cm(), growth_policy,
++    MetaspaceArenaTestBed* bed = new MetaspaceArenaTestBed(&_context.cm(), growth_policy,
 +                                                       &_used_words_counter, allocation_range);
 +    _testbeds.set_at(slotindex, bed);
 +    _num_beds.increment();
@@ -6331,7 +5660,7 @@ new file mode 100644
 +
 +  // Create test beds for all slots
 +  void create_all_test_beds() {
-+    for (int slot = 0; slot < _testbeds.size(); slot ++) {
++    for (int slot = 0; slot < _testbeds.size(); slot++) {
 +      if (_testbeds.slot_is_null(slot)) {
 +        create_random_test_bed_at(slot);
 +      }
@@ -6372,7 +5701,7 @@ new file mode 100644
 +    bool success = bed->checked_random_allocate();
 +    if (success == false) {
 +      // We must have hit a limit.
-+      EXPECT_LT(_helper.commit_limiter().possible_expansion_words(),
++      EXPECT_LT(_context.commit_limiter().possible_expansion_words(),
 +                metaspace::get_raw_word_size_for_requested_word_size(bed->size_of_last_failed_allocation()));
 +    }
 +    return success;
@@ -6384,7 +5713,7 @@ new file mode 100644
 +    int n = 0;
 +    while (success && n < num_allocations) {
 +      success = random_allocate_from_testbed(slotindex);
-+      n ++;
++      n++;
 +    }
 +    return success;
 +  }
@@ -6436,7 +5765,7 @@ new file mode 100644
 +public:
 +
 +  MetaspaceArenaTest(size_t commit_limit, int num_testbeds)
-+    : _helper(commit_limit),
++    : _context(commit_limit),
 +      _testbeds(num_testbeds),
 +      _num_beds()
 +  {}
@@ -6446,7 +5775,6 @@ new file mode 100644
 +    delete_all_test_beds();
 +
 +  }
-+
 +
 +  //////////////// Tests ////////////////////////
 +
@@ -6465,7 +5793,7 @@ new file mode 100644
 +
 +    bool force_bed_deletion = false;
 +
-+    for (int niter = 0; niter < iterations; niter ++) {
++    for (int niter = 0; niter < iterations; niter++) {
 +
 +      const int r = IntRange(100).random_value();
 +
@@ -6501,9 +5829,7 @@ new file mode 100644
 +
 +  }
 +
-+
 +};
-+
 +
 +// 32 parallel MetaspaceArena objects, random allocating without commit limit
 +TEST_VM(metaspace, MetaspaceArena_random_allocs_32_beds_no_commit_limit) {
@@ -6524,78 +5850,14 @@ new file mode 100644
 +  test.test();
 +}
 +
-+
-+
-+
-+
-diff --git a/test/hotspot/gtest/metaspace/test_report.cpp b/test/hotspot/gtest/metaspace/test_report.cpp
-new file mode 100644
---- /dev/null
-+++ b/test/hotspot/gtest/metaspace/test_report.cpp
-@@ -0,0 +1,55 @@
-+/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-+ * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-+ *
-+ * This code is free software; you can redistribute it and/or modify it
-+ * under the terms of the GNU General Public License version 2 only, as
-+ * published by the Free Software Foundation.
-+ *
-+ * This code is distributed in the hope that it will be useful, but WITHOUT
-+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-+ * version 2 for more details (a copy is included in the LICENSE file that
-+ * accompanied this code).
-+ *
-+ * You should have received a copy of the GNU General Public License version
-+ * 2 along with this work; if not, write to the Free Software Foundation,
-+ * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-+ *
-+ * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-+ * or visit www.oracle.com if you need additional information or have any
-+ * questions.
-+ *
-+ */
-+
-+#include "precompiled.hpp"
-+
-+//#define LOG_PLEASE
-+
-+#include "metaspaceTestsCommon.hpp"
-+#include "utilities/globalDefinitions.hpp"
-+#include "utilities/ostream.hpp"
-+
-+TEST_VM(metaspace, report_basic) {
-+
-+  stringStream ss;
-+  //outputStream* st = tty;
-+  outputStream* st = &ss;
-+
-+  MetaspaceUtils::print_basic_report(st, 0);
-+
-+  ASSERT_GT(ss.size(), (size_t)0);
-+
-+}
-+
-+// Note: full report needs CLDG lock or a safepoint. We test this as part of the
-+// metaspace jtreg jcmd tests, lets not test it here.
-+//TEST_VM(metaspace, report_full) {
-+//
-+//  outputStream* st = tty;
-+//
-+//  metaspace::MetaspaceReporter::print_report(st, 0, 0);
-+//
-+//}
-+
 diff --git a/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp b/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp
-@@ -0,0 +1,583 @@
+@@ -0,0 +1,591 @@
 +/*
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
 + * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 + *
 + * This code is free software; you can redistribute it and/or modify it
@@ -6620,14 +5882,29 @@ new file mode 100644
 +
 +#include "precompiled.hpp"
 +
-+ #define LOG_PLEASE
++#include "memory/metaspace/msChunklevel.hpp"
++#include "memory/metaspace/msCommitLimiter.hpp"
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msFreeChunkList.hpp"
++#include "memory/metaspace/msMetachunk.hpp"
++#include "memory/metaspace/msMetachunkList.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "memory/metaspace/msVirtualSpaceNode.hpp"
++#include "runtime/mutexLocker.hpp"
++#include "utilities/debug.hpp"
 +
-+#include "metaspace/metaspaceTestsCommon.hpp"
-+#include "metaspace/metaspace_rangehelpers.hpp"
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
 +
-+static int test_node_id = 100000; // start high to make it stick out in logs.
-+
-+
++using metaspace::chunklevel_t;
++using metaspace::CommitLimiter;
++using metaspace::FreeChunkListVector;
++using metaspace::Metachunk;
++using metaspace::MetachunkList;
++using metaspace::VirtualSpaceNode;
++using metaspace::Settings;
++using metaspace::SizeCounter;
 +
 +class VirtualSpaceNodeTest {
 +
@@ -6663,7 +5940,7 @@ new file mode 100644
 +  void lock_and_verify_node() {
 +#ifdef ASSERT
 +    MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
-+    _node->verify_locked(true);
++    _node->verify_locked();
 +#endif
 +  }
 +
@@ -6686,7 +5963,7 @@ new file mode 100644
 +
 +    } else {
 +
-+      DEBUG_ONLY(c->verify(true);)
++      DEBUG_ONLY(c->verify();)
 +      EXPECT_NOT_NULL(c);
 +      EXPECT_TRUE(c->is_root_chunk());
 +      EXPECT_TRUE(c->is_free());
@@ -6715,7 +5992,7 @@ new file mode 100644
 +    bool rc = c->ensure_committed(request_commit_words);
 +
 +    verify();
-+    DEBUG_ONLY(c->verify(true);)
++    DEBUG_ONLY(c->verify();)
 +
 +    lock_and_verify_node();
 +
@@ -6757,7 +6034,7 @@ new file mode 100644
 +
 +    c->uncommit();
 +
-+    DEBUG_ONLY(c->verify(true);)
++    DEBUG_ONLY(c->verify();)
 +
 +    lock_and_verify_node();
 +
@@ -6787,7 +6064,7 @@ new file mode 100644
 +
 +  Metachunk* split_chunk_with_checks(Metachunk* c, chunklevel_t target_level, FreeChunkListVector* freelist) {
 +
-+    DEBUG_ONLY(c->verify(true);)
++    DEBUG_ONLY(c->verify();)
 +
 +    const chunklevel_t orig_level = c->level();
 +    assert(orig_level < target_level, "Sanity");
@@ -6814,9 +6091,9 @@ new file mode 100644
 +    // buddy chunk to appear of level + 1 (aka, half size).
 +    size_t expected_wordsize_increase = 0;
 +    int expected_num_chunks_increase = 0;
-+    for (chunklevel_t l = orig_level + 1; l <= target_level; l ++) {
++    for (chunklevel_t l = orig_level + 1; l <= target_level; l++) {
 +      expected_wordsize_increase += metaspace::chunklevel::word_size_for_level(l);
-+      expected_num_chunks_increase ++;
++      expected_num_chunks_increase++;
 +    }
 +
 +    const int total_num_chunks_in_freelist_after = freelist->num_chunks();
@@ -6828,7 +6105,6 @@ new file mode 100644
 +    return c;
 +
 +  } // end: split_chunk_with_checks
-+
 +
 +  Metachunk* merge_chunk_with_checks(Metachunk* c, chunklevel_t expected_target_level, FreeChunkListVector* freelist) {
 +
@@ -6856,7 +6132,7 @@ new file mode 100644
 +    int expected_num_chunks_decrease = 0;
 +    for (chunklevel_t l = orig_level; l > expected_target_level; l --) {
 +      expected_wordsize_decrease += metaspace::chunklevel::word_size_for_level(l);
-+      expected_num_chunks_decrease ++;
++      expected_num_chunks_decrease++;
 +    }
 +
 +    const int total_num_chunks_in_freelist_after = freelist->num_chunks();
@@ -6933,7 +6209,7 @@ new file mode 100644
 +    TestMap testmap(c->word_size());
 +    assert(testmap.get_num_set() == 0, "Sanity");
 +
-+    for (int run = 0; run < 1000; run ++) {
++    for (int run = 0; run < 1000; run++) {
 +
 +      const size_t committed_words_before = testmap.get_num_set();
 +      ASSERT_EQ(_commit_limiter.committed_words(), committed_words_before);
@@ -7015,7 +6291,7 @@ new file mode 100644
 +
 +    const int granules_per_root_chunk = (int)(c->word_size() / Settings::commit_granule_words());
 +
-+    for (int granules_to_commit = 0; granules_to_commit < granules_per_root_chunk; granules_to_commit ++) {
++    for (int granules_to_commit = 0; granules_to_commit < granules_per_root_chunk; granules_to_commit++) {
 +
 +      const size_t words_to_commit = Settings::commit_granule_words() * granules_to_commit;
 +
@@ -7030,7 +6306,7 @@ new file mode 100644
 +      verify();
 +
 +      for (chunklevel_t target_level = LOWEST_CHUNK_LEVEL + 1;
-+           target_level <= HIGHEST_CHUNK_LEVEL; target_level ++) {
++           target_level <= HIGHEST_CHUNK_LEVEL; target_level++) {
 +
 +        // Split:
 +        Metachunk* c2 = split_chunk_with_checks(c, target_level, &freelist);
@@ -7066,12 +6342,7 @@ new file mode 100644
 +
 +  } // end: test_splitting_chunks
 +
-+
-+
-+
 +};
-+
-+
 +
 +TEST_VM(metaspace, virtual_space_node_test_basics) {
 +
@@ -7087,19 +6358,19 @@ new file mode 100644
 +  ASSERT_NOT_NULL(node);
 +  ASSERT_EQ(node->committed_words(), (size_t)0);
 +  ASSERT_EQ(node->committed_words(), scomm.get());
-+  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
 +
 +  bool b = node->ensure_range_is_committed(node->base(), node->word_size());
 +  ASSERT_TRUE(b);
 +  ASSERT_EQ(node->committed_words(), word_size);
 +  ASSERT_EQ(node->committed_words(), scomm.get());
-+  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
 +  zap_range(node->base(), node->word_size());
 +
 +  node->uncommit_range(node->base(), node->word_size());
 +  ASSERT_EQ(node->committed_words(), (size_t)0);
 +  ASSERT_EQ(node->committed_words(), scomm.get());
-+  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
 +
 +  const int num_granules = (int)(word_size / Settings::commit_granule_words());
 +  for (int i = 1; i < num_granules; i += 4) {
@@ -7107,17 +6378,16 @@ new file mode 100644
 +    ASSERT_TRUE(b);
 +    ASSERT_EQ(node->committed_words(), i * Settings::commit_granule_words());
 +    ASSERT_EQ(node->committed_words(), scomm.get());
-+    DEBUG_ONLY(node->verify_locked(true);)
++    DEBUG_ONLY(node->verify_locked();)
 +    zap_range(node->base(), i * Settings::commit_granule_words());
 +  }
 +
 +  node->uncommit_range(node->base(), node->word_size());
 +  ASSERT_EQ(node->committed_words(), (size_t)0);
 +  ASSERT_EQ(node->committed_words(), scomm.get());
-+  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
 +
 +}
-+
 +
 +// Note: we unfortunately need TEST_VM even though the system tested
 +// should be pretty independent since we need things like os::vm_page_size()
@@ -7139,7 +6409,7 @@ new file mode 100644
 +TEST_VM(metaspace, virtual_space_node_test_3) {
 +  double d = os::elapsedTime();
 +  // Test committing uncommitting arbitrary ranges
-+  for (int run = 0; run < 100; run ++) {
++  for (int run = 0; run < 100; run++) {
 +    VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
 +        metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
 +    test.test_split_and_merge_chunks();
@@ -7298,7 +6568,7 @@ diff --git a/test/hotspot/jtreg/gtest/MetaspaceGtests.java b/test/hotspot/jtreg/
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/gtest/MetaspaceGtests.java
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,94 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -7326,11 +6596,12 @@ new file mode 100644
 +
 +/*
 + * Note: This runs the metaspace-related parts of gtest in configurations which
-+ *  are not tested explicitely in the standard gtests.
++ *  are not tested explicitly in the standard gtests.
 + *
 + */
 +
 +/* @test id=reclaim-none-debug
++ * @bug 8251158
 + * @summary Run metaspace-related gtests for reclaim policy none (with verifications)
 + * @requires vm.debug
 + * @library /test/lib
@@ -7340,6 +6611,7 @@ new file mode 100644
 + */
 +
 +/* @test id=reclaim-none-ndebug
++ * @bug 8251158
 + * @summary Run metaspace-related gtests for reclaim policy none
 + * @library /test/lib
 + * @modules java.base/jdk.internal.misc
@@ -7351,6 +6623,7 @@ new file mode 100644
 +
 +
 +/* @test id=reclaim-aggressive-debug
++ * @bug 8251158
 + * @summary Run metaspace-related gtests for reclaim policy aggressive (with verifications)
 + * @requires vm.debug
 + * @library /test/lib
@@ -7360,6 +6633,7 @@ new file mode 100644
 + */
 +
 +/* @test id=reclaim-aggressive-ndebug
++ * @bug 8251158
 + * @summary Run metaspace-related gtests for reclaim policy aggressive
 + * @library /test/lib
 + * @modules java.base/jdk.internal.misc
@@ -7445,7 +6719,81 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/MaxMetaspaceSizeTest.java b/te
 diff --git a/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java b/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java
 --- a/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java
 +++ b/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java
-@@ -87,10 +87,19 @@
+@@ -27,19 +27,60 @@
+ import jdk.test.lib.JDKToolFinder;
+ 
+ /*
+- * @test
++ * @test id=test-64bit-ccs
+  * @summary Test the VM.metaspace command
+- * @requires vm.gc != "Z" & vm.bits != "32"
++ * @requires vm.bits == "64"
+  * @library /test/lib
+  * @modules java.base/jdk.internal.misc
+  *          java.management
+  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers PrintMetaspaceDcmd with-compressed-class-space
++ */
++
++/*
++ * @test id=test-64bit-ccs-noreclaim
++ * @summary Test the VM.metaspace command
++ * @requires vm.bits == "64"
++ * @library /test/lib
++ * @modules java.base/jdk.internal.misc
++ *          java.management
++ * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers -XX:MetaspaceReclaimPolicy=none PrintMetaspaceDcmd with-compressed-class-space
++ */
++
++/*
++ * @test id=test-64bit-ccs-aggressivereclaim
++ * @summary Test the VM.metaspace command
++ * @requires vm.bits == "64"
++ * @library /test/lib
++ * @modules java.base/jdk.internal.misc
++ *          java.management
++ * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers -XX:MetaspaceReclaimPolicy=aggressive PrintMetaspaceDcmd with-compressed-class-space
++ */
++
++/*
++ * @test id=test-64bit-ccs-guarded
++ * @summary Test the VM.metaspace command
++ * @requires vm.bits == "64"
++ * @requires vm.debug == true
++ * @library /test/lib
++ * @modules java.base/jdk.internal.misc
++ *          java.management
++ * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers -XX:+MetaspaceGuardAllocations PrintMetaspaceDcmd with-compressed-class-space
++ */
++
++/*
++ * @test id=test-64bit-noccs
++ * @summary Test the VM.metaspace command
++ * @requires vm.bits == "64"
++ * @library /test/lib
++ * @modules java.base/jdk.internal.misc
++ *          java.management
+  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:-UseCompressedOops -XX:-UseCompressedClassPointers PrintMetaspaceDcmd without-compressed-class-space
+  */
++
+ /*
+- * @test
++ * @test test-32bit
+  * @summary Test the VM.metaspace command
+- * @requires vm.gc != "Z" & vm.bits == "32"
++ * @requires vm.bits == "32"
+  * @library /test/lib
+  * @modules java.base/jdk.internal.misc
+  *          java.management
+@@ -48,8 +89,6 @@
+ 
+ public class PrintMetaspaceDcmd {
+ 
+-    // Run jcmd VM.metaspace against a VM with CompressedClassPointers on.
+-    // The report should detail Non-Class and Class portions separately.
+     private static void doTheTest(boolean usesCompressedClassSpace) throws Exception {
+         ProcessBuilder pb = new ProcessBuilder();
+         OutputAnalyzer output;
+@@ -87,10 +126,19 @@
          pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "by-chunktype"});
          output = new OutputAnalyzer(pb.start());
          output.shouldHaveExitValue(0);
@@ -7469,7 +6817,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/PrintMetaspaceDcmd.java b/test
  
          pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "vslist"});
          output = new OutputAnalyzer(pb.start());
-@@ -98,12 +107,6 @@
+@@ -98,12 +146,6 @@
          output.shouldContain("Virtual space list");
          output.shouldMatch("node.*reserved.*committed.*used.*");
  
@@ -7538,7 +6886,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/AllocationProfile.java
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/AllocationProfile.java
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,74 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -7589,7 +6937,6 @@ new file mode 100644
 +        return r.nextInt((int)(maximumSingleAllocationSize - minimumSingleAllocationSize + 1)) + minimumSingleAllocationSize;
 +    }
 +
-+
 +    // Some standard profiles
 +    static final List<AllocationProfile> standardProfiles = new ArrayList<>();
 +
@@ -7618,7 +6965,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestArena.jav
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestArena.java
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,117 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -7723,7 +7070,6 @@ new file mode 100644
 +        return arena != 0;
 +    }
 +
-+
 +    @Override
 +    public String toString() {
 +        return "arena=" + arena +
@@ -7741,7 +7087,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestContext.j
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestContext.java
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,244 @@
 +
 +import sun.hotspot.WhiteBox;
 +
@@ -7766,7 +7112,6 @@ new file mode 100644
 +    long deallocatedWords;
 +    long numDeallocated;
 +    long allocationFailures;
-+
 +
 +    public MetaspaceTestContext(long commitLimit, long reserveLimit) {
 +        this.commitLimit = commitLimit;
@@ -7869,7 +7214,6 @@ new file mode 100644
 +     * Usage seems right for this case.
 +     */
 +    public void checkStatistics() {
-+
 +
 +        // Note:
 +        // Estimating Used and Committed is fuzzy, and we only have limited information here
@@ -8100,7 +7444,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestOneArenaM
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestOneArenaManyThreads.java
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,80 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8134,7 +7478,6 @@ new file mode 100644
 +
 +    // Several threads allocate from a single arena.
 +    // This mimicks several threads loading classes via the same class loader.
-+
 +
 +    public MetaspaceTestOneArenaManyThreads(MetaspaceTestContext context, long testAllocationCeiling, int numThreads, int seconds) {
 +        super(context, testAllocationCeiling, numThreads, seconds);
@@ -8186,7 +7529,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestWithThrea
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestWithThreads.java
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,107 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8293,13 +7636,12 @@ new file mode 100644
 +                ", seconds=" + seconds;
 +    }
 +
-+
 +}
 diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomAllocator.java b/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomAllocator.java
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomAllocator.java
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,110 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8404,7 +7746,6 @@ new file mode 100644
 +        this.localRandom = new Random(RandomHelper.random().nextInt());
 +    }
 +
-+
 +    @Override
 +    public String toString() {
 +        return  arena.toString() + ", ticks=" + ticks;
@@ -8415,7 +7756,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomAllocatorThread.
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomAllocatorThread.java
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,67 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8481,8 +7822,6 @@ new file mode 100644
 +        // System.out.println("+ [" + id + "] " + allocator);
 +
 +    }
-+
-+
 +
 +}
 diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomHelper.java b/test/hotspot/jtreg/runtime/Metaspace/elastic/RandomHelper.java
@@ -8594,7 +7933,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocatio
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocation.java
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,86 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8622,6 +7961,7 @@ new file mode 100644
 +
 +/*
 + * @test id=debug
++ * @bug 8251158
 + * @library /test/lib
 + * @modules java.base/jdk.internal.misc
 + *          java.management
@@ -8639,6 +7979,7 @@ new file mode 100644
 +
 +/*
 + * @test id=ndebug
++ * @bug 8251158
 + * @library /test/lib
 + * @modules java.base/jdk.internal.misc
 + *          java.management
@@ -8683,7 +8024,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocatio
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT1.java
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,122 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8725,7 +8066,6 @@ new file mode 100644
 + * We also set MetaspaceVerifyInterval very low to trigger many verifications in debug vm.
 + *
 + */
-+
 +
 +/*
 + * @test id=debug
@@ -8811,7 +8151,7 @@ diff --git a/test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocatio
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT2.java
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,123 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8887,7 +8227,6 @@ new file mode 100644
 + * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT2
 + * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT2
 + */
-+
 +
 +public class TestMetaspaceAllocationMT2 {
 +

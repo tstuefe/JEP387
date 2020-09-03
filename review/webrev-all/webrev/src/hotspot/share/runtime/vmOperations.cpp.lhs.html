@@ -81,7 +81,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     </head>
     <body id="SUNWwebrev" onkeypress="keypress(event);">
     <a name="0"></a>
-    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre><hr></hr>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre><hr></hr>
 <pre>
    1 /*
    2  * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -108,7 +108,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   23  */
   24 
   25 #include "precompiled.hpp"
-  26 #include "classfile/symbolTable.hpp"
+  26 #include "classfile/classLoaderDataGraph.hpp"
   27 #include "classfile/vmSymbols.hpp"
   28 #include "code/codeCache.hpp"
   29 #include "compiler/compileBroker.hpp"
@@ -126,471 +126,474 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   40 #include "runtime/deoptimization.hpp"
   41 #include "runtime/frame.inline.hpp"
   42 #include "runtime/interfaceSupport.inline.hpp"
-  43 #include "runtime/sweeper.hpp"
-  44 #include "runtime/synchronizer.hpp"
-  45 #include "runtime/thread.inline.hpp"
-  46 #include "runtime/threadSMR.inline.hpp"
-  47 #include "runtime/vmOperations.hpp"
-  48 #include "services/threadService.hpp"
-  49 
-  50 #define VM_OP_NAME_INITIALIZE(name) #name,
-  51 
-  52 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
-  53   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
-  54 
-  55 void VM_Operation::set_calling_thread(Thread* thread) {
-  56   _calling_thread = thread;
-  57 }
-  58 
-  59 void VM_Operation::evaluate() {
-  60   ResourceMark rm;
-  61   LogTarget(Debug, vmoperation) lt;
-  62   if (lt.is_enabled()) {
-  63     LogStream ls(lt);
-  64     ls.print("begin ");
-  65     print_on_error(&amp;ls);
-  66     ls.cr();
-  67   }
-  68   doit();
-  69   if (lt.is_enabled()) {
-  70     LogStream ls(lt);
-  71     ls.print("end ");
-  72     print_on_error(&amp;ls);
-  73     ls.cr();
-  74   }
-  75 }
-  76 
-  77 // Called by fatal error handler.
-  78 void VM_Operation::print_on_error(outputStream* st) const {
-  79   st-&gt;print("VM_Operation (" PTR_FORMAT "): ", p2i(this));
-  80   st-&gt;print("%s", name());
-  81 
-  82   st-&gt;print(", mode: %s", evaluate_at_safepoint() ? "safepoint" : "no safepoint");
-  83 
-  84   if (calling_thread()) {
-  85     st-&gt;print(", requested by thread " PTR_FORMAT, p2i(calling_thread()));
-  86   }
-  87 }
-  88 
-  89 void VM_ClearICs::doit() {
-  90   if (_preserve_static_stubs) {
-  91     CodeCache::cleanup_inline_caches();
-  92   } else {
-  93     CodeCache::clear_inline_caches();
-  94   }
-  95 }
-  96 
-  97 VM_DeoptimizeFrame::VM_DeoptimizeFrame(JavaThread* thread, intptr_t* id, int reason) {
-  98   _thread = thread;
-  99   _id     = id;
- 100   _reason = reason;
- 101 }
- 102 
- 103 
- 104 void VM_DeoptimizeFrame::doit() {
- 105   assert(_reason &gt; Deoptimization::Reason_none &amp;&amp; _reason &lt; Deoptimization::Reason_LIMIT, "invalid deopt reason");
- 106   Deoptimization::deoptimize_frame_internal(_thread, _id, (Deoptimization::DeoptReason)_reason);
- 107 }
- 108 
- 109 
- 110 #ifndef PRODUCT
+  43 #include "runtime/synchronizer.hpp"
+  44 #include "runtime/thread.inline.hpp"
+  45 #include "runtime/threadSMR.inline.hpp"
+  46 #include "runtime/vmOperations.hpp"
+  47 #include "services/threadService.hpp"
+  48 
+  49 #define VM_OP_NAME_INITIALIZE(name) #name,
+  50 
+  51 const char* VM_Operation::_names[VM_Operation::VMOp_Terminating] = \
+  52   { VM_OPS_DO(VM_OP_NAME_INITIALIZE) };
+  53 
+  54 void VM_Operation::set_calling_thread(Thread* thread) {
+  55   _calling_thread = thread;
+  56 }
+  57 
+  58 void VM_Operation::evaluate() {
+  59   ResourceMark rm;
+  60   LogTarget(Debug, vmoperation) lt;
+  61   if (lt.is_enabled()) {
+  62     LogStream ls(lt);
+  63     ls.print("begin ");
+  64     print_on_error(&amp;ls);
+  65     ls.cr();
+  66   }
+  67   doit();
+  68   if (lt.is_enabled()) {
+  69     LogStream ls(lt);
+  70     ls.print("end ");
+  71     print_on_error(&amp;ls);
+  72     ls.cr();
+  73   }
+  74 }
+  75 
+  76 // Called by fatal error handler.
+  77 void VM_Operation::print_on_error(outputStream* st) const {
+  78   st-&gt;print("VM_Operation (" PTR_FORMAT "): ", p2i(this));
+  79   st-&gt;print("%s", name());
+  80 
+  81   st-&gt;print(", mode: %s", evaluate_at_safepoint() ? "safepoint" : "no safepoint");
+  82 
+  83   if (calling_thread()) {
+  84     st-&gt;print(", requested by thread " PTR_FORMAT, p2i(calling_thread()));
+  85   }
+  86 }
+  87 
+  88 void VM_ClearICs::doit() {
+  89   if (_preserve_static_stubs) {
+  90     CodeCache::cleanup_inline_caches();
+  91   } else {
+  92     CodeCache::clear_inline_caches();
+  93   }
+  94 }
+  95 
+  96 void VM_CleanClassLoaderDataMetaspaces::doit() {
+  97   ClassLoaderDataGraph::walk_metadata_and_clean_metaspaces();
+  98 }
+  99 
+ 100 VM_DeoptimizeFrame::VM_DeoptimizeFrame(JavaThread* thread, intptr_t* id, int reason) {
+ 101   _thread = thread;
+ 102   _id     = id;
+ 103   _reason = reason;
+ 104 }
+ 105 
+ 106 
+ 107 void VM_DeoptimizeFrame::doit() {
+ 108   assert(_reason &gt; Deoptimization::Reason_none &amp;&amp; _reason &lt; Deoptimization::Reason_LIMIT, "invalid deopt reason");
+ 109   Deoptimization::deoptimize_frame_internal(_thread, _id, (Deoptimization::DeoptReason)_reason);
+ 110 }
  111 
- 112 void VM_DeoptimizeAll::doit() {
- 113   DeoptimizationMarker dm;
- 114   JavaThreadIteratorWithHandle jtiwh;
- 115   // deoptimize all java threads in the system
- 116   if (DeoptimizeALot) {
- 117     for (; JavaThread *thread = jtiwh.next(); ) {
- 118       if (thread-&gt;has_last_Java_frame()) {
- 119         thread-&gt;deoptimize();
- 120       }
- 121     }
- 122   } else if (DeoptimizeRandom) {
- 123 
- 124     // Deoptimize some selected threads and frames
- 125     int tnum = os::random() &amp; 0x3;
- 126     int fnum =  os::random() &amp; 0x3;
- 127     int tcount = 0;
- 128     for (; JavaThread *thread = jtiwh.next(); ) {
- 129       if (thread-&gt;has_last_Java_frame()) {
- 130         if (tcount++ == tnum)  {
- 131         tcount = 0;
- 132           int fcount = 0;
- 133           // Deoptimize some selected frames.
- 134           for(StackFrameStream fst(thread, false); !fst.is_done(); fst.next()) {
- 135             if (fst.current()-&gt;can_be_deoptimized()) {
- 136               if (fcount++ == fnum) {
- 137                 fcount = 0;
- 138                 Deoptimization::deoptimize(thread, *fst.current());
- 139               }
- 140             }
- 141           }
- 142         }
- 143       }
- 144     }
- 145   }
- 146 }
- 147 
- 148 
- 149 void VM_ZombieAll::doit() {
- 150   JavaThread *thread = (JavaThread *)calling_thread();
- 151   assert(thread-&gt;is_Java_thread(), "must be a Java thread");
- 152   thread-&gt;make_zombies();
- 153 }
- 154 
- 155 #endif // !PRODUCT
- 156 
- 157 void VM_Verify::doit() {
- 158   Universe::heap()-&gt;prepare_for_verify();
- 159   Universe::verify();
- 160 }
- 161 
- 162 bool VM_PrintThreads::doit_prologue() {
- 163   // Get Heap_lock if concurrent locks will be dumped
- 164   if (_print_concurrent_locks) {
- 165     Heap_lock-&gt;lock();
- 166   }
- 167   return true;
- 168 }
- 169 
- 170 void VM_PrintThreads::doit() {
- 171   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
- 172 }
- 173 
- 174 void VM_PrintThreads::doit_epilogue() {
- 175   if (_print_concurrent_locks) {
- 176     // Release Heap_lock
- 177     Heap_lock-&gt;unlock();
- 178   }
- 179 }
- 180 
- 181 void VM_PrintJNI::doit() {
- 182   JNIHandles::print_on(_out);
- 183 }
- 184 
- 185 void VM_PrintMetadata::doit() {
-<a name="2" id="anc2"></a><span class="changed"> 186   MetaspaceUtils::print_report(_out, _scale, _flags);</span>
- 187 }
- 188 
- 189 VM_FindDeadlocks::~VM_FindDeadlocks() {
- 190   if (_deadlocks != NULL) {
- 191     DeadlockCycle* cycle = _deadlocks;
- 192     while (cycle != NULL) {
- 193       DeadlockCycle* d = cycle;
- 194       cycle = cycle-&gt;next();
- 195       delete d;
- 196     }
- 197   }
- 198 }
- 199 
- 200 void VM_FindDeadlocks::doit() {
- 201   // Update the hazard ptr in the originating thread to the current
- 202   // list of threads. This VM operation needs the current list of
- 203   // threads for proper deadlock detection and those are the
- 204   // JavaThreads we need to be protected when we return info to the
- 205   // originating thread.
- 206   _setter.set();
- 207 
- 208   _deadlocks = ThreadService::find_deadlocks_at_safepoint(_setter.list(), _concurrent_locks);
- 209   if (_out != NULL) {
- 210     int num_deadlocks = 0;
- 211     for (DeadlockCycle* cycle = _deadlocks; cycle != NULL; cycle = cycle-&gt;next()) {
- 212       num_deadlocks++;
- 213       cycle-&gt;print_on_with(_setter.list(), _out);
- 214     }
- 215 
- 216     if (num_deadlocks == 1) {
- 217       _out-&gt;print_cr("\nFound 1 deadlock.\n");
- 218       _out-&gt;flush();
- 219     } else if (num_deadlocks &gt; 1) {
- 220       _out-&gt;print_cr("\nFound %d deadlocks.\n", num_deadlocks);
+ 112 
+ 113 #ifndef PRODUCT
+ 114 
+ 115 void VM_DeoptimizeAll::doit() {
+ 116   DeoptimizationMarker dm;
+ 117   JavaThreadIteratorWithHandle jtiwh;
+ 118   // deoptimize all java threads in the system
+ 119   if (DeoptimizeALot) {
+ 120     for (; JavaThread *thread = jtiwh.next(); ) {
+ 121       if (thread-&gt;has_last_Java_frame()) {
+ 122         thread-&gt;deoptimize();
+ 123       }
+ 124     }
+ 125   } else if (DeoptimizeRandom) {
+ 126 
+ 127     // Deoptimize some selected threads and frames
+ 128     int tnum = os::random() &amp; 0x3;
+ 129     int fnum =  os::random() &amp; 0x3;
+ 130     int tcount = 0;
+ 131     for (; JavaThread *thread = jtiwh.next(); ) {
+ 132       if (thread-&gt;has_last_Java_frame()) {
+ 133         if (tcount++ == tnum)  {
+ 134         tcount = 0;
+ 135           int fcount = 0;
+ 136           // Deoptimize some selected frames.
+ 137           for(StackFrameStream fst(thread, false); !fst.is_done(); fst.next()) {
+ 138             if (fst.current()-&gt;can_be_deoptimized()) {
+ 139               if (fcount++ == fnum) {
+ 140                 fcount = 0;
+ 141                 Deoptimization::deoptimize(thread, *fst.current());
+ 142               }
+ 143             }
+ 144           }
+ 145         }
+ 146       }
+ 147     }
+ 148   }
+ 149 }
+ 150 
+ 151 
+ 152 void VM_ZombieAll::doit() {
+ 153   JavaThread *thread = (JavaThread *)calling_thread();
+ 154   assert(thread-&gt;is_Java_thread(), "must be a Java thread");
+ 155   thread-&gt;make_zombies();
+ 156 }
+ 157 
+ 158 #endif // !PRODUCT
+ 159 
+ 160 void VM_Verify::doit() {
+ 161   Universe::heap()-&gt;prepare_for_verify();
+ 162   Universe::verify();
+ 163 }
+ 164 
+ 165 bool VM_PrintThreads::doit_prologue() {
+ 166   // Get Heap_lock if concurrent locks will be dumped
+ 167   if (_print_concurrent_locks) {
+ 168     Heap_lock-&gt;lock();
+ 169   }
+ 170   return true;
+ 171 }
+ 172 
+ 173 void VM_PrintThreads::doit() {
+ 174   Threads::print_on(_out, true, false, _print_concurrent_locks, _print_extended_info);
+ 175 }
+ 176 
+ 177 void VM_PrintThreads::doit_epilogue() {
+ 178   if (_print_concurrent_locks) {
+ 179     // Release Heap_lock
+ 180     Heap_lock-&gt;unlock();
+ 181   }
+ 182 }
+ 183 
+ 184 void VM_PrintJNI::doit() {
+ 185   JNIHandles::print_on(_out);
+ 186 }
+ 187 
+ 188 void VM_PrintMetadata::doit() {
+<a name="2" id="anc2"></a><span class="changed"> 189   MetaspaceUtils::print_report(_out, _scale, _flags);</span>
+ 190 }
+ 191 
+ 192 VM_FindDeadlocks::~VM_FindDeadlocks() {
+ 193   if (_deadlocks != NULL) {
+ 194     DeadlockCycle* cycle = _deadlocks;
+ 195     while (cycle != NULL) {
+ 196       DeadlockCycle* d = cycle;
+ 197       cycle = cycle-&gt;next();
+ 198       delete d;
+ 199     }
+ 200   }
+ 201 }
+ 202 
+ 203 void VM_FindDeadlocks::doit() {
+ 204   // Update the hazard ptr in the originating thread to the current
+ 205   // list of threads. This VM operation needs the current list of
+ 206   // threads for proper deadlock detection and those are the
+ 207   // JavaThreads we need to be protected when we return info to the
+ 208   // originating thread.
+ 209   _setter.set();
+ 210 
+ 211   _deadlocks = ThreadService::find_deadlocks_at_safepoint(_setter.list(), _concurrent_locks);
+ 212   if (_out != NULL) {
+ 213     int num_deadlocks = 0;
+ 214     for (DeadlockCycle* cycle = _deadlocks; cycle != NULL; cycle = cycle-&gt;next()) {
+ 215       num_deadlocks++;
+ 216       cycle-&gt;print_on_with(_setter.list(), _out);
+ 217     }
+ 218 
+ 219     if (num_deadlocks == 1) {
+ 220       _out-&gt;print_cr("\nFound 1 deadlock.\n");
  221       _out-&gt;flush();
- 222     }
- 223   }
- 224 }
- 225 
- 226 VM_ThreadDump::VM_ThreadDump(ThreadDumpResult* result,
- 227                              int max_depth,
- 228                              bool with_locked_monitors,
- 229                              bool with_locked_synchronizers) {
- 230   _result = result;
- 231   _num_threads = 0; // 0 indicates all threads
- 232   _threads = NULL;
+ 222     } else if (num_deadlocks &gt; 1) {
+ 223       _out-&gt;print_cr("\nFound %d deadlocks.\n", num_deadlocks);
+ 224       _out-&gt;flush();
+ 225     }
+ 226   }
+ 227 }
+ 228 
+ 229 VM_ThreadDump::VM_ThreadDump(ThreadDumpResult* result,
+ 230                              int max_depth,
+ 231                              bool with_locked_monitors,
+ 232                              bool with_locked_synchronizers) {
  233   _result = result;
- 234   _max_depth = max_depth;
- 235   _with_locked_monitors = with_locked_monitors;
- 236   _with_locked_synchronizers = with_locked_synchronizers;
- 237 }
- 238 
- 239 VM_ThreadDump::VM_ThreadDump(ThreadDumpResult* result,
- 240                              GrowableArray&lt;instanceHandle&gt;* threads,
- 241                              int num_threads,
- 242                              int max_depth,
- 243                              bool with_locked_monitors,
- 244                              bool with_locked_synchronizers) {
- 245   _result = result;
- 246   _num_threads = num_threads;
- 247   _threads = threads;
+ 234   _num_threads = 0; // 0 indicates all threads
+ 235   _threads = NULL;
+ 236   _result = result;
+ 237   _max_depth = max_depth;
+ 238   _with_locked_monitors = with_locked_monitors;
+ 239   _with_locked_synchronizers = with_locked_synchronizers;
+ 240 }
+ 241 
+ 242 VM_ThreadDump::VM_ThreadDump(ThreadDumpResult* result,
+ 243                              GrowableArray&lt;instanceHandle&gt;* threads,
+ 244                              int num_threads,
+ 245                              int max_depth,
+ 246                              bool with_locked_monitors,
+ 247                              bool with_locked_synchronizers) {
  248   _result = result;
- 249   _max_depth = max_depth;
- 250   _with_locked_monitors = with_locked_monitors;
- 251   _with_locked_synchronizers = with_locked_synchronizers;
- 252 }
- 253 
- 254 bool VM_ThreadDump::doit_prologue() {
- 255   if (_with_locked_synchronizers) {
- 256     // Acquire Heap_lock to dump concurrent locks
- 257     Heap_lock-&gt;lock();
- 258   }
- 259 
- 260   return true;
- 261 }
+ 249   _num_threads = num_threads;
+ 250   _threads = threads;
+ 251   _result = result;
+ 252   _max_depth = max_depth;
+ 253   _with_locked_monitors = with_locked_monitors;
+ 254   _with_locked_synchronizers = with_locked_synchronizers;
+ 255 }
+ 256 
+ 257 bool VM_ThreadDump::doit_prologue() {
+ 258   if (_with_locked_synchronizers) {
+ 259     // Acquire Heap_lock to dump concurrent locks
+ 260     Heap_lock-&gt;lock();
+ 261   }
  262 
- 263 void VM_ThreadDump::doit_epilogue() {
- 264   if (_with_locked_synchronizers) {
- 265     // Release Heap_lock
- 266     Heap_lock-&gt;unlock();
- 267   }
- 268 }
- 269 
- 270 void VM_ThreadDump::doit() {
- 271   ResourceMark rm;
+ 263   return true;
+ 264 }
+ 265 
+ 266 void VM_ThreadDump::doit_epilogue() {
+ 267   if (_with_locked_synchronizers) {
+ 268     // Release Heap_lock
+ 269     Heap_lock-&gt;unlock();
+ 270   }
+ 271 }
  272 
- 273   // Set the hazard ptr in the originating thread to protect the
- 274   // current list of threads. This VM operation needs the current list
- 275   // of threads for a proper dump and those are the JavaThreads we need
- 276   // to be protected when we return info to the originating thread.
- 277   _result-&gt;set_t_list();
- 278 
- 279   ConcurrentLocksDump concurrent_locks(true);
- 280   if (_with_locked_synchronizers) {
- 281     concurrent_locks.dump_at_safepoint();
- 282   }
- 283 
- 284   if (_num_threads == 0) {
- 285     // Snapshot all live threads
+ 273 void VM_ThreadDump::doit() {
+ 274   ResourceMark rm;
+ 275 
+ 276   // Set the hazard ptr in the originating thread to protect the
+ 277   // current list of threads. This VM operation needs the current list
+ 278   // of threads for a proper dump and those are the JavaThreads we need
+ 279   // to be protected when we return info to the originating thread.
+ 280   _result-&gt;set_t_list();
+ 281 
+ 282   ConcurrentLocksDump concurrent_locks(true);
+ 283   if (_with_locked_synchronizers) {
+ 284     concurrent_locks.dump_at_safepoint();
+ 285   }
  286 
- 287     for (uint i = 0; i &lt; _result-&gt;t_list()-&gt;length(); i++) {
- 288       JavaThread* jt = _result-&gt;t_list()-&gt;thread_at(i);
- 289       if (jt-&gt;is_exiting() ||
- 290           jt-&gt;is_hidden_from_external_view())  {
- 291         // skip terminating threads and hidden threads
- 292         continue;
- 293       }
- 294       ThreadConcurrentLocks* tcl = NULL;
- 295       if (_with_locked_synchronizers) {
- 296         tcl = concurrent_locks.thread_concurrent_locks(jt);
- 297       }
- 298       snapshot_thread(jt, tcl);
- 299     }
- 300   } else {
- 301     // Snapshot threads in the given _threads array
- 302     // A dummy snapshot is created if a thread doesn't exist
- 303 
- 304     for (int i = 0; i &lt; _num_threads; i++) {
- 305       instanceHandle th = _threads-&gt;at(i);
- 306       if (th() == NULL) {
- 307         // skip if the thread doesn't exist
- 308         // Add a dummy snapshot
- 309         _result-&gt;add_thread_snapshot();
- 310         continue;
- 311       }
- 312 
- 313       // Dump thread stack only if the thread is alive and not exiting
- 314       // and not VM internal thread.
- 315       JavaThread* jt = java_lang_Thread::thread(th());
- 316       if (jt != NULL &amp;&amp; !_result-&gt;t_list()-&gt;includes(jt)) {
- 317         // _threads[i] doesn't refer to a valid JavaThread; this check
- 318         // is primarily for JVM_DumpThreads() which doesn't have a good
- 319         // way to validate the _threads array.
- 320         jt = NULL;
- 321       }
- 322       if (jt == NULL || /* thread not alive */
- 323           jt-&gt;is_exiting() ||
- 324           jt-&gt;is_hidden_from_external_view())  {
- 325         // add a NULL snapshot if skipped
- 326         _result-&gt;add_thread_snapshot();
- 327         continue;
- 328       }
- 329       ThreadConcurrentLocks* tcl = NULL;
- 330       if (_with_locked_synchronizers) {
- 331         tcl = concurrent_locks.thread_concurrent_locks(jt);
- 332       }
- 333       snapshot_thread(jt, tcl);
- 334     }
- 335   }
- 336 }
- 337 
- 338 void VM_ThreadDump::snapshot_thread(JavaThread* java_thread, ThreadConcurrentLocks* tcl) {
- 339   ThreadSnapshot* snapshot = _result-&gt;add_thread_snapshot(java_thread);
- 340   snapshot-&gt;dump_stack_at_safepoint(_max_depth, _with_locked_monitors);
- 341   snapshot-&gt;set_concurrent_locks(tcl);
- 342 }
- 343 
- 344 volatile bool VM_Exit::_vm_exited = false;
- 345 Thread * volatile VM_Exit::_shutdown_thread = NULL;
+ 287   if (_num_threads == 0) {
+ 288     // Snapshot all live threads
+ 289 
+ 290     for (uint i = 0; i &lt; _result-&gt;t_list()-&gt;length(); i++) {
+ 291       JavaThread* jt = _result-&gt;t_list()-&gt;thread_at(i);
+ 292       if (jt-&gt;is_exiting() ||
+ 293           jt-&gt;is_hidden_from_external_view())  {
+ 294         // skip terminating threads and hidden threads
+ 295         continue;
+ 296       }
+ 297       ThreadConcurrentLocks* tcl = NULL;
+ 298       if (_with_locked_synchronizers) {
+ 299         tcl = concurrent_locks.thread_concurrent_locks(jt);
+ 300       }
+ 301       snapshot_thread(jt, tcl);
+ 302     }
+ 303   } else {
+ 304     // Snapshot threads in the given _threads array
+ 305     // A dummy snapshot is created if a thread doesn't exist
+ 306 
+ 307     for (int i = 0; i &lt; _num_threads; i++) {
+ 308       instanceHandle th = _threads-&gt;at(i);
+ 309       if (th() == NULL) {
+ 310         // skip if the thread doesn't exist
+ 311         // Add a dummy snapshot
+ 312         _result-&gt;add_thread_snapshot();
+ 313         continue;
+ 314       }
+ 315 
+ 316       // Dump thread stack only if the thread is alive and not exiting
+ 317       // and not VM internal thread.
+ 318       JavaThread* jt = java_lang_Thread::thread(th());
+ 319       if (jt != NULL &amp;&amp; !_result-&gt;t_list()-&gt;includes(jt)) {
+ 320         // _threads[i] doesn't refer to a valid JavaThread; this check
+ 321         // is primarily for JVM_DumpThreads() which doesn't have a good
+ 322         // way to validate the _threads array.
+ 323         jt = NULL;
+ 324       }
+ 325       if (jt == NULL || /* thread not alive */
+ 326           jt-&gt;is_exiting() ||
+ 327           jt-&gt;is_hidden_from_external_view())  {
+ 328         // add a NULL snapshot if skipped
+ 329         _result-&gt;add_thread_snapshot();
+ 330         continue;
+ 331       }
+ 332       ThreadConcurrentLocks* tcl = NULL;
+ 333       if (_with_locked_synchronizers) {
+ 334         tcl = concurrent_locks.thread_concurrent_locks(jt);
+ 335       }
+ 336       snapshot_thread(jt, tcl);
+ 337     }
+ 338   }
+ 339 }
+ 340 
+ 341 void VM_ThreadDump::snapshot_thread(JavaThread* java_thread, ThreadConcurrentLocks* tcl) {
+ 342   ThreadSnapshot* snapshot = _result-&gt;add_thread_snapshot(java_thread);
+ 343   snapshot-&gt;dump_stack_at_safepoint(_max_depth, _with_locked_monitors);
+ 344   snapshot-&gt;set_concurrent_locks(tcl);
+ 345 }
  346 
- 347 int VM_Exit::set_vm_exited() {
- 348 
- 349   Thread * thr_cur = Thread::current();
- 350 
- 351   assert(SafepointSynchronize::is_at_safepoint(), "must be at safepoint already");
- 352 
- 353   int num_active = 0;
- 354 
- 355   _shutdown_thread = thr_cur;
- 356   _vm_exited = true;                                // global flag
- 357   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *thr = jtiwh.next(); ) {
- 358     if (thr!=thr_cur &amp;&amp; thr-&gt;thread_state() == _thread_in_native) {
- 359       ++num_active;
- 360       thr-&gt;set_terminated(JavaThread::_vm_exited);  // per-thread flag
- 361     }
- 362   }
- 363 
- 364   return num_active;
- 365 }
+ 347 volatile bool VM_Exit::_vm_exited = false;
+ 348 Thread * volatile VM_Exit::_shutdown_thread = NULL;
+ 349 
+ 350 int VM_Exit::set_vm_exited() {
+ 351 
+ 352   Thread * thr_cur = Thread::current();
+ 353 
+ 354   assert(SafepointSynchronize::is_at_safepoint(), "must be at safepoint already");
+ 355 
+ 356   int num_active = 0;
+ 357 
+ 358   _shutdown_thread = thr_cur;
+ 359   _vm_exited = true;                                // global flag
+ 360   for (JavaThreadIteratorWithHandle jtiwh; JavaThread *thr = jtiwh.next(); ) {
+ 361     if (thr!=thr_cur &amp;&amp; thr-&gt;thread_state() == _thread_in_native) {
+ 362       ++num_active;
+ 363       thr-&gt;set_terminated(JavaThread::_vm_exited);  // per-thread flag
+ 364     }
+ 365   }
  366 
- 367 int VM_Exit::wait_for_threads_in_native_to_block() {
- 368   // VM exits at safepoint. This function must be called at the final safepoint
- 369   // to wait for threads in _thread_in_native state to be quiescent.
- 370   assert(SafepointSynchronize::is_at_safepoint(), "must be at safepoint already");
- 371 
- 372   Thread * thr_cur = Thread::current();
- 373   Monitor timer(Mutex::leaf, "VM_Exit timer", true,
- 374                 Monitor::_safepoint_check_never);
- 375 
- 376   // Compiler threads need longer wait because they can access VM data directly
- 377   // while in native. If they are active and some structures being used are
- 378   // deleted by the shutdown sequence, they will crash. On the other hand, user
- 379   // threads must go through native=&gt;Java/VM transitions first to access VM
- 380   // data, and they will be stopped during state transition. In theory, we
- 381   // don't have to wait for user threads to be quiescent, but it's always
- 382   // better to terminate VM when current thread is the only active thread, so
- 383   // wait for user threads too. Numbers are in 10 milliseconds.
- 384   int max_wait_user_thread = 30;                  // at least 300 milliseconds
- 385   int max_wait_compiler_thread = 1000;            // at least 10 seconds
- 386 
- 387   int max_wait = max_wait_compiler_thread;
- 388 
- 389   int attempts = 0;
- 390   JavaThreadIteratorWithHandle jtiwh;
- 391   while (true) {
- 392     int num_active = 0;
- 393     int num_active_compiler_thread = 0;
- 394 
- 395     jtiwh.rewind();
- 396     for (; JavaThread *thr = jtiwh.next(); ) {
- 397       if (thr!=thr_cur &amp;&amp; thr-&gt;thread_state() == _thread_in_native) {
- 398         num_active++;
- 399         if (thr-&gt;is_Compiler_thread()) {
- 400 #if INCLUDE_JVMCI
- 401           CompilerThread* ct = (CompilerThread*) thr;
- 402           if (ct-&gt;compiler() == NULL || !ct-&gt;compiler()-&gt;is_jvmci()) {
- 403             num_active_compiler_thread++;
- 404           } else {
- 405             // A JVMCI compiler thread never accesses VM data structures
- 406             // while in _thread_in_native state so there's no need to wait
- 407             // for it and potentially add a 300 millisecond delay to VM
- 408             // shutdown.
- 409             num_active--;
- 410           }
- 411 #else
- 412           num_active_compiler_thread++;
- 413 #endif
- 414         }
- 415       }
- 416     }
- 417 
- 418     if (num_active == 0) {
- 419        return 0;
- 420     } else if (attempts &gt; max_wait) {
- 421        return num_active;
- 422     } else if (num_active_compiler_thread == 0 &amp;&amp; attempts &gt; max_wait_user_thread) {
- 423        return num_active;
- 424     }
- 425 
- 426     attempts++;
- 427 
- 428     MonitorLocker ml(&amp;timer, Mutex::_no_safepoint_check_flag);
- 429     ml.wait(10);
- 430   }
- 431 }
- 432 
- 433 bool VM_Exit::doit_prologue() {
- 434   if (log_is_enabled(Info, monitorinflation)) {
- 435     // Do a deflation in order to reduce the in-use monitor population
- 436     // that is reported by ObjectSynchronizer::log_in_use_monitor_details()
- 437     // at VM exit.
- 438     ObjectSynchronizer::request_deflate_idle_monitors();
- 439   }
- 440   return true;
- 441 }
- 442 
- 443 void VM_Exit::doit() {
- 444 
- 445   if (VerifyBeforeExit) {
- 446     HandleMark hm(VMThread::vm_thread());
- 447     // Among other things, this ensures that Eden top is correct.
- 448     Universe::heap()-&gt;prepare_for_verify();
- 449     // Silent verification so as not to pollute normal output,
- 450     // unless we really asked for it.
- 451     Universe::verify();
- 452   }
- 453 
- 454   CompileBroker::set_should_block();
- 455 
- 456   // Wait for a short period for threads in native to block. Any thread
- 457   // still executing native code after the wait will be stopped at
- 458   // native==&gt;Java/VM barriers.
- 459   // Among 16276 JCK tests, 94% of them come here without any threads still
- 460   // running in native; the other 6% are quiescent within 250ms (Ultra 80).
- 461   wait_for_threads_in_native_to_block();
- 462 
- 463   set_vm_exited();
- 464 
- 465   // We'd like to call IdealGraphPrinter::clean_up() to finalize the
- 466   // XML logging, but we can't safely do that here. The logic to make
- 467   // XML termination logging safe is tied to the termination of the
- 468   // VMThread, and it doesn't terminate on this exit path. See 8222534.
- 469 
- 470   // cleanup globals resources before exiting. exit_globals() currently
- 471   // cleans up outputStream resources and PerfMemory resources.
- 472   exit_globals();
- 473 
- 474   LogConfiguration::finalize();
- 475 
- 476   // Check for exit hook
- 477   exit_hook_t exit_hook = Arguments::exit_hook();
- 478   if (exit_hook != NULL) {
- 479     // exit hook should exit.
- 480     exit_hook(_exit_code);
- 481     // ... but if it didn't, we must do it here
- 482     vm_direct_exit(_exit_code);
- 483   } else {
- 484     vm_direct_exit(_exit_code);
- 485   }
- 486 }
- 487 
- 488 
- 489 void VM_Exit::wait_if_vm_exited() {
- 490   if (_vm_exited &amp;&amp;
- 491       Thread::current_or_null() != _shutdown_thread) {
- 492     // _vm_exited is set at safepoint, and the Threads_lock is never released
- 493     // we will block here until the process dies
- 494     Threads_lock-&gt;lock();
- 495     ShouldNotReachHere();
- 496   }
- 497 }
- 498 
- 499 void VM_PrintCompileQueue::doit() {
- 500   CompileBroker::print_compile_queues(_out);
- 501 }
- 502 
- 503 #if INCLUDE_SERVICES
- 504 void VM_PrintClassHierarchy::doit() {
- 505   KlassHierarchy::print_class_hierarchy(_out, _print_interfaces, _print_subclasses, _classname);
- 506 }
- 507 #endif
+ 367   return num_active;
+ 368 }
+ 369 
+ 370 int VM_Exit::wait_for_threads_in_native_to_block() {
+ 371   // VM exits at safepoint. This function must be called at the final safepoint
+ 372   // to wait for threads in _thread_in_native state to be quiescent.
+ 373   assert(SafepointSynchronize::is_at_safepoint(), "must be at safepoint already");
+ 374 
+ 375   Thread * thr_cur = Thread::current();
+ 376   Monitor timer(Mutex::leaf, "VM_Exit timer", true,
+ 377                 Monitor::_safepoint_check_never);
+ 378 
+ 379   // Compiler threads need longer wait because they can access VM data directly
+ 380   // while in native. If they are active and some structures being used are
+ 381   // deleted by the shutdown sequence, they will crash. On the other hand, user
+ 382   // threads must go through native=&gt;Java/VM transitions first to access VM
+ 383   // data, and they will be stopped during state transition. In theory, we
+ 384   // don't have to wait for user threads to be quiescent, but it's always
+ 385   // better to terminate VM when current thread is the only active thread, so
+ 386   // wait for user threads too. Numbers are in 10 milliseconds.
+ 387   int max_wait_user_thread = 30;                  // at least 300 milliseconds
+ 388   int max_wait_compiler_thread = 1000;            // at least 10 seconds
+ 389 
+ 390   int max_wait = max_wait_compiler_thread;
+ 391 
+ 392   int attempts = 0;
+ 393   JavaThreadIteratorWithHandle jtiwh;
+ 394   while (true) {
+ 395     int num_active = 0;
+ 396     int num_active_compiler_thread = 0;
+ 397 
+ 398     jtiwh.rewind();
+ 399     for (; JavaThread *thr = jtiwh.next(); ) {
+ 400       if (thr!=thr_cur &amp;&amp; thr-&gt;thread_state() == _thread_in_native) {
+ 401         num_active++;
+ 402         if (thr-&gt;is_Compiler_thread()) {
+ 403 #if INCLUDE_JVMCI
+ 404           CompilerThread* ct = (CompilerThread*) thr;
+ 405           if (ct-&gt;compiler() == NULL || !ct-&gt;compiler()-&gt;is_jvmci()) {
+ 406             num_active_compiler_thread++;
+ 407           } else {
+ 408             // A JVMCI compiler thread never accesses VM data structures
+ 409             // while in _thread_in_native state so there's no need to wait
+ 410             // for it and potentially add a 300 millisecond delay to VM
+ 411             // shutdown.
+ 412             num_active--;
+ 413           }
+ 414 #else
+ 415           num_active_compiler_thread++;
+ 416 #endif
+ 417         }
+ 418       }
+ 419     }
+ 420 
+ 421     if (num_active == 0) {
+ 422        return 0;
+ 423     } else if (attempts &gt; max_wait) {
+ 424        return num_active;
+ 425     } else if (num_active_compiler_thread == 0 &amp;&amp; attempts &gt; max_wait_user_thread) {
+ 426        return num_active;
+ 427     }
+ 428 
+ 429     attempts++;
+ 430 
+ 431     MonitorLocker ml(&amp;timer, Mutex::_no_safepoint_check_flag);
+ 432     ml.wait(10);
+ 433   }
+ 434 }
+ 435 
+ 436 bool VM_Exit::doit_prologue() {
+ 437   if (log_is_enabled(Info, monitorinflation)) {
+ 438     // Do a deflation in order to reduce the in-use monitor population
+ 439     // that is reported by ObjectSynchronizer::log_in_use_monitor_details()
+ 440     // at VM exit.
+ 441     ObjectSynchronizer::request_deflate_idle_monitors();
+ 442   }
+ 443   return true;
+ 444 }
+ 445 
+ 446 void VM_Exit::doit() {
+ 447 
+ 448   if (VerifyBeforeExit) {
+ 449     HandleMark hm(VMThread::vm_thread());
+ 450     // Among other things, this ensures that Eden top is correct.
+ 451     Universe::heap()-&gt;prepare_for_verify();
+ 452     // Silent verification so as not to pollute normal output,
+ 453     // unless we really asked for it.
+ 454     Universe::verify();
+ 455   }
+ 456 
+ 457   CompileBroker::set_should_block();
+ 458 
+ 459   // Wait for a short period for threads in native to block. Any thread
+ 460   // still executing native code after the wait will be stopped at
+ 461   // native==&gt;Java/VM barriers.
+ 462   // Among 16276 JCK tests, 94% of them come here without any threads still
+ 463   // running in native; the other 6% are quiescent within 250ms (Ultra 80).
+ 464   wait_for_threads_in_native_to_block();
+ 465 
+ 466   set_vm_exited();
+ 467 
+ 468   // We'd like to call IdealGraphPrinter::clean_up() to finalize the
+ 469   // XML logging, but we can't safely do that here. The logic to make
+ 470   // XML termination logging safe is tied to the termination of the
+ 471   // VMThread, and it doesn't terminate on this exit path. See 8222534.
+ 472 
+ 473   // cleanup globals resources before exiting. exit_globals() currently
+ 474   // cleans up outputStream resources and PerfMemory resources.
+ 475   exit_globals();
+ 476 
+ 477   LogConfiguration::finalize();
+ 478 
+ 479   // Check for exit hook
+ 480   exit_hook_t exit_hook = Arguments::exit_hook();
+ 481   if (exit_hook != NULL) {
+ 482     // exit hook should exit.
+ 483     exit_hook(_exit_code);
+ 484     // ... but if it didn't, we must do it here
+ 485     vm_direct_exit(_exit_code);
+ 486   } else {
+ 487     vm_direct_exit(_exit_code);
+ 488   }
+ 489 }
+ 490 
+ 491 
+ 492 void VM_Exit::wait_if_vm_exited() {
+ 493   if (_vm_exited &amp;&amp;
+ 494       Thread::current_or_null() != _shutdown_thread) {
+ 495     // _vm_exited is set at safepoint, and the Threads_lock is never released
+ 496     // we will block here until the process dies
+ 497     Threads_lock-&gt;lock();
+ 498     ShouldNotReachHere();
+ 499   }
+ 500 }
+ 501 
+ 502 void VM_PrintCompileQueue::doit() {
+ 503   CompileBroker::print_compile_queues(_out);
+ 504 }
+ 505 
+ 506 #if INCLUDE_SERVICES
+ 507 void VM_PrintClassHierarchy::doit() {
+ 508   KlassHierarchy::print_class_hierarchy(_out, _print_interfaces, _print_subclasses, _classname);
+ 509 }
+ 510 #endif
 <a name="3" id="anc3"></a><b style="font-size: large; color: red">--- EOF ---</b>
 
 

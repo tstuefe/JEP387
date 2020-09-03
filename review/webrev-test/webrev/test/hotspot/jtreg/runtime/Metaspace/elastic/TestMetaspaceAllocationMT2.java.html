@@ -156,52 +156,51 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   74  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT2
   75  */
   76 
-  77 
-  78 public class TestMetaspaceAllocationMT2 {
-  79 
-  80     public static void main(String[] args) throws Exception {
-  81 
-  82         final long testAllocationCeiling = 1024 * 1024 * 6; // 8m words = 64M on 64bit
-  83         final int numThreads = 4;
-  84         final int seconds = 10;
-  85 
-  86         for (int i = 0; i &lt; 3; i ++) {
-  87 
-  88             long commitLimit = (i == 1) ? 1024 * 256 : 0;
-  89 
-  90             // Note: reserve limit must be a multiple of Metaspace::reserve_alignment_words()
-  91             //  (512 K)
-  92             long reserveLimit = (i == 2) ? 1024 * 512 : 0;
-  93 
-  94             System.out.println("#### Test: ");
-  95             System.out.println("#### testAllocationCeiling: " + testAllocationCeiling);
-  96             System.out.println("#### numThreads: " + numThreads);
-  97             System.out.println("#### seconds: " + seconds);
-  98             System.out.println("#### commitLimit: " + commitLimit);
-  99             System.out.println("#### reserveLimit: " + reserveLimit);
- 100             System.out.println("#### ReclaimPolicy: " + Settings.settings().reclaimPolicy);
- 101             System.out.println("#### guards: " + Settings.settings().usesAllocationGuards);
- 102 
- 103             MetaspaceTestContext context = new MetaspaceTestContext(commitLimit, reserveLimit);
- 104             MetaspaceTestManyArenasManyThreads test = new MetaspaceTestManyArenasManyThreads(context, testAllocationCeiling, numThreads, seconds);
- 105 
- 106             try {
- 107                 test.runTest();
- 108             } catch (RuntimeException e) {
- 109                 System.out.println(e);
- 110                 context.printToTTY();
- 111                 throw e;
- 112             }
- 113 
- 114             context.destroy();
- 115 
- 116             System.out.println("#### Done. ####");
- 117             System.out.println("###############");
- 118 
- 119         }
- 120 
- 121     }
- 122 
- 123 }
- 124 
+  77 public class TestMetaspaceAllocationMT2 {
+  78 
+  79     public static void main(String[] args) throws Exception {
+  80 
+  81         final long testAllocationCeiling = 1024 * 1024 * 6; // 8m words = 64M on 64bit
+  82         final int numThreads = 4;
+  83         final int seconds = 10;
+  84 
+  85         for (int i = 0; i &lt; 3; i ++) {
+  86 
+  87             long commitLimit = (i == 1) ? 1024 * 256 : 0;
+  88 
+  89             // Note: reserve limit must be a multiple of Metaspace::reserve_alignment_words()
+  90             //  (512 K)
+  91             long reserveLimit = (i == 2) ? 1024 * 512 : 0;
+  92 
+  93             System.out.println("#### Test: ");
+  94             System.out.println("#### testAllocationCeiling: " + testAllocationCeiling);
+  95             System.out.println("#### numThreads: " + numThreads);
+  96             System.out.println("#### seconds: " + seconds);
+  97             System.out.println("#### commitLimit: " + commitLimit);
+  98             System.out.println("#### reserveLimit: " + reserveLimit);
+  99             System.out.println("#### ReclaimPolicy: " + Settings.settings().reclaimPolicy);
+ 100             System.out.println("#### guards: " + Settings.settings().usesAllocationGuards);
+ 101 
+ 102             MetaspaceTestContext context = new MetaspaceTestContext(commitLimit, reserveLimit);
+ 103             MetaspaceTestManyArenasManyThreads test = new MetaspaceTestManyArenasManyThreads(context, testAllocationCeiling, numThreads, seconds);
+ 104 
+ 105             try {
+ 106                 test.runTest();
+ 107             } catch (RuntimeException e) {
+ 108                 System.out.println(e);
+ 109                 context.printToTTY();
+ 110                 throw e;
+ 111             }
+ 112 
+ 113             context.destroy();
+ 114 
+ 115             System.out.println("#### Done. ####");
+ 116             System.out.println("###############");
+ 117 
+ 118         }
+ 119 
+ 120     }
+ 121 
+ 122 }
+ 123 
 </pre></body></html>

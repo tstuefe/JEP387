@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -109,7 +109,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   27 
   28 #include "memory/allocation.inline.hpp"
   29 #include "memory/metaspace.hpp"
-  30 #include "memory/metaspace/virtualSpaceList.hpp"
+  30 #include "memory/metaspace/msVirtualSpaceList.hpp"
   31 #include "runtime/mutex.hpp"
   32 #include "runtime/mutexLocker.hpp"
   33 #include "runtime/os.hpp"
@@ -117,81 +117,79 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   35 
   36 using namespace metaspace;
   37 
-  38 
-  39 
-  40 // Test the cheerful multitude of metaspace-contains-functions.
-  41 class MetaspaceIsMetaspaceObjTest {
-  42   Mutex* _lock;
-  43   ClassLoaderMetaspace* _ms;
+  38 // Test the cheerful multitude of metaspace-contains-functions.
+  39 class MetaspaceIsMetaspaceObjTest {
+  40   Mutex* _lock;
+  41   ClassLoaderMetaspace* _ms;
+  42 
+  43 public:
   44 
-  45 public:
-  46 
-  47   MetaspaceIsMetaspaceObjTest() : _lock(NULL), _ms(NULL) {}
-  48   ~MetaspaceIsMetaspaceObjTest() {
-  49     delete _ms;
-  50     delete _lock;
-  51   }
-  52 
-  53   void do_test(Metaspace::MetadataType mdType) {
-  54     _lock = new Mutex(Monitor::native, "gtest-IsMetaspaceObjTest-lock", false, Monitor::_safepoint_check_never);
-  55     {
-  56       MutexLocker ml(_lock, Mutex::_no_safepoint_check_flag);
-  57       _ms = new ClassLoaderMetaspace(_lock, Metaspace::StandardMetaspaceType);
-  58     }
+  45   MetaspaceIsMetaspaceObjTest() : _lock(NULL), _ms(NULL) {}
+  46   ~MetaspaceIsMetaspaceObjTest() {
+  47     delete _ms;
+  48     delete _lock;
+  49   }
+  50 
+  51   void do_test(Metaspace::MetadataType mdType) {
+  52     _lock = new Mutex(Monitor::native, "gtest-IsMetaspaceObjTest-lock", false, Monitor::_safepoint_check_never);
+  53     {
+  54       MutexLocker ml(_lock, Mutex::_no_safepoint_check_flag);
+  55       _ms = new ClassLoaderMetaspace(_lock, Metaspace::StandardMetaspaceType);
+  56     }
+  57 
+  58     const MetaspaceObj* p = (MetaspaceObj*) _ms-&gt;allocate(42, mdType);
   59 
-  60     const MetaspaceObj* p = (MetaspaceObj*) _ms-&gt;allocate(42, mdType);
-  61 
-  62     // Test MetaspaceObj::is_metaspace_object
-  63     ASSERT_TRUE(MetaspaceObj::is_valid(p));
-  64 
-  65     // A misaligned object shall not be recognized
-  66     const MetaspaceObj* p_misaligned = (MetaspaceObj*)((address)p) + 1;
-  67     ASSERT_FALSE(MetaspaceObj::is_valid(p_misaligned));
-  68 
-  69     // Test VirtualSpaceList::contains
-  70     const VirtualSpaceList* const vslist =
-  71         (mdType == Metaspace::ClassType &amp;&amp; Metaspace::using_class_space()) ?
-  72          VirtualSpaceList::vslist_class() : VirtualSpaceList::vslist_nonclass();
+  60     // Test MetaspaceObj::is_metaspace_object
+  61     ASSERT_TRUE(MetaspaceObj::is_valid(p));
+  62 
+  63     // A misaligned object shall not be recognized
+  64     const MetaspaceObj* p_misaligned = (MetaspaceObj*)((address)p) + 1;
+  65     ASSERT_FALSE(MetaspaceObj::is_valid(p_misaligned));
+  66 
+  67     // Test VirtualSpaceList::contains
+  68     const VirtualSpaceList* const vslist =
+  69         (mdType == Metaspace::ClassType &amp;&amp; Metaspace::using_class_space()) ?
+  70          VirtualSpaceList::vslist_class() : VirtualSpaceList::vslist_nonclass();
+  71 
+  72     ASSERT_TRUE(vslist-&gt;contains((MetaWord*)p));
   73 
-  74     ASSERT_TRUE(vslist-&gt;contains((MetaWord*)p));
-  75 
-  76     // A misaligned pointer shall still be recognized by list::contains
-  77     ASSERT_TRUE(vslist-&gt;contains((MetaWord*)((address)p) + 1));
-  78 
-  79     // Now for some bogus values
-  80     ASSERT_FALSE(MetaspaceObj::is_valid((MetaspaceObj*)NULL));
-  81 
-  82     // Should exercise various paths in MetaspaceObj::is_valid()
-  83     ASSERT_FALSE(MetaspaceObj::is_valid((MetaspaceObj*)1024));
-  84     ASSERT_FALSE(MetaspaceObj::is_valid((MetaspaceObj*)8192));
-  85 
-  86     MetaspaceObj* p_stack = (MetaspaceObj*) &amp;_lock;
-  87     ASSERT_FALSE(MetaspaceObj::is_valid(p_stack));
-  88 
-  89     MetaspaceObj* p_heap = (MetaspaceObj*) os::malloc(41, mtInternal);
-  90     ASSERT_FALSE(MetaspaceObj::is_valid(p_heap));
-  91     os::free(p_heap);
-  92 
-  93     // Test Metaspace::contains_xxx
-  94     ASSERT_TRUE(Metaspace::contains(p));
-  95     ASSERT_TRUE(Metaspace::contains_non_shared(p));
-  96 
-  97     delete _ms;
-  98     _ms = NULL;
-  99     delete _lock;
- 100     _lock = NULL;
- 101   }
+  74     // A misaligned pointer shall still be recognized by list::contains
+  75     ASSERT_TRUE(vslist-&gt;contains((MetaWord*)((address)p) + 1));
+  76 
+  77     // Now for some bogus values
+  78     ASSERT_FALSE(MetaspaceObj::is_valid((MetaspaceObj*)NULL));
+  79 
+  80     // Should exercise various paths in MetaspaceObj::is_valid()
+  81     ASSERT_FALSE(MetaspaceObj::is_valid((MetaspaceObj*)1024));
+  82     ASSERT_FALSE(MetaspaceObj::is_valid((MetaspaceObj*)8192));
+  83 
+  84     MetaspaceObj* p_stack = (MetaspaceObj*) &amp;_lock;
+  85     ASSERT_FALSE(MetaspaceObj::is_valid(p_stack));
+  86 
+  87     MetaspaceObj* p_heap = (MetaspaceObj*) os::malloc(41, mtInternal);
+  88     ASSERT_FALSE(MetaspaceObj::is_valid(p_heap));
+  89     os::free(p_heap);
+  90 
+  91     // Test Metaspace::contains_xxx
+  92     ASSERT_TRUE(Metaspace::contains(p));
+  93     ASSERT_TRUE(Metaspace::contains_non_shared(p));
+  94 
+  95     delete _ms;
+  96     _ms = NULL;
+  97     delete _lock;
+  98     _lock = NULL;
+  99   }
+ 100 
+ 101 };
  102 
- 103 };
- 104 
- 105 TEST_VM(metaspace, is_metaspace_obj_non_class) {
- 106   MetaspaceIsMetaspaceObjTest test;
- 107   test.do_test(Metaspace::NonClassType);
- 108 }
- 109 
- 110 TEST_VM(metaspace, is_metaspace_obj_class) {
- 111   MetaspaceIsMetaspaceObjTest test;
- 112   test.do_test(Metaspace::ClassType);
- 113 }
- 114 
+ 103 TEST_VM(metaspace, is_metaspace_obj_non_class) {
+ 104   MetaspaceIsMetaspaceObjTest test;
+ 105   test.do_test(Metaspace::NonClassType);
+ 106 }
+ 107 
+ 108 TEST_VM(metaspace, is_metaspace_obj_class) {
+ 109   MetaspaceIsMetaspaceObjTest test;
+ 110   test.do_test(Metaspace::ClassType);
+ 111 }
+ 112 
 </pre></body></html>

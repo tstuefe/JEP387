@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -107,84 +107,88 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   25 
   26 #include "precompiled.hpp"
   27 
-  28 // #define LOG_PLEASE
-  29 
-  30 #include "classfile/classLoaderData.hpp"
-  31 #include "metaspaceTestsCommon.hpp"
+  28 
+  29 #include "classfile/classLoaderData.hpp"
+  30 #include "memory/metaspace/msChunklevel.hpp"
+  31 #include "memory/metaspace/msSettings.hpp"
   32 #include "utilities/powerOfTwo.hpp"
   33 
-  34 
-  35 TEST_VM(metaspace, misc_sizes)   {
+  34 // #define LOG_PLEASE
+  35 #include "metaspaceGtestCommon.hpp"
   36 
-  37   // Test test common sizes (seems primitive but breaks surprisingly often during development
-  38   //  because of word vs byte confusion)
-  39   // Adjust this test if numbers change.
-  40   ASSERT_TRUE(Settings::commit_granule_bytes() == 16 * K ||
-  41               Settings::commit_granule_bytes() == 64 * K);
-  42   ASSERT_EQ(Settings::commit_granule_bytes(), Metaspace::commit_alignment());
-  43   ASSERT_TRUE(is_aligned(Settings::virtual_space_node_default_word_size(),
-  44               metaspace::chunklevel::MAX_CHUNK_WORD_SIZE));
-  45   ASSERT_EQ(Settings::virtual_space_node_default_word_size(),
-  46             metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 2);
-  47   ASSERT_EQ(Settings::virtual_space_node_reserve_alignment_words(),
-  48             Metaspace::reserve_alignment_words());
-  49 
-  50 }
-  51 
-  52 
-  53 TEST_VM(metaspace, misc_max_alloc_size)   {
-  54 
-  55   // Make sure we can allocate what we promise to allocate
-  56   const size_t sz = Metaspace::max_allocation_word_size();
-  57   ClassLoaderData* cld = ClassLoaderData::the_null_class_loader_data();
-  58   MetaWord* p = cld-&gt;metaspace_non_null()-&gt;allocate(sz, Metaspace::NonClassType);
-  59   ASSERT_NOT_NULL(p);
-  60   cld-&gt;metaspace_non_null()-&gt;deallocate(p, sz, false);
-  61 
-  62 }
-  63 
-  64 TEST_VM(metaspace, chunklevel_utils)   {
-  65 
-  66   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
-  67   LOG(SIZE_FORMAT, MIN_CHUNK_BYTE_SIZE);
-  68   LOG(SIZE_FORMAT, MIN_CHUNK_WORD_SIZE);
-  69   LOG(SIZE_FORMAT, MAX_CHUNK_WORD_SIZE);
-  70   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
-  71   LOG("%u", (unsigned)ROOT_CHUNK_LEVEL);
-  72   LOG("%u", (unsigned)HIGHEST_CHUNK_LEVEL);
-  73   LOG("%u", (unsigned)LOWEST_CHUNK_LEVEL);
-  74 
-  75   static const chunklevel_t INVALID_CHUNK_LEVEL    = (chunklevel_t) -1;
-  76 
-  77   EXPECT_TRUE(is_power_of_2(MAX_CHUNK_WORD_SIZE));
-  78   EXPECT_TRUE(is_power_of_2(MIN_CHUNK_WORD_SIZE));
+  37 using metaspace::chunklevel_t;
+  38 using namespace metaspace::chunklevel;
+  39 using metaspace::Settings;
+  40 
+  41 TEST_VM(metaspace, misc_sizes)   {
+  42 
+  43   // Test test common sizes (seems primitive but breaks surprisingly often during development
+  44   //  because of word vs byte confusion)
+  45   // Adjust this test if numbers change.
+  46   ASSERT_TRUE(Settings::commit_granule_bytes() == 16 * K ||
+  47               Settings::commit_granule_bytes() == 64 * K);
+  48   ASSERT_EQ(Settings::commit_granule_bytes(), Metaspace::commit_alignment());
+  49   ASSERT_TRUE(is_aligned(Settings::virtual_space_node_default_word_size(),
+  50               metaspace::chunklevel::MAX_CHUNK_WORD_SIZE));
+  51   ASSERT_EQ(Settings::virtual_space_node_default_word_size(),
+  52             metaspace::chunklevel::MAX_CHUNK_WORD_SIZE * 2);
+  53   ASSERT_EQ(Settings::virtual_space_node_reserve_alignment_words(),
+  54             Metaspace::reserve_alignment_words());
+  55 
+  56 }
+  57 
+  58 TEST_VM(metaspace, misc_max_alloc_size)   {
+  59 
+  60   // Make sure we can allocate what we promise to allocate
+  61   const size_t sz = Metaspace::max_allocation_word_size();
+  62   ClassLoaderData* cld = ClassLoaderData::the_null_class_loader_data();
+  63   MetaWord* p = cld-&gt;metaspace_non_null()-&gt;allocate(sz, Metaspace::NonClassType);
+  64   ASSERT_NOT_NULL(p);
+  65   cld-&gt;metaspace_non_null()-&gt;deallocate(p, sz, false);
+  66 
+  67 }
+  68 
+  69 TEST_VM(metaspace, chunklevel_utils)   {
+  70 
+  71   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
+  72   LOG(SIZE_FORMAT, MIN_CHUNK_BYTE_SIZE);
+  73   LOG(SIZE_FORMAT, MIN_CHUNK_WORD_SIZE);
+  74   LOG(SIZE_FORMAT, MAX_CHUNK_WORD_SIZE);
+  75   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
+  76   LOG("%u", (unsigned)ROOT_CHUNK_LEVEL);
+  77   LOG("%u", (unsigned)HIGHEST_CHUNK_LEVEL);
+  78   LOG("%u", (unsigned)LOWEST_CHUNK_LEVEL);
   79 
-  80   EXPECT_TRUE(is_valid_level(LOWEST_CHUNK_LEVEL));
-  81   EXPECT_TRUE(is_valid_level(HIGHEST_CHUNK_LEVEL));
-  82   EXPECT_FALSE(is_valid_level(HIGHEST_CHUNK_LEVEL + 1));
-  83   EXPECT_FALSE(is_valid_level(LOWEST_CHUNK_LEVEL - 1));
+  80   static const chunklevel_t INVALID_CHUNK_LEVEL    = (chunklevel_t) -1;
+  81 
+  82   EXPECT_TRUE(is_power_of_2(MAX_CHUNK_WORD_SIZE));
+  83   EXPECT_TRUE(is_power_of_2(MIN_CHUNK_WORD_SIZE));
   84 
-  85   EXPECT_EQ(word_size_for_level(ROOT_CHUNK_LEVEL), MAX_CHUNK_WORD_SIZE);
-  86   EXPECT_EQ(word_size_for_level(HIGHEST_CHUNK_LEVEL), MIN_CHUNK_WORD_SIZE);
-  87 
-  88   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_4K), (4 * K) / BytesPerWord);
-  89   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_64K), (64 * K) / BytesPerWord);
-  90 
-  91   EXPECT_EQ(level_fitting_word_size(0), HIGHEST_CHUNK_LEVEL);
-  92   EXPECT_EQ(level_fitting_word_size(1), HIGHEST_CHUNK_LEVEL);
-  93   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE), HIGHEST_CHUNK_LEVEL);
-  94   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE + 1), HIGHEST_CHUNK_LEVEL - 1);
+  85   EXPECT_TRUE(is_valid_level(LOWEST_CHUNK_LEVEL));
+  86   EXPECT_TRUE(is_valid_level(HIGHEST_CHUNK_LEVEL));
+  87   EXPECT_FALSE(is_valid_level(HIGHEST_CHUNK_LEVEL + 1));
+  88   EXPECT_FALSE(is_valid_level(LOWEST_CHUNK_LEVEL - 1));
+  89 
+  90   EXPECT_EQ(word_size_for_level(ROOT_CHUNK_LEVEL), MAX_CHUNK_WORD_SIZE);
+  91   EXPECT_EQ(word_size_for_level(HIGHEST_CHUNK_LEVEL), MIN_CHUNK_WORD_SIZE);
+  92 
+  93   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_4K), (4 * K) / BytesPerWord);
+  94   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_64K), (64 * K) / BytesPerWord);
   95 
-  96   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE), ROOT_CHUNK_LEVEL);
-  97   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE - 1), ROOT_CHUNK_LEVEL);
-  98   EXPECT_EQ(level_fitting_word_size((MAX_CHUNK_WORD_SIZE / 2) + 1), ROOT_CHUNK_LEVEL);
-  99   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE / 2), ROOT_CHUNK_LEVEL + 1);
+  96   EXPECT_EQ(level_fitting_word_size(0), HIGHEST_CHUNK_LEVEL);
+  97   EXPECT_EQ(level_fitting_word_size(1), HIGHEST_CHUNK_LEVEL);
+  98   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE), HIGHEST_CHUNK_LEVEL);
+  99   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE + 1), HIGHEST_CHUNK_LEVEL - 1);
  100 
- 101   EXPECT_EQ(level_fitting_word_size(8 * K), CHUNK_LEVEL_64K);
- 102   EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
- 103   EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
- 104 
+ 101   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE), ROOT_CHUNK_LEVEL);
+ 102   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE - 1), ROOT_CHUNK_LEVEL);
+ 103   EXPECT_EQ(level_fitting_word_size((MAX_CHUNK_WORD_SIZE / 2) + 1), ROOT_CHUNK_LEVEL);
+ 104   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE / 2), ROOT_CHUNK_LEVEL + 1);
  105 
- 106 }
- 107 
+ 106   EXPECT_EQ(level_fitting_word_size(8 * K), CHUNK_LEVEL_64K);
+ 107   EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
+ 108   EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
+ 109 
+ 110 }
+ 111 
 </pre></body></html>

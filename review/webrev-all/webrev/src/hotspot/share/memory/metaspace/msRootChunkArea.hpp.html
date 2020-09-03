@@ -1,0 +1,290 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msRootChunkArea.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_MSROOTCHUNKAREA_HPP
+  27 #define SHARE_MEMORY_METASPACE_MSROOTCHUNKAREA_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/msChunklevel.hpp"
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 class outputStream;
+  35 
+  36 namespace metaspace {
+  37 
+  38 class Metachunk;
+  39 class MetachunkClosure;
+  40 class FreeChunkListVector;
+  41 class VirtualSpaceNode;
+  42 
+  43 // RootChunkArea manages a memory area covering a single root chunk.
+  44 //
+  45 // Such an area may contain a single root chunk, or a number of chunks the
+  46 //  root chunk was split into.
+  47 //
+  48 // RootChunkArea contains the functionality to merge and split chunks in
+  49 //  buddy allocator fashion.
+  50 //
+  51 
+  52 class RootChunkArea {
+  53 
+  54   // The base address of this area.
+  55   // Todo: this may be somewhat superfluous since RootChunkArea only exist in the
+  56   //  context of a series of chunks, so the address is somewhat implicit. Remove?
+  57   const MetaWord* const _base;
+  58 
+  59   // The first chunk in this area; if this area is maximally
+  60   // folded, this is the root chunk covering the whole area size.
+  61   Metachunk* _first_chunk;
+  62 
+  63 public:
+  64 
+  65   RootChunkArea(const MetaWord* base);
+  66   ~RootChunkArea();
+  67 
+  68   // Initialize: allocate a root node and a root chunk header; return the
+  69   // root chunk header. It will be partly initialized.
+  70   // Note: this just allocates a memory-less header; memory itself is allocated inside VirtualSpaceNode.
+  71   Metachunk* alloc_root_chunk_header(VirtualSpaceNode* node);
+  72 
+  73   // Given a chunk c, split it recursively until you get a chunk of the given target_level.
+  74   //
+  75   // The resulting target chunk resides at the same address as the original chunk.
+  76   // The resulting splinters are added to freelists.
+  77   //
+  78   // Returns pointer to the result chunk; the splitted-off chunks are added as
+  79   //  free chunks to the freelists.
+  80   void split(chunklevel_t target_level, Metachunk* c, FreeChunkListVector* freelists);
+  81 
+  82   // Given a chunk, attempt to merge it recursively with its neighboring chunks.
+  83   //
+  84   // If successful (merged at least once), returns address of
+  85   // the merged chunk; NULL otherwise.
+  86   //
+  87   // The merged chunks are removed from the freelists.
+  88   //
+  89   // !!! Please note that if this method returns a non-NULL value, the
+  90   // original chunk will be invalid and should not be accessed anymore! !!!
+  91   Metachunk* merge(Metachunk* c, FreeChunkListVector* freelists);
+  92 
+  93   // Given a chunk c, which must be "in use" and must not be a root chunk, attempt to
+  94   // enlarge it in place by claiming its trailing buddy.
+  95   //
+  96   // This will only work if c is the leader of the buddy pair and the trailing buddy is free.
+  97   //
+  98   // If successful, the follower chunk will be removed from the freelists, the leader chunk c will
+  99   // double in size (level decreased by one).
+ 100   //
+ 101   // On success, true is returned, false otherwise.
+ 102   bool attempt_enlarge_chunk(Metachunk* c, FreeChunkListVector* freelists);
+ 103 
+ 104   /// range ///
+ 105 
+ 106   const MetaWord* base() const  { return _base; }
+ 107   size_t word_size() const      { return chunklevel::MAX_CHUNK_WORD_SIZE; }
+ 108   const MetaWord* end() const   { return _base + word_size(); }
+ 109 
+ 110   // Direct access to the first chunk (use with care)
+ 111   Metachunk* first_chunk()              { return _first_chunk; }
+ 112   const Metachunk* first_chunk() const  { return _first_chunk; }
+ 113 
+ 114   // Returns true if this root chunk area is completely free:
+ 115   //  In that case, it should only contain one chunk (maximally merged, so a root chunk)
+ 116   //  and it should be free.
+ 117   bool is_free() const;
+ 118 
+ 119   //// Debug stuff ////
+ 120 
+ 121 #ifdef ASSERT
+ 122   void check_pointer(const MetaWord* p) const {
+ 123     assert(p &gt;= _base &amp;&amp; p &lt; _base + word_size(),
+ 124            "pointer " PTR_FORMAT " oob for this root area [" PTR_FORMAT ".." PTR_FORMAT ")",
+ 125            p2i(p), p2i(_base), p2i(_base + word_size()));
+ 126   }
+ 127   void verify() const;
+ 128 
+ 129   // This is a separate operation from verify(). We should be able to call verify()
+ 130   // from almost anywhere, regardless of state, but verify_area_is_ideally_merged()
+ 131   // can only be called outside split and merge ops.
+ 132   void verify_area_is_ideally_merged() const;
+ 133 #endif // ASSERT
+ 134 
+ 135   void print_on(outputStream* st) const;
+ 136 
+ 137 };
+ 138 
+ 139 // RootChunkAreaLUT (lookup table) manages a series of contiguous root chunk areas
+ 140 //  in memory (in the context of a VirtualSpaceNode). It allows finding the containing
+ 141 //  root chunk for any given memory address. It allows for easy iteration over all
+ 142 //  root chunks.
+ 143 // Beyond that it is unexciting.
+ 144 class RootChunkAreaLUT {
+ 145 
+ 146   // Base address of the whole area.
+ 147   const MetaWord* const _base;
+ 148 
+ 149   // Number of root chunk areas.
+ 150   const int _num;
+ 151 
+ 152   // Array of RootChunkArea objects.
+ 153   RootChunkArea* _arr;
+ 154 
+ 155 #ifdef ASSERT
+ 156   void check_pointer(const MetaWord* p) const {
+ 157     assert(p &gt;= base() &amp;&amp; p &lt; base() + word_size(), "Invalid pointer");
+ 158   }
+ 159 #endif
+ 160 
+ 161   // Given an address into this range, return the index into the area array for the
+ 162   // area this address falls into.
+ 163   int index_by_address(const MetaWord* p) const {
+ 164     DEBUG_ONLY(check_pointer(p);)
+ 165     int idx = (int)((p - base()) / chunklevel::MAX_CHUNK_WORD_SIZE);
+ 166     assert(idx &gt;= 0 &amp;&amp; idx &lt; _num, "Sanity");
+ 167     return idx;
+ 168   }
+ 169 
+ 170 public:
+ 171 
+ 172   RootChunkAreaLUT(const MetaWord* base, size_t word_size);
+ 173   ~RootChunkAreaLUT();
+ 174 
+ 175   // Given a memory address into the range this array covers, return the
+ 176   // corresponding area object. If none existed at this position, create it
+ 177   // on demand.
+ 178   RootChunkArea* get_area_by_address(const MetaWord* p) const {
+ 179     const int idx = index_by_address(p);
+ 180     RootChunkArea* ra = _arr + idx;
+ 181     DEBUG_ONLY(ra-&gt;check_pointer(p);)
+ 182     return _arr + idx;
+ 183   }
+ 184 
+ 185   // Access area by its index
+ 186   int number_of_areas() const                               { return _num; }
+ 187   RootChunkArea* get_area_by_index(int index)               { assert(index &gt;= 0 &amp;&amp; index &lt; _num, "oob"); return _arr + index; }
+ 188   const RootChunkArea* get_area_by_index(int index) const   { assert(index &gt;= 0 &amp;&amp; index &lt; _num, "oob"); return _arr + index; }
+ 189 
+ 190   /// range ///
+ 191 
+ 192   const MetaWord* base() const  { return _base; }
+ 193   size_t word_size() const      { return _num * chunklevel::MAX_CHUNK_WORD_SIZE; }
+ 194   const MetaWord* end() const   { return _base + word_size(); }
+ 195 
+ 196   // Returns true if all areas in this area table are free (only contain free chunks).
+ 197   bool is_free() const;
+ 198 
+ 199   DEBUG_ONLY(void verify() const;)
+ 200 
+ 201   void print_on(outputStream* st) const;
+ 202 
+ 203 };
+ 204 
+ 205 } // namespace metaspace
+ 206 
+ 207 #endif // SHARE_MEMORY_METASPACE_MSROOTCHUNKAREA_HPP
+</pre></body></html>

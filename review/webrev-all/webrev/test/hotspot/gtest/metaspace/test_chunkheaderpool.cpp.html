@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -107,125 +107,133 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   25 
   26 #include "precompiled.hpp"
   27 
-  28 #include "metaspaceTestsCommon.hpp"
-  29 
-  30 class ChunkHeaderPoolTest {
-  31 
-  32   static const size_t max_cap = 0x1000;
-  33 
-  34   ChunkHeaderPool _pool;
+  28 
+  29 #include "memory/metaspace/msChunkHeaderPool.hpp"
+  30 #include "memory/metaspace/msCounter.hpp"
+  31 #include "memory/metaspace/msMetachunk.hpp"
+  32 
+  33 //#define LOG_PLEASE
+  34 #include "metaspaceGtestCommon.hpp"
   35 
-  36   // Array of the same size as the pool max capacity; holds the allocated elements.
-  37   Metachunk* _elems[max_cap];
-  38   SizeCounter _num_allocated;
+  36 using metaspace::ChunkHeaderPool;
+  37 using metaspace::Metachunk;
+  38 using metaspace::SizeCounter;
   39 
-  40   void attempt_free_at(size_t index) {
+  40 class ChunkHeaderPoolTest {
   41 
-  42     LOG("attempt_free_at " SIZE_FORMAT ".", index);
+  42   static const size_t max_cap = 0x1000;
   43 
-  44     if (_elems[index] == NULL) {
-  45       return;
-  46     }
-  47 
-  48     _pool.return_chunk_header(_elems[index]);
-  49     _elems[index] = NULL;
-  50 
-  51     _num_allocated.decrement();
-  52     DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  44   ChunkHeaderPool _pool;
+  45 
+  46   // Array of the same size as the pool max capacity; holds the allocated elements.
+  47   Metachunk* _elems[max_cap];
+  48   SizeCounter _num_allocated;
+  49 
+  50   void attempt_free_at(size_t index) {
+  51 
+  52     LOG("attempt_free_at " SIZE_FORMAT ".", index);
   53 
-  54     DEBUG_ONLY(_pool.verify(true);)
-  55 
-  56   }
+  54     if (_elems[index] == NULL) {
+  55       return;
+  56     }
   57 
-  58   void attempt_allocate_at(size_t index) {
-  59 
-  60     LOG("attempt_allocate_at " SIZE_FORMAT ".", index);
-  61 
-  62     if (_elems[index] != NULL) {
-  63       return;
-  64     }
+  58     _pool.return_chunk_header(_elems[index]);
+  59     _elems[index] = NULL;
+  60 
+  61     _num_allocated.decrement();
+  62     DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  63 
+  64     DEBUG_ONLY(_pool.verify();)
   65 
-  66     Metachunk* c = _pool.allocate_chunk_header();
-  67     EXPECT_NOT_NULL(c);
-  68     _elems[index] = c;
-  69     c-&gt;set_free();
-  70 
-  71     _num_allocated.increment();
-  72     DEBUG_ONLY(_num_allocated.check(_pool.used());)
-  73 
-  74     DEBUG_ONLY(_pool.verify(true);)
-  75   }
-  76 
-  77   void attempt_allocate_or_free_at(size_t index) {
-  78     if (_elems[index] == NULL) {
-  79       attempt_allocate_at(index);
-  80     } else {
-  81       attempt_free_at(index);
-  82     }
-  83   }
-  84 
-  85   // Randomly allocate from the pool and free. Slight preference for allocation.
-  86   void test_random_alloc_free(int num_iterations) {
-  87 
-  88     for (int iter = 0; iter &lt; num_iterations; iter ++) {
-  89       size_t index = (size_t)os::random() % max_cap;
-  90       attempt_allocate_or_free_at(index);
-  91     }
-  92 
-  93     DEBUG_ONLY(_pool.verify(true);)
+  66   }
+  67 
+  68   void attempt_allocate_at(size_t index) {
+  69 
+  70     LOG("attempt_allocate_at " SIZE_FORMAT ".", index);
+  71 
+  72     if (_elems[index] != NULL) {
+  73       return;
+  74     }
+  75 
+  76     Metachunk* c = _pool.allocate_chunk_header();
+  77     EXPECT_NOT_NULL(c);
+  78     _elems[index] = c;
+  79     c-&gt;set_free();
+  80 
+  81     _num_allocated.increment();
+  82     DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  83 
+  84     DEBUG_ONLY(_pool.verify();)
+  85   }
+  86 
+  87   void attempt_allocate_or_free_at(size_t index) {
+  88     if (_elems[index] == NULL) {
+  89       attempt_allocate_at(index);
+  90     } else {
+  91       attempt_free_at(index);
+  92     }
+  93   }
   94 
-  95   }
-  96 
-  97   static void test_once() {
-  98     ChunkHeaderPoolTest test;
-  99     test.test_random_alloc_free(100);
- 100   }
- 101 
+  95   // Randomly allocate from the pool and free. Slight preference for allocation.
+  96   void test_random_alloc_free(int num_iterations) {
+  97 
+  98     for (int iter = 0; iter &lt; num_iterations; iter++) {
+  99       size_t index = (size_t)os::random() % max_cap;
+ 100       attempt_allocate_or_free_at(index);
+ 101     }
  102 
- 103 public:
+ 103     DEBUG_ONLY(_pool.verify();)
  104 
- 105   ChunkHeaderPoolTest() : _pool() {
- 106     memset(_elems, 0, sizeof(_elems));
- 107   }
- 108 
- 109   static void run_tests() {
- 110     for (int i = 0; i &lt; 1000; i ++) {
- 111       test_once();
- 112     }
- 113   }
- 114 
- 115 };
- 116 
- 117 TEST_VM(metaspace, chunk_header_pool_basics) {
- 118 
- 119   ChunkHeaderPool pool;
- 120   EXPECT_EQ(pool.used(), (int)0);
- 121   EXPECT_EQ(pool.freelist_size(), (int)0);
- 122 
- 123   Metachunk* header = pool.allocate_chunk_header();
- 124   EXPECT_NOT_NULL(header);
- 125   EXPECT_EQ(pool.used(), 1);
- 126   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 105   }
+ 106 
+ 107   static void test_once() {
+ 108     ChunkHeaderPoolTest test;
+ 109     test.test_random_alloc_free(100);
+ 110   }
+ 111 
+ 112 public:
+ 113 
+ 114   ChunkHeaderPoolTest() : _pool() {
+ 115     memset(_elems, 0, sizeof(_elems));
+ 116   }
+ 117 
+ 118   static void run_tests() {
+ 119     for (int i = 0; i &lt; 1000; i++) {
+ 120       test_once();
+ 121     }
+ 122   }
+ 123 
+ 124 };
+ 125 
+ 126 TEST_VM(metaspace, chunk_header_pool_basics) {
  127 
- 128   header-&gt;set_free();
- 129   pool.return_chunk_header(header);
- 130   EXPECT_EQ(pool.used(), (int)0);
- 131   EXPECT_EQ(pool.freelist_size(), 1);
- 132 
- 133   header = pool.allocate_chunk_header();
- 134   EXPECT_NOT_NULL(header);
- 135   EXPECT_EQ(pool.used(), 1);
- 136   EXPECT_EQ(pool.freelist_size(), (int)0);
- 137 
- 138   header-&gt;set_free();
- 139   pool.return_chunk_header(header);
- 140   EXPECT_EQ(pool.used(), (int)0);
- 141   EXPECT_EQ(pool.freelist_size(), 1);
- 142 
- 143 }
- 144 
- 145 
- 146 TEST_VM(metaspace, chunk_header_pool) {
- 147   ChunkHeaderPoolTest::run_tests();
- 148 }
+ 128   ChunkHeaderPool pool;
+ 129   EXPECT_EQ(pool.used(), (int)0);
+ 130   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 131 
+ 132   Metachunk* header = pool.allocate_chunk_header();
+ 133   EXPECT_NOT_NULL(header);
+ 134   EXPECT_EQ(pool.used(), 1);
+ 135   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 136 
+ 137   header-&gt;set_free();
+ 138   pool.return_chunk_header(header);
+ 139   EXPECT_EQ(pool.used(), (int)0);
+ 140   EXPECT_EQ(pool.freelist_size(), 1);
+ 141 
+ 142   header = pool.allocate_chunk_header();
+ 143   EXPECT_NOT_NULL(header);
+ 144   EXPECT_EQ(pool.used(), 1);
+ 145   EXPECT_EQ(pool.freelist_size(), (int)0);
+ 146 
+ 147   header-&gt;set_free();
+ 148   pool.return_chunk_header(header);
+ 149   EXPECT_EQ(pool.used(), (int)0);
+ 150   EXPECT_EQ(pool.freelist_size(), 1);
+ 151 
+ 152 }
+ 153 
+ 154 TEST_VM(metaspace, chunk_header_pool) {
+ 155   ChunkHeaderPoolTest::run_tests();
+ 156 }
 </pre></body></html>

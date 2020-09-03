@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -107,209 +107,208 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   25 
   26 #include "precompiled.hpp"
   27 
-  28 //#define LOG_PLEASE
-  29 
-  30 #include "metaspaceTestsCommon.hpp"
-  31 
-  32 #define CHECK_CONTENT(fb, num_blocks_expected, word_size_expected) \
-  33 { \
-  34   if (word_size_expected &gt; 0) { \
-  35     EXPECT_FALSE(fb.is_empty()); \
-  36   } else { \
-  37     EXPECT_TRUE(fb.is_empty()); \
-  38   } \
-  39   EXPECT_EQ(fb.total_size(), (size_t)word_size_expected); \
-  40   EXPECT_EQ(fb.count(), (int)num_blocks_expected); \
-  41 }
-  42 
-  43 class FreeBlocksTest {
-  44 
-  45   FeederBuffer _fb;
-  46   FreeBlocks _freeblocks;
+  28 #include "memory/metaspace/msCounter.hpp"
+  29 #include "memory/metaspace/msFreeBlocks.hpp"
+  30 
+  31 //#define LOG_PLEASE
+  32 #include "metaspaceGtestCommon.hpp"
+  33 
+  34 using metaspace::FreeBlocks;
+  35 using metaspace::SizeCounter;
+  36 
+  37 #define CHECK_CONTENT(fb, num_blocks_expected, word_size_expected) \
+  38 { \
+  39   if (word_size_expected &gt; 0) { \
+  40     EXPECT_FALSE(fb.is_empty()); \
+  41   } else { \
+  42     EXPECT_TRUE(fb.is_empty()); \
+  43   } \
+  44   EXPECT_EQ(fb.total_size(), (size_t)word_size_expected); \
+  45   EXPECT_EQ(fb.count(), (int)num_blocks_expected); \
+  46 }
   47 
-  48   // random generator for block feeding
-  49   RandSizeGenerator _rgen_feeding;
-  50 
-  51   // random generator for allocations (and, hence, deallocations)
-  52   RandSizeGenerator _rgen_allocations;
-  53 
-  54   SizeCounter _allocated_words;
+  48 class FreeBlocksTest {
+  49 
+  50   FeederBuffer _fb;
+  51   FreeBlocks _freeblocks;
+  52 
+  53   // random generator for block feeding
+  54   RandSizeGenerator _rgen_feeding;
   55 
-  56   struct allocation_t {
-  57     allocation_t* next;
-  58     size_t word_size;
-  59     MetaWord* p;
-  60   };
-  61 
-  62   // Array of the same size as the pool max capacity; holds the allocated elements.
-  63   allocation_t* _allocations;
-  64 
-  65   int _num_allocs;
-  66   int _num_deallocs;
-  67   int _num_feeds;
-  68 
-  69   bool feed_some() {
-  70     size_t word_size = _rgen_feeding.get();
-  71     MetaWord* p = _fb.get(word_size);
-  72     if (p != NULL) {
-  73       _freeblocks.add_block(p, word_size);
-  74       return true;
-  75     }
-  76     return false;
-  77   }
-  78 
-  79   void deallocate_top() {
-  80 
-  81     allocation_t* a = _allocations;
-  82     if (a != NULL) {
-  83       _allocations = a-&gt;next;
-  84       check_marked_range(a-&gt;p, a-&gt;word_size);
-  85       _freeblocks.add_block(a-&gt;p, a-&gt;word_size);
-  86       delete a;
-  87       DEBUG_ONLY(_freeblocks.verify();)
-  88     }
-  89   }
-  90 
-  91   bool allocate() {
-  92 
-  93     size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.minimal_word_size);
-  94     MetaWord* p = _freeblocks.get_block(word_size);
-  95     if (p != NULL) {
-  96       _allocated_words.increment_by(word_size);
-  97       allocation_t* a = new allocation_t;
-  98       a-&gt;p = p; a-&gt;word_size = word_size;
-  99       a-&gt;next = _allocations;
- 100       _allocations = a;
- 101       DEBUG_ONLY(_freeblocks.verify();)
- 102       mark_range(p, word_size);
- 103       return true;
- 104     }
- 105     return false;
- 106   }
- 107 
- 108   void test_all_marked_ranges() {
- 109     for (allocation_t* a = _allocations; a != NULL; a = a-&gt;next) {
- 110       check_marked_range(a-&gt;p, a-&gt;word_size);
- 111     }
- 112   }
- 113 
- 114   void test_loop() {
- 115     // We loop and in each iteration execute one of three operations:
- 116     // - allocation from lom
- 117     // - deallocation to lom of a previously allocated block
- 118     // - feeding a new larger block into the lom (mimicks chunk retiring)
- 119     // When we have fed all large blocks into the lom (feedbuffer empty), we
- 120     //  switch to draining the lom completely (only allocs)
- 121     bool forcefeed = false;
- 122     bool draining = false;
- 123     bool stop = false;
- 124     int iter = 100000; // safety stop
- 125     while (!stop &amp;&amp; iter &gt; 0) {
- 126       iter --;
- 127       int surprise = (int)os::random() % 10;
- 128       if (!draining &amp;&amp; (surprise &gt;= 7 || forcefeed)) {
- 129         forcefeed = false;
- 130         if (feed_some()) {
- 131           _num_feeds ++;
- 132         } else {
- 133           // We fed all input memory into the LOM. Now lets proceed until the lom is drained.
- 134           draining = true;
- 135         }
- 136       } else if (!draining &amp;&amp; surprise &lt; 1) {
- 137         deallocate_top();
- 138         _num_deallocs ++;
- 139       } else {
- 140         if (allocate()) {
- 141           _num_allocs ++;
- 142         } else {
- 143           if (draining) {
- 144             stop = _freeblocks.total_size() &lt; 512;
- 145           } else {
- 146             forcefeed = true;
- 147           }
- 148         }
- 149       }
- 150       if ((iter % 1000) == 0) {
- 151         DEBUG_ONLY(_freeblocks.verify();)
- 152         test_all_marked_ranges();
- 153         LOG("a %d (" SIZE_FORMAT "), d %d, f %d", _num_allocs, _allocated_words.get(), _num_deallocs, _num_feeds);
- 154 #ifdef LOG_PLEASE
- 155         _freeblocks.print(tty, true);
- 156         tty-&gt;cr();
- 157 #endif
- 158       }
- 159     }
- 160 
- 161     // Drain
- 162 
- 163 
- 164   }
+  56   // random generator for allocations (and, hence, deallocations)
+  57   RandSizeGenerator _rgen_allocations;
+  58 
+  59   SizeCounter _allocated_words;
+  60 
+  61   struct allocation_t {
+  62     allocation_t* next;
+  63     size_t word_size;
+  64     MetaWord* p;
+  65   };
+  66 
+  67   // Array of the same size as the pool max capacity; holds the allocated elements.
+  68   allocation_t* _allocations;
+  69 
+  70   int _num_allocs;
+  71   int _num_deallocs;
+  72   int _num_feeds;
+  73 
+  74   bool feed_some() {
+  75     size_t word_size = _rgen_feeding.get();
+  76     MetaWord* p = _fb.get(word_size);
+  77     if (p != NULL) {
+  78       _freeblocks.add_block(p, word_size);
+  79       return true;
+  80     }
+  81     return false;
+  82   }
+  83 
+  84   void deallocate_top() {
+  85 
+  86     allocation_t* a = _allocations;
+  87     if (a != NULL) {
+  88       _allocations = a-&gt;next;
+  89       check_marked_range(a-&gt;p, a-&gt;word_size);
+  90       _freeblocks.add_block(a-&gt;p, a-&gt;word_size);
+  91       delete a;
+  92       DEBUG_ONLY(_freeblocks.verify();)
+  93     }
+  94   }
+  95 
+  96   bool allocate() {
+  97 
+  98     size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.MinWordSize);
+  99     MetaWord* p = _freeblocks.remove_block(word_size);
+ 100     if (p != NULL) {
+ 101       _allocated_words.increment_by(word_size);
+ 102       allocation_t* a = new allocation_t;
+ 103       a-&gt;p = p; a-&gt;word_size = word_size;
+ 104       a-&gt;next = _allocations;
+ 105       _allocations = a;
+ 106       DEBUG_ONLY(_freeblocks.verify();)
+ 107       mark_range(p, word_size);
+ 108       return true;
+ 109     }
+ 110     return false;
+ 111   }
+ 112 
+ 113   void test_all_marked_ranges() {
+ 114     for (allocation_t* a = _allocations; a != NULL; a = a-&gt;next) {
+ 115       check_marked_range(a-&gt;p, a-&gt;word_size);
+ 116     }
+ 117   }
+ 118 
+ 119   void test_loop() {
+ 120     // We loop and in each iteration execute one of three operations:
+ 121     // - allocation from fbl
+ 122     // - deallocation to fbl of a previously allocated block
+ 123     // - feeding a new larger block into the fbl (mimicks chunk retiring)
+ 124     // When we have fed all large blocks into the fbl (feedbuffer empty), we
+ 125     //  switch to draining the fbl completely (only allocs)
+ 126     bool forcefeed = false;
+ 127     bool draining = false;
+ 128     bool stop = false;
+ 129     int iter = 100000; // safety stop
+ 130     while (!stop &amp;&amp; iter &gt; 0) {
+ 131       iter --;
+ 132       int surprise = (int)os::random() % 10;
+ 133       if (!draining &amp;&amp; (surprise &gt;= 7 || forcefeed)) {
+ 134         forcefeed = false;
+ 135         if (feed_some()) {
+ 136           _num_feeds++;
+ 137         } else {
+ 138           // We fed all input memory into the fbl. Now lets proceed until the fbl is drained.
+ 139           draining = true;
+ 140         }
+ 141       } else if (!draining &amp;&amp; surprise &lt; 1) {
+ 142         deallocate_top();
+ 143         _num_deallocs++;
+ 144       } else {
+ 145         if (allocate()) {
+ 146           _num_allocs++;
+ 147         } else {
+ 148           if (draining) {
+ 149             stop = _freeblocks.total_size() &lt; 512;
+ 150           } else {
+ 151             forcefeed = true;
+ 152           }
+ 153         }
+ 154       }
+ 155       if ((iter % 1000) == 0) {
+ 156         DEBUG_ONLY(_freeblocks.verify();)
+ 157         test_all_marked_ranges();
+ 158         LOG("a %d (" SIZE_FORMAT "), d %d, f %d", _num_allocs, _allocated_words.get(), _num_deallocs, _num_feeds);
+ 159 #ifdef LOG_PLEASE
+ 160         _freeblocks.print(tty, true);
+ 161         tty-&gt;cr();
+ 162 #endif
+ 163       }
+ 164     }
  165 
- 166 
+ 166     // Drain
  167 
- 168 public:
+ 168   }
  169 
- 170   FreeBlocksTest(size_t avg_alloc_size) :
- 171     _fb(512 * K), _freeblocks(),
- 172     _rgen_feeding(128, 4096),
- 173     _rgen_allocations(avg_alloc_size / 4, avg_alloc_size * 2, 0.01f, avg_alloc_size / 3, avg_alloc_size * 30),
- 174     _allocations(NULL),
- 175     _num_allocs(0), _num_deallocs(0), _num_feeds(0)
- 176   {
- 177     CHECK_CONTENT(_freeblocks, 0, 0);
- 178     // some initial feeding
- 179     _freeblocks.add_block(_fb.get(1024), 1024);
- 180     CHECK_CONTENT(_freeblocks, 1, 1024);
- 181   }
- 182 
- 183 
- 184   static void test_small_allocations() {
- 185     FreeBlocksTest test(10);
- 186     test.test_loop();
- 187   }
- 188 
- 189   static void test_medium_allocations() {
- 190     FreeBlocksTest test(30);
- 191     test.test_loop();
- 192   }
- 193 
- 194   static void test_large_allocations() {
- 195     FreeBlocksTest test(150);
- 196     test.test_loop();
- 197   }
- 198 
+ 170 public:
+ 171 
+ 172   FreeBlocksTest(size_t avg_alloc_size) :
+ 173     _fb(512 * K), _freeblocks(),
+ 174     _rgen_feeding(128, 4096),
+ 175     _rgen_allocations(avg_alloc_size / 4, avg_alloc_size * 2, 0.01f, avg_alloc_size / 3, avg_alloc_size * 30),
+ 176     _allocations(NULL),
+ 177     _num_allocs(0), _num_deallocs(0), _num_feeds(0)
+ 178   {
+ 179     CHECK_CONTENT(_freeblocks, 0, 0);
+ 180     // some initial feeding
+ 181     _freeblocks.add_block(_fb.get(1024), 1024);
+ 182     CHECK_CONTENT(_freeblocks, 1, 1024);
+ 183   }
+ 184 
+ 185   static void test_small_allocations() {
+ 186     FreeBlocksTest test(10);
+ 187     test.test_loop();
+ 188   }
+ 189 
+ 190   static void test_medium_allocations() {
+ 191     FreeBlocksTest test(30);
+ 192     test.test_loop();
+ 193   }
+ 194 
+ 195   static void test_large_allocations() {
+ 196     FreeBlocksTest test(150);
+ 197     test.test_loop();
+ 198   }
  199 
  200 };
  201 
- 202 
- 203 TEST_VM(metaspace, freeblocks_basics) {
- 204 
- 205   FreeBlocks lom;
- 206   MetaWord tmp[1024];
- 207   CHECK_CONTENT(lom, 0, 0);
- 208 
- 209   lom.add_block(tmp, 1024);
- 210   DEBUG_ONLY(lom.verify();)
- 211   ASSERT_FALSE(lom.is_empty());
- 212   CHECK_CONTENT(lom, 1, 1024);
- 213 
- 214   MetaWord* p = lom.get_block(1024);
- 215   EXPECT_EQ(p, tmp);
- 216   DEBUG_ONLY(lom.verify();)
- 217   CHECK_CONTENT(lom, 0, 0);
- 218 
- 219 }
- 220 
- 221 TEST_VM(metaspace, freeblocks_small) {
- 222   FreeBlocksTest::test_small_allocations();
- 223 }
- 224 
- 225 TEST_VM(metaspace, freeblocks_medium) {
- 226   FreeBlocksTest::test_medium_allocations();
- 227 }
- 228 
- 229 TEST_VM(metaspace, freeblocks_large) {
- 230   FreeBlocksTest::test_large_allocations();
- 231 }
- 232 
+ 202 TEST_VM(metaspace, freeblocks_basics) {
+ 203 
+ 204   FreeBlocks fbl;
+ 205   MetaWord tmp[1024];
+ 206   CHECK_CONTENT(fbl, 0, 0);
+ 207 
+ 208   fbl.add_block(tmp, 1024);
+ 209   DEBUG_ONLY(fbl.verify();)
+ 210   ASSERT_FALSE(fbl.is_empty());
+ 211   CHECK_CONTENT(fbl, 1, 1024);
+ 212 
+ 213   MetaWord* p = fbl.remove_block(1024);
+ 214   EXPECT_EQ(p, tmp);
+ 215   DEBUG_ONLY(fbl.verify();)
+ 216   CHECK_CONTENT(fbl, 0, 0);
+ 217 
+ 218 }
+ 219 
+ 220 TEST_VM(metaspace, freeblocks_small) {
+ 221   FreeBlocksTest::test_small_allocations();
+ 222 }
+ 223 
+ 224 TEST_VM(metaspace, freeblocks_medium) {
+ 225   FreeBlocksTest::test_medium_allocations();
+ 226 }
+ 227 
+ 228 TEST_VM(metaspace, freeblocks_large) {
+ 229   FreeBlocksTest::test_large_allocations();
+ 230 }
+ 231 
 </pre></body></html>

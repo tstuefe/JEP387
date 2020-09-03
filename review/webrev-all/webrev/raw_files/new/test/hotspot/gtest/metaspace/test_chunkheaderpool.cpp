@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,7 +25,17 @@
 
 #include "precompiled.hpp"
 
-#include "metaspaceTestsCommon.hpp"
+
+#include "memory/metaspace/msChunkHeaderPool.hpp"
+#include "memory/metaspace/msCounter.hpp"
+#include "memory/metaspace/msMetachunk.hpp"
+
+//#define LOG_PLEASE
+#include "metaspaceGtestCommon.hpp"
+
+using metaspace::ChunkHeaderPool;
+using metaspace::Metachunk;
+using metaspace::SizeCounter;
 
 class ChunkHeaderPoolTest {
 
@@ -51,7 +61,7 @@ class ChunkHeaderPoolTest {
     _num_allocated.decrement();
     DEBUG_ONLY(_num_allocated.check(_pool.used());)
 
-    DEBUG_ONLY(_pool.verify(true);)
+    DEBUG_ONLY(_pool.verify();)
 
   }
 
@@ -71,7 +81,7 @@ class ChunkHeaderPoolTest {
     _num_allocated.increment();
     DEBUG_ONLY(_num_allocated.check(_pool.used());)
 
-    DEBUG_ONLY(_pool.verify(true);)
+    DEBUG_ONLY(_pool.verify();)
   }
 
   void attempt_allocate_or_free_at(size_t index) {
@@ -85,12 +95,12 @@ class ChunkHeaderPoolTest {
   // Randomly allocate from the pool and free. Slight preference for allocation.
   void test_random_alloc_free(int num_iterations) {
 
-    for (int iter = 0; iter < num_iterations; iter ++) {
+    for (int iter = 0; iter < num_iterations; iter++) {
       size_t index = (size_t)os::random() % max_cap;
       attempt_allocate_or_free_at(index);
     }
 
-    DEBUG_ONLY(_pool.verify(true);)
+    DEBUG_ONLY(_pool.verify();)
 
   }
 
@@ -99,7 +109,6 @@ class ChunkHeaderPoolTest {
     test.test_random_alloc_free(100);
   }
 
-
 public:
 
   ChunkHeaderPoolTest() : _pool() {
@@ -107,7 +116,7 @@ public:
   }
 
   static void run_tests() {
-    for (int i = 0; i < 1000; i ++) {
+    for (int i = 0; i < 1000; i++) {
       test_once();
     }
   }
@@ -141,7 +150,6 @@ TEST_VM(metaspace, chunk_header_pool_basics) {
   EXPECT_EQ(pool.freelist_size(), 1);
 
 }
-
 
 TEST_VM(metaspace, chunk_header_pool) {
   ChunkHeaderPoolTest::run_tests();

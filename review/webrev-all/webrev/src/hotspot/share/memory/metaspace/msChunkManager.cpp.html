@@ -1,0 +1,559 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msChunkManager.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "logging/log.hpp"
+  29 #include "logging/logStream.hpp"
+  30 #include "memory/metaspace/msArenaGrowthPolicy.hpp"
+  31 #include "memory/metaspace/msChunkManager.hpp"
+  32 #include "memory/metaspace/msCommon.hpp"
+  33 #include "memory/metaspace/msContext.hpp"
+  34 #include "memory/metaspace/msInternalStats.hpp"
+  35 #include "memory/metaspace/msMetachunk.hpp"
+  36 #include "memory/metaspace/msSettings.hpp"
+  37 #include "memory/metaspace/msStatistics.hpp"
+  38 #include "memory/metaspace/msVirtualSpaceList.hpp"
+  39 #include "memory/metaspace/msVirtualSpaceNode.hpp"
+  40 #include "runtime/mutexLocker.hpp"
+  41 #include "utilities/debug.hpp"
+  42 #include "utilities/globalDefinitions.hpp"
+  43 
+  44 namespace metaspace {
+  45 
+  46 #define LOGFMT         "ChkMgr @" PTR_FORMAT " (%s)"
+  47 #define LOGFMT_ARGS    p2i(this), this-&gt;_name
+  48 
+  49 // Return a single chunk to the freelist and adjust accounting. No merge is attempted.
+  50 void ChunkManager::return_chunk_simple_locked(Metachunk* c) {
+  51 
+  52   assert_lock_strong(MetaspaceExpand_lock);
+  53 
+  54   DEBUG_ONLY(c-&gt;verify());
+  55 
+  56   const chunklevel_t lvl = c-&gt;level();
+  57   _chunks.add(c);
+  58   c-&gt;reset_used_words();
+  59 
+  60   // Tracing
+  61   log_debug(metaspace)("ChunkManager %s: returned chunk " METACHUNK_FORMAT ".",
+  62                        _name, METACHUNK_FORMAT_ARGS(c));
+  63 
+  64 }
+  65 
+  66 // Creates a chunk manager with a given name (which is for debug purposes only)
+  67 // and an associated space list which will be used to request new chunks from
+  68 // (see get_chunk())
+  69 ChunkManager::ChunkManager(const char* name, VirtualSpaceList* space_list)
+  70   : _vslist(space_list),
+  71     _name(name),
+  72     _chunks()
+  73 {
+  74 }
+  75 
+  76 // Given a chunk, split it into a target chunk of a smaller size (higher target level)
+  77 //  and at least one, possible several splinter chunks.
+  78 // The original chunk must be outside of the freelist and its state must be free.
+  79 // The splinter chunks are added to the freelist.
+  80 // The resulting target chunk will be located at the same address as the original
+  81 //  chunk, but it will of course be smaller (of a higher level).
+  82 // The committed areas within the original chunk carry over to the resulting
+  83 //  chunks.
+  84 void ChunkManager::split_chunk_and_add_splinters(Metachunk* c, chunklevel_t target_level) {
+  85 
+  86   assert_lock_strong(MetaspaceExpand_lock);
+  87 
+  88   assert(c-&gt;is_free(), "chunk to be split must be free.");
+  89   assert(c-&gt;level() &lt; target_level, "Target level must be higher than current level.");
+  90   assert(c-&gt;prev() == NULL &amp;&amp; c-&gt;next() == NULL, "Chunk must be outside of any list.");
+  91 
+  92   DEBUG_ONLY(chunklevel::check_valid_level(target_level);)
+  93   DEBUG_ONLY(c-&gt;verify();)
+  94 
+  95   UL2(debug, "splitting chunk " METACHUNK_FORMAT " to " CHKLVL_FORMAT ".",
+  96       METACHUNK_FORMAT_ARGS(c), target_level);
+  97 
+  98   DEBUG_ONLY(size_t committed_words_before = c-&gt;committed_words();)
+  99 
+ 100   const chunklevel_t orig_level = c-&gt;level();
+ 101   c-&gt;vsnode()-&gt;split(target_level, c, &amp;_chunks);
+ 102 
+ 103   // Splitting should never fail.
+ 104   assert(c-&gt;level() == target_level, "Sanity");
+ 105 
+ 106   // The size of the committed portion should not change (subject to the reduced chunk size of course)
+ 107 #ifdef ASSERT
+ 108   if (committed_words_before &gt; c-&gt;word_size()) {
+ 109     assert(c-&gt;is_fully_committed(), "Sanity");
+ 110   } else {
+ 111     assert(c-&gt;committed_words() == committed_words_before, "Sanity");
+ 112   }
+ 113 #endif
+ 114 
+ 115   DEBUG_ONLY(c-&gt;verify());
+ 116 
+ 117   DEBUG_ONLY(verify_locked();)
+ 118 
+ 119   SOMETIMES(c-&gt;vsnode()-&gt;verify_locked();)
+ 120 
+ 121   InternalStats::inc_num_chunk_splits();
+ 122 
+ 123 }
+ 124 
+ 125 // On success, returns a chunk of level of &lt;preferred_level&gt;, but at most &lt;max_level&gt;.
+ 126 //  The first first &lt;min_committed_words&gt; of the chunk are guaranteed to be committed.
+ 127 // On error, will return NULL.
+ 128 //
+ 129 // This function may fail for two reasons:
+ 130 // - Either we are unable to reserve space for a new chunk (if the underlying VirtualSpaceList
+ 131 //   is non-expandable but needs expanding - aka out of compressed class space).
+ 132 // - Or, if the necessary space cannot be committed because we hit a commit limit.
+ 133 //   This may be either the GC threshold or MaxMetaspaceSize.
+ 134 Metachunk* ChunkManager::get_chunk(chunklevel_t preferred_level, chunklevel_t max_level, size_t min_committed_words) {
+ 135 
+ 136   assert(preferred_level &lt;= max_level, "Sanity");
+ 137   assert(chunklevel::level_fitting_word_size(min_committed_words) &gt;= max_level, "Sanity");
+ 138 
+ 139   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 140 
+ 141   DEBUG_ONLY(verify_locked();)
+ 142 
+ 143   DEBUG_ONLY(chunklevel::check_valid_level(max_level);)
+ 144   DEBUG_ONLY(chunklevel::check_valid_level(preferred_level);)
+ 145   assert(max_level &gt;= preferred_level, "invalid level.");
+ 146 
+ 147   UL2(debug, "requested chunk: pref_level: " CHKLVL_FORMAT
+ 148      ", max_level: " CHKLVL_FORMAT ", min committed size: " SIZE_FORMAT ".",
+ 149      preferred_level, max_level, min_committed_words);
+ 150 
+ 151   // First, optimistically look for a chunk which is already committed far enough to hold min_word_size.
+ 152 
+ 153   // 1) Search best or smaller committed chunks (first attempt):
+ 154   //    Start at the preferred chunk size and work your way down (level up).
+ 155   //    But for now, only consider chunks larger than a certain threshold -
+ 156   //    this is to prevent large loaders (eg boot) from unnecessarily gobbling up
+ 157   //    all the tiny splinter chunks lambdas leave around.
+ 158   Metachunk* c = NULL;
+ 159   c = _chunks.search_chunk_ascending(preferred_level, MIN2((chunklevel_t)(preferred_level + 2), max_level), min_committed_words);
+ 160 
+ 161   // 2) Search larger committed chunks:
+ 162   //    If that did not yield anything, look at larger chunks, which may be committed. We would have to split
+ 163   //    them first, of course.
+ 164   if (c == NULL) {
+ 165     c = _chunks.search_chunk_descending(preferred_level, min_committed_words);
+ 166   }
+ 167 
+ 168   // 3) Search best or smaller committed chunks (second attempt):
+ 169   //    Repeat (1) but now consider even the tiniest chunks as long as they are large enough to hold the
+ 170   //    committed min size.
+ 171   if (c == NULL) {
+ 172     c = _chunks.search_chunk_ascending(preferred_level, max_level, min_committed_words);
+ 173   }
+ 174 
+ 175   // if we did not get anything yet, there are no free chunks commmitted enough. Repeat search but look for uncommitted chunks too:
+ 176 
+ 177   // 4) Search best or smaller chunks, can be uncommitted:
+ 178   if (c == NULL) {
+ 179     c = _chunks.search_chunk_ascending(preferred_level, max_level, 0);
+ 180   }
+ 181 
+ 182   // 5) Search a larger uncommitted chunk:
+ 183   if (c == NULL) {
+ 184     c = _chunks.search_chunk_descending(preferred_level, 0);
+ 185   }
+ 186 
+ 187   if (c != NULL) {
+ 188     UL(trace, "taken from freelist.");
+ 189   }
+ 190 
+ 191   // Failing all that, allocate a new root chunk from the connected virtual space.
+ 192   // This may fail if the underlying vslist cannot be expanded (e.g. compressed class space)
+ 193   if (c == NULL) {
+ 194     c = _vslist-&gt;allocate_root_chunk();
+ 195     if (c == NULL) {
+ 196       UL(info, "failed to get new root chunk.");
+ 197     } else {
+ 198       assert(c-&gt;level() == chunklevel::ROOT_CHUNK_LEVEL, "root chunk expected");
+ 199       UL(debug, "allocated new root chunk.");
+ 200     }
+ 201   }
+ 202 
+ 203   if (c == NULL) {
+ 204     // If we end up here, we found no match in the freelists and were unable to get a new
+ 205     // root chunk (so we used up all address space, e.g. out of CompressedClassSpace).
+ 206     UL2(info, "failed to get chunk (preferred level: " CHKLVL_FORMAT
+ 207        ", max level " CHKLVL_FORMAT ".", preferred_level, max_level);
+ 208     c = NULL;
+ 209   }
+ 210 
+ 211   if (c != NULL) {
+ 212 
+ 213     // Now we have a chunk.
+ 214     //  It may be larger than what the caller wanted, so we may want to split it. This should
+ 215     //  always work.
+ 216     if (c-&gt;level() &lt; preferred_level) {
+ 217       split_chunk_and_add_splinters(c, preferred_level);
+ 218       assert(c-&gt;level() == preferred_level, "split failed?");
+ 219     }
+ 220 
+ 221     // Attempt to commit the chunk (depending on settings, we either fully commit it or just
+ 222     //  commit enough to get the caller going). That may fail if we hit a commit limit. In
+ 223     //  that case put the chunk back to the freelist (re-merging it with its neighbors if we
+ 224     //  did split it) and return NULL.
+ 225     const size_t to_commit = Settings::new_chunks_are_fully_committed() ? c-&gt;word_size() : min_committed_words;
+ 226     if (c-&gt;committed_words() &lt; to_commit) {
+ 227       if (c-&gt;ensure_committed_locked(to_commit) == false) {
+ 228         UL2(info, "failed to commit " SIZE_FORMAT " words on chunk " METACHUNK_FORMAT ".",
+ 229             to_commit,  METACHUNK_FORMAT_ARGS(c));
+ 230         c-&gt;set_in_use(); // gets asserted in return_chunk().
+ 231         return_chunk_locked(c);
+ 232         c = NULL;
+ 233       }
+ 234     }
+ 235 
+ 236     if (c != NULL) {
+ 237 
+ 238       // Still here? We have now a good chunk, all is well.
+ 239       assert(c-&gt;committed_words() &gt;= min_committed_words, "Sanity");
+ 240 
+ 241       // Any chunk returned from ChunkManager shall be marked as in use.
+ 242       c-&gt;set_in_use();
+ 243 
+ 244       UL2(debug, "handing out chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
+ 245 
+ 246       InternalStats::inc_num_chunks_taken_from_freelist();
+ 247 
+ 248       SOMETIMES(c-&gt;vsnode()-&gt;verify_locked();)
+ 249 
+ 250     }
+ 251 
+ 252   }
+ 253 
+ 254   DEBUG_ONLY(verify_locked();)
+ 255 
+ 256   return c;
+ 257 
+ 258 }
+ 259 
+ 260 // Return a single chunk to the ChunkManager and adjust accounting. May merge chunk
+ 261 //  with neighbors.
+ 262 // As a side effect this removes the chunk from whatever list it has been in previously.
+ 263 // Happens after a Classloader was unloaded and releases its metaspace chunks.
+ 264 // !! Note: this may invalidate the chunk. Do not access the chunk after
+ 265 //    this function returns !!
+ 266 void ChunkManager::return_chunk(Metachunk* c) {
+ 267   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 268   return_chunk_locked(c);
+ 269 }
+ 270 
+ 271 // See return_chunk().
+ 272 void ChunkManager::return_chunk_locked(Metachunk* c) {
+ 273 
+ 274   assert_lock_strong(MetaspaceExpand_lock);
+ 275 
+ 276   UL2(debug, ": returning chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
+ 277 
+ 278   DEBUG_ONLY(c-&gt;verify();)
+ 279 
+ 280   assert(contains_chunk(c) == false, "A chunk to be added to the freelist must not be in the freelist already.");
+ 281 
+ 282   assert(c-&gt;is_in_use(), "Unexpected chunk state");
+ 283   assert(!c-&gt;in_list(), "Remove from list first");
+ 284   c-&gt;set_free();
+ 285   c-&gt;reset_used_words();
+ 286 
+ 287   const chunklevel_t orig_lvl = c-&gt;level();
+ 288 
+ 289   Metachunk* merged = NULL;
+ 290   if (!c-&gt;is_root_chunk()) {
+ 291     // Only attempt merging if we are not of the lowest level already.
+ 292     merged = c-&gt;vsnode()-&gt;merge(c, &amp;_chunks);
+ 293   }
+ 294 
+ 295   if (merged != NULL) {
+ 296 
+ 297     InternalStats::inc_num_chunk_merges();
+ 298 
+ 299     DEBUG_ONLY(merged-&gt;verify());
+ 300 
+ 301     // We did merge our chunk into a different chunk.
+ 302 
+ 303     // We did merge chunks and now have a bigger chunk.
+ 304     assert(merged-&gt;level() &lt; orig_lvl, "Sanity");
+ 305 
+ 306     UL2(debug, "merged into chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(merged));
+ 307 
+ 308     c = merged;
+ 309 
+ 310   }
+ 311 
+ 312   if (Settings::uncommit_free_chunks() &amp;&amp;
+ 313       c-&gt;word_size() &gt;= Settings::commit_granule_words())
+ 314   {
+ 315     UL2(debug, "uncommitting free chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
+ 316     c-&gt;uncommit_locked();
+ 317   }
+ 318 
+ 319   return_chunk_simple_locked(c);
+ 320 
+ 321   DEBUG_ONLY(verify_locked();)
+ 322   SOMETIMES(c-&gt;vsnode()-&gt;verify_locked();)
+ 323 
+ 324   InternalStats::inc_num_chunks_returned_to_freelist();
+ 325 
+ 326 }
+ 327 
+ 328 // Given a chunk c, whose state must be "in-use" and must not be a root chunk, attempt to
+ 329 // enlarge it in place by claiming its trailing buddy.
+ 330 //
+ 331 // This will only work if c is the leader of the buddy pair and the trailing buddy is free.
+ 332 //
+ 333 // If successful, the follower chunk will be removed from the freelists, the leader chunk c will
+ 334 // double in size (level decreased by one).
+ 335 //
+ 336 // On success, true is returned, false otherwise.
+ 337 bool ChunkManager::attempt_enlarge_chunk(Metachunk* c) {
+ 338   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 339   return c-&gt;vsnode()-&gt;attempt_enlarge_chunk(c, &amp;_chunks);
+ 340 }
+ 341 
+ 342 static void print_word_size_delta(outputStream* st, size_t word_size_1, size_t word_size_2) {
+ 343   if (word_size_1 == word_size_2) {
+ 344     print_scaled_words(st, word_size_1);
+ 345     st-&gt;print (" (no change)");
+ 346   } else {
+ 347     print_scaled_words(st, word_size_1);
+ 348     st-&gt;print("-&gt;");
+ 349     print_scaled_words(st, word_size_2);
+ 350     st-&gt;print(" (");
+ 351     if (word_size_2 &lt;= word_size_1) {
+ 352       st-&gt;print("-");
+ 353       print_scaled_words(st, word_size_1 - word_size_2);
+ 354     } else {
+ 355       st-&gt;print("+");
+ 356       print_scaled_words(st, word_size_2 - word_size_1);
+ 357     }
+ 358     st-&gt;print(")");
+ 359   }
+ 360 }
+ 361 
+ 362 void ChunkManager::purge() {
+ 363 
+ 364   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 365 
+ 366   UL(info, ": reclaiming memory...");
+ 367 
+ 368   const size_t reserved_before = _vslist-&gt;reserved_words();
+ 369   const size_t committed_before = _vslist-&gt;committed_words();
+ 370   int num_nodes_purged = 0;
+ 371 
+ 372   // 1) purge virtual space list
+ 373   num_nodes_purged = _vslist-&gt;purge(&amp;_chunks);
+ 374   InternalStats::inc_num_purges();
+ 375 
+ 376   // 2) uncommit free chunks
+ 377   if (Settings::uncommit_free_chunks()) {
+ 378     const chunklevel_t max_level =
+ 379         chunklevel::level_fitting_word_size(Settings::commit_granule_words());
+ 380     for (chunklevel_t l = chunklevel::LOWEST_CHUNK_LEVEL;
+ 381          l &lt;= max_level;
+ 382          l++)
+ 383     {
+ 384       // Since we uncommit all chunks at this level, we do not break the "committed chunks are
+ 385       //  at the front of the list" condition.
+ 386       for (Metachunk* c = _chunks.first_at_level(l); c != NULL; c = c-&gt;next()) {
+ 387         c-&gt;uncommit_locked();
+ 388       }
+ 389     }
+ 390   }
+ 391 
+ 392   const size_t reserved_after = _vslist-&gt;reserved_words();
+ 393   const size_t committed_after = _vslist-&gt;committed_words();
+ 394 
+ 395   // Print a nice report.
+ 396   if (reserved_after == reserved_before &amp;&amp; committed_after == committed_before) {
+ 397     UL(info, "nothing reclaimed.");
+ 398   } else {
+ 399     LogTarget(Info, metaspace) lt;
+ 400     if (lt.is_enabled()) {
+ 401       LogStream ls(lt);
+ 402       ls.print_cr(LOGFMT ": finished reclaiming memory: ", LOGFMT_ARGS);
+ 403 
+ 404       ls.print("reserved: ");
+ 405       print_word_size_delta(&amp;ls, reserved_before, reserved_after);
+ 406       ls.cr();
+ 407 
+ 408       ls.print("committed: ");
+ 409       print_word_size_delta(&amp;ls, committed_before, committed_after);
+ 410       ls.cr();
+ 411 
+ 412       ls.print_cr("full nodes purged: %d", num_nodes_purged);
+ 413     }
+ 414   }
+ 415 
+ 416   DEBUG_ONLY(_vslist-&gt;verify_locked());
+ 417   DEBUG_ONLY(verify_locked());
+ 418 
+ 419 }
+ 420 
+ 421 // Convenience methods to return the global class-space chunkmanager
+ 422 //  and non-class chunkmanager, respectively.
+ 423 ChunkManager* ChunkManager::chunkmanager_class() {
+ 424   return MetaspaceContext::context_class() == NULL ? NULL : MetaspaceContext::context_class()-&gt;cm();
+ 425 }
+ 426 
+ 427 ChunkManager* ChunkManager::chunkmanager_nonclass() {
+ 428   return MetaspaceContext::context_nonclass() == NULL ? NULL : MetaspaceContext::context_nonclass()-&gt;cm();
+ 429 }
+ 430 
+ 431 // Update statistics.
+ 432 void ChunkManager::add_to_statistics(ChunkManagerStats* out) const {
+ 433 
+ 434   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 435 
+ 436   for (chunklevel_t l = chunklevel::ROOT_CHUNK_LEVEL; l &lt;= chunklevel::HIGHEST_CHUNK_LEVEL; l++) {
+ 437     out-&gt;_num_chunks[l] += _chunks.num_chunks_at_level(l);
+ 438     out-&gt;_committed_word_size[l] += _chunks.committed_word_size_at_level(l);
+ 439   }
+ 440 
+ 441   DEBUG_ONLY(out-&gt;verify();)
+ 442 
+ 443 }
+ 444 
+ 445 #ifdef ASSERT
+ 446 
+ 447 void ChunkManager::verify() const {
+ 448   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 449   verify_locked();
+ 450 }
+ 451 
+ 452 void ChunkManager::verify_locked() const {
+ 453   assert_lock_strong(MetaspaceExpand_lock);
+ 454   assert(_vslist != NULL, "No vslist");
+ 455   _chunks.verify();
+ 456 }
+ 457 
+ 458 bool ChunkManager::contains_chunk(Metachunk* c) const {
+ 459   return _chunks.contains(c);
+ 460 }
+ 461 
+ 462 #endif // ASSERT
+ 463 
+ 464 void ChunkManager::print_on(outputStream* st) const {
+ 465   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 466   print_on_locked(st);
+ 467 }
+ 468 
+ 469 void ChunkManager::print_on_locked(outputStream* st) const {
+ 470   assert_lock_strong(MetaspaceExpand_lock);
+ 471   st-&gt;print_cr("cm %s: %d chunks, total word size: " SIZE_FORMAT ", committed word size: " SIZE_FORMAT, _name,
+ 472                total_num_chunks(), total_word_size(), _chunks.committed_word_size());
+ 473   _chunks.print_on(st);
+ 474 }
+ 475 
+ 476 } // namespace metaspace
+</pre></body></html>

@@ -81,7 +81,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     </head>
     <body id="SUNWwebrev" onkeypress="keypress(event);">
     <a name="0"></a>
-    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-test.patch</pre><hr></hr>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-test.patch</pre><hr></hr>
 <pre>
    1 /*
    2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -112,127 +112,163 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   27 import jdk.test.lib.JDKToolFinder;
   28 
   29 /*
-  30  * @test
+<a name="1" id="anc1"></a><span class="changed">  30  * @test id=test-64bit-ccs</span>
   31  * @summary Test the VM.metaspace command
-  32  * @requires vm.gc != "Z" &amp; vm.bits != "32"
+<a name="2" id="anc2"></a><span class="changed">  32  * @requires vm.bits == "64"</span>
   33  * @library /test/lib
   34  * @modules java.base/jdk.internal.misc
   35  *          java.management
   36  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers PrintMetaspaceDcmd with-compressed-class-space
-  37  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:-UseCompressedOops -XX:-UseCompressedClassPointers PrintMetaspaceDcmd without-compressed-class-space
-  38  */
-  39 /*
-  40  * @test
-  41  * @summary Test the VM.metaspace command
-  42  * @requires vm.gc != "Z" &amp; vm.bits == "32"
-  43  * @library /test/lib
-  44  * @modules java.base/jdk.internal.misc
-  45  *          java.management
-  46  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M PrintMetaspaceDcmd without-compressed-class-space
-  47  */
-  48 
-  49 public class PrintMetaspaceDcmd {
-  50 
-  51     // Run jcmd VM.metaspace against a VM with CompressedClassPointers on.
-  52     // The report should detail Non-Class and Class portions separately.
-  53     private static void doTheTest(boolean usesCompressedClassSpace) throws Exception {
-  54         ProcessBuilder pb = new ProcessBuilder();
-  55         OutputAnalyzer output;
-  56         // Grab my own PID
-  57         String pid = Long.toString(ProcessTools.getProcessId());
-  58 
-  59         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "basic"});
-  60         output = new OutputAnalyzer(pb.start());
-  61         output.shouldHaveExitValue(0);
-  62         if (usesCompressedClassSpace) {
-  63             output.shouldContain("Non-Class:");
-  64             output.shouldContain("Class:");
-  65         }
-  66         output.shouldContain("Virtual space:");
-  67         output.shouldContain("Chunk freelists:");
-  68         output.shouldMatch("MaxMetaspaceSize:.*201.00.*MB");
-  69 
-  70         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace"});
-  71         output = new OutputAnalyzer(pb.start());
-  72         output.shouldHaveExitValue(0);
-  73         if (usesCompressedClassSpace) {
-  74             output.shouldContain("Non-Class:");
-  75             output.shouldContain("Class:");
-  76         }
-  77         output.shouldContain("Virtual space:");
-  78         output.shouldContain("Chunk freelist");
-  79         output.shouldContain("Waste");
-  80         output.shouldMatch("MaxMetaspaceSize:.*201.00.*MB");
-  81 
-  82         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "show-loaders"});
-  83         output = new OutputAnalyzer(pb.start());
-  84         output.shouldHaveExitValue(0);
-  85         output.shouldMatch("CLD.*&lt;bootstrap&gt;");
-  86 
-  87         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "by-chunktype"});
-  88         output = new OutputAnalyzer(pb.start());
-  89         output.shouldHaveExitValue(0);
-<a name="1" id="anc1"></a><span class="changed">  90         output.shouldContain("1k:");</span>
-<span class="changed">  91         output.shouldContain("2k:");</span>
-<span class="changed">  92         output.shouldContain("4k:");</span>
-<span class="changed">  93         output.shouldContain("8k:");</span>
-<span class="changed">  94         output.shouldContain("16k:");</span>
-<span class="changed">  95         output.shouldContain("32k:");</span>
-<span class="changed">  96         output.shouldContain("64k:");</span>
-<span class="changed">  97         output.shouldContain("128k:");</span>
-<span class="changed">  98         output.shouldContain("256k:");</span>
-<span class="changed">  99         output.shouldContain("512k:");</span>
-<span class="changed"> 100         output.shouldContain("1m:");</span>
-<span class="changed"> 101         output.shouldContain("2m:");</span>
-<span class="changed"> 102         output.shouldContain("4m:");</span>
- 103 
- 104         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "vslist"});
- 105         output = new OutputAnalyzer(pb.start());
- 106         output.shouldHaveExitValue(0);
- 107         output.shouldContain("Virtual space list");
- 108         output.shouldMatch("node.*reserved.*committed.*used.*");
-<a name="2" id="anc2"></a>
+<a name="3" id="anc3"></a><span class="new">  37  */</span>
+<span class="new">  38 </span>
+<span class="new">  39 /*</span>
+<span class="new">  40  * @test id=test-64bit-ccs-noreclaim</span>
+<span class="new">  41  * @summary Test the VM.metaspace command</span>
+<span class="new">  42  * @requires vm.bits == "64"</span>
+<span class="new">  43  * @library /test/lib</span>
+<span class="new">  44  * @modules java.base/jdk.internal.misc</span>
+<span class="new">  45  *          java.management</span>
+<span class="new">  46  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers -XX:MetaspaceReclaimPolicy=none PrintMetaspaceDcmd with-compressed-class-space</span>
+<span class="new">  47  */</span>
+<span class="new">  48 </span>
+<span class="new">  49 /*</span>
+<span class="new">  50  * @test id=test-64bit-ccs-aggressivereclaim</span>
+<span class="new">  51  * @summary Test the VM.metaspace command</span>
+<span class="new">  52  * @requires vm.bits == "64"</span>
+<span class="new">  53  * @library /test/lib</span>
+<span class="new">  54  * @modules java.base/jdk.internal.misc</span>
+<span class="new">  55  *          java.management</span>
+<span class="new">  56  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers -XX:MetaspaceReclaimPolicy=aggressive PrintMetaspaceDcmd with-compressed-class-space</span>
+<span class="new">  57  */</span>
+<span class="new">  58 </span>
+<span class="new">  59 /*</span>
+<span class="new">  60  * @test id=test-64bit-ccs-guarded</span>
+<span class="new">  61  * @summary Test the VM.metaspace command</span>
+<span class="new">  62  * @requires vm.bits == "64"</span>
+<span class="new">  63  * @requires vm.debug == true</span>
+<span class="new">  64  * @library /test/lib</span>
+<span class="new">  65  * @modules java.base/jdk.internal.misc</span>
+<span class="new">  66  *          java.management</span>
+<span class="new">  67  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:+UseCompressedOops -XX:+UseCompressedClassPointers -XX:+MetaspaceGuardAllocations PrintMetaspaceDcmd with-compressed-class-space</span>
+<span class="new">  68  */</span>
+<span class="new">  69 </span>
+<span class="new">  70 /*</span>
+<span class="new">  71  * @test id=test-64bit-noccs</span>
+<span class="new">  72  * @summary Test the VM.metaspace command</span>
+<span class="new">  73  * @requires vm.bits == "64"</span>
+<span class="new">  74  * @library /test/lib</span>
+<span class="new">  75  * @modules java.base/jdk.internal.misc</span>
+<span class="new">  76  *          java.management</span>
+  77  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M -XX:-UseCompressedOops -XX:-UseCompressedClassPointers PrintMetaspaceDcmd without-compressed-class-space
+  78  */
+<a name="4" id="anc4"></a><span class="new">  79 </span>
+  80 /*
+<a name="5" id="anc5"></a><span class="changed">  81  * @test test-32bit</span>
+  82  * @summary Test the VM.metaspace command
+<a name="6" id="anc6"></a><span class="changed">  83  * @requires vm.bits == "32"</span>
+  84  * @library /test/lib
+  85  * @modules java.base/jdk.internal.misc
+  86  *          java.management
+  87  * @run main/othervm -XX:MaxMetaspaceSize=201M -Xmx100M PrintMetaspaceDcmd without-compressed-class-space
+  88  */
+  89 
+  90 public class PrintMetaspaceDcmd {
+  91 
+<a name="7" id="anc7"></a>
 
-
-
-
-
- 109 
- 110         // Test with different scales
- 111         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=G"});
- 112         output = new OutputAnalyzer(pb.start());
- 113         output.shouldHaveExitValue(0);
- 114         output.shouldMatch("MaxMetaspaceSize:.*0.2.*GB");
- 115 
- 116         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=K"});
- 117         output = new OutputAnalyzer(pb.start());
- 118         output.shouldHaveExitValue(0);
- 119         output.shouldMatch("MaxMetaspaceSize:.*205824.00 KB");
+  92     private static void doTheTest(boolean usesCompressedClassSpace) throws Exception {
+  93         ProcessBuilder pb = new ProcessBuilder();
+  94         OutputAnalyzer output;
+  95         // Grab my own PID
+  96         String pid = Long.toString(ProcessTools.getProcessId());
+  97 
+  98         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "basic"});
+  99         output = new OutputAnalyzer(pb.start());
+ 100         output.shouldHaveExitValue(0);
+ 101         if (usesCompressedClassSpace) {
+ 102             output.shouldContain("Non-Class:");
+ 103             output.shouldContain("Class:");
+ 104         }
+ 105         output.shouldContain("Virtual space:");
+ 106         output.shouldContain("Chunk freelists:");
+ 107         output.shouldMatch("MaxMetaspaceSize:.*201.00.*MB");
+ 108 
+ 109         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace"});
+ 110         output = new OutputAnalyzer(pb.start());
+ 111         output.shouldHaveExitValue(0);
+ 112         if (usesCompressedClassSpace) {
+ 113             output.shouldContain("Non-Class:");
+ 114             output.shouldContain("Class:");
+ 115         }
+ 116         output.shouldContain("Virtual space:");
+ 117         output.shouldContain("Chunk freelist");
+ 118         output.shouldContain("Waste");
+ 119         output.shouldMatch("MaxMetaspaceSize:.*201.00.*MB");
  120 
- 121         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=1"});
+ 121         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "show-loaders"});
  122         output = new OutputAnalyzer(pb.start());
  123         output.shouldHaveExitValue(0);
- 124         output.shouldMatch("MaxMetaspaceSize:.*210763776 bytes");
- 125     }
- 126 
- 127     public static void main(String args[]) throws Exception {
- 128         boolean testForCompressedClassSpace = false;
- 129         if (args[0].equals("with-compressed-class-space")) {
- 130             testForCompressedClassSpace = true;
- 131         } else if (args[0].equals("without-compressed-class-space")) {
- 132             testForCompressedClassSpace = false;
- 133         } else {
- 134             throw new IllegalArgumentException("Invalid argument: " + args[0]);
- 135         }
- 136         doTheTest(testForCompressedClassSpace);
- 137     }
- 138 }
-<a name="3" id="anc3"></a><b style="font-size: large; color: red">--- EOF ---</b>
+ 124         output.shouldMatch("CLD.*&lt;bootstrap&gt;");
+ 125 
+ 126         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "by-chunktype"});
+ 127         output = new OutputAnalyzer(pb.start());
+ 128         output.shouldHaveExitValue(0);
+<a name="8" id="anc8"></a><span class="changed"> 129         output.shouldContain("1k:");</span>
+<span class="changed"> 130         output.shouldContain("2k:");</span>
+<span class="changed"> 131         output.shouldContain("4k:");</span>
+<span class="changed"> 132         output.shouldContain("8k:");</span>
+<span class="changed"> 133         output.shouldContain("16k:");</span>
+<span class="changed"> 134         output.shouldContain("32k:");</span>
+<span class="changed"> 135         output.shouldContain("64k:");</span>
+<span class="changed"> 136         output.shouldContain("128k:");</span>
+<span class="changed"> 137         output.shouldContain("256k:");</span>
+<span class="changed"> 138         output.shouldContain("512k:");</span>
+<span class="changed"> 139         output.shouldContain("1m:");</span>
+<span class="changed"> 140         output.shouldContain("2m:");</span>
+<span class="changed"> 141         output.shouldContain("4m:");</span>
+ 142 
+ 143         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "vslist"});
+ 144         output = new OutputAnalyzer(pb.start());
+ 145         output.shouldHaveExitValue(0);
+ 146         output.shouldContain("Virtual space list");
+ 147         output.shouldMatch("node.*reserved.*committed.*used.*");
+<a name="9" id="anc9"></a>
 
 
 
 
 
+ 148 
+ 149         // Test with different scales
+ 150         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=G"});
+ 151         output = new OutputAnalyzer(pb.start());
+ 152         output.shouldHaveExitValue(0);
+ 153         output.shouldMatch("MaxMetaspaceSize:.*0.2.*GB");
+ 154 
+ 155         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=K"});
+ 156         output = new OutputAnalyzer(pb.start());
+ 157         output.shouldHaveExitValue(0);
+ 158         output.shouldMatch("MaxMetaspaceSize:.*205824.00 KB");
+ 159 
+ 160         pb.command(new String[] { JDKToolFinder.getJDKTool("jcmd"), pid, "VM.metaspace", "scale=1"});
+ 161         output = new OutputAnalyzer(pb.start());
+ 162         output.shouldHaveExitValue(0);
+ 163         output.shouldMatch("MaxMetaspaceSize:.*210763776 bytes");
+ 164     }
+ 165 
+ 166     public static void main(String args[]) throws Exception {
+ 167         boolean testForCompressedClassSpace = false;
+ 168         if (args[0].equals("with-compressed-class-space")) {
+ 169             testForCompressedClassSpace = true;
+ 170         } else if (args[0].equals("without-compressed-class-space")) {
+ 171             testForCompressedClassSpace = false;
+ 172         } else {
+ 173             throw new IllegalArgumentException("Invalid argument: " + args[0]);
+ 174         }
+ 175         doTheTest(testForCompressedClassSpace);
+ 176     }
+ 177 }
+<a name="10" id="anc10"></a><b style="font-size: large; color: red">--- EOF ---</b>
 
 
 
@@ -307,4 +343,9 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 
 
-</pre><form name="eof"><input name="value" value="3" type="hidden" /></form></body></html>
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="10" type="hidden" /></form></body></html>

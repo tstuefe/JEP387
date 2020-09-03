@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,12 +25,18 @@
 
 #include "precompiled.hpp"
 
-// #define LOG_PLEASE
 
 #include "classfile/classLoaderData.hpp"
-#include "metaspaceTestsCommon.hpp"
+#include "memory/metaspace/msChunklevel.hpp"
+#include "memory/metaspace/msSettings.hpp"
 #include "utilities/powerOfTwo.hpp"
 
+// #define LOG_PLEASE
+#include "metaspaceGtestCommon.hpp"
+
+using metaspace::chunklevel_t;
+using namespace metaspace::chunklevel;
+using metaspace::Settings;
 
 TEST_VM(metaspace, misc_sizes)   {
 
@@ -48,7 +54,6 @@ TEST_VM(metaspace, misc_sizes)   {
             Metaspace::reserve_alignment_words());
 
 }
-
 
 TEST_VM(metaspace, misc_max_alloc_size)   {
 
@@ -101,7 +106,6 @@ TEST_VM(metaspace, chunklevel_utils)   {
   EXPECT_EQ(level_fitting_word_size(8 * K), CHUNK_LEVEL_64K);
   EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
   EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
-
 
 }
 

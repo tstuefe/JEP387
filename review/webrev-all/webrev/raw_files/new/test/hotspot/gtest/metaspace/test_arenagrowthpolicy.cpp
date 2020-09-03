@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,9 +25,16 @@
 
 #include "precompiled.hpp"
 
-//#define LOG_PLEASE
+#include "memory/metaspace.hpp"
+#include "memory/metaspace/msArenaGrowthPolicy.hpp"
+#include "memory/metaspace/msChunklevel.hpp"
 
-#include "metaspaceTestsCommon.hpp"
+//#define LOG_PLEASE
+#include "metaspaceGtestCommon.hpp"
+
+using metaspace::ArenaGrowthPolicy;
+using metaspace::chunklevel_t;
+using namespace metaspace::chunklevel;
 
 static void test_arena_growth_policy(Metaspace::MetaspaceType spacetype, bool is_class) {
 
@@ -42,7 +49,7 @@ static void test_arena_growth_policy(Metaspace::MetaspaceType spacetype, bool is
     ASSERT_GE(lvl, CHUNK_LEVEL_4K);
   }
 
-  for (int step = 1; step < 100; step ++) {
+  for (int step = 1; step < 100; step++) {
     chunklevel_t lvl2 = a->get_level_at_step(step);
     ASSERT_TRUE(is_valid_level(lvl2));
     // limit steepness: no growth allowed beyond last chunksize * 2
@@ -53,7 +60,7 @@ static void test_arena_growth_policy(Metaspace::MetaspaceType spacetype, bool is
 
 #define DEFINE_GROWTH_POLICY_TEST(spacetype, is_class) \
 TEST_VM(metaspace, arena_growth_policy_##spacetype##_##is_class) { \
-	test_arena_growth_policy(Metaspace::spacetype, is_class); \
+  test_arena_growth_policy(Metaspace::spacetype, is_class); \
 }
 
 DEFINE_GROWTH_POLICY_TEST(ReflectionMetaspaceType, true)
@@ -64,8 +71,4 @@ DEFINE_GROWTH_POLICY_TEST(StandardMetaspaceType, true)
 DEFINE_GROWTH_POLICY_TEST(StandardMetaspaceType, false)
 DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, true)
 DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, false)
-
-
-
-
 

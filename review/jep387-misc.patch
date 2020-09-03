@@ -9,7 +9,7 @@ diff --git a/src/hotspot/share/classfile/classLoaderData.cpp b/src/hotspot/share
  #include "memory/resourceArea.hpp"
  #include "memory/universe.hpp"
  #include "oops/access.inline.hpp"
-@@ -950,9 +951,11 @@
+@@ -953,9 +954,11 @@
    guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
  
    // Verify the integrity of the allocated space.
@@ -35,7 +35,7 @@ diff --git a/src/hotspot/share/classfile/classLoaderData.hpp b/src/hotspot/share
 diff --git a/src/hotspot/share/classfile/classLoaderDataGraph.cpp b/src/hotspot/share/classfile/classLoaderDataGraph.cpp
 --- a/src/hotspot/share/classfile/classLoaderDataGraph.cpp
 +++ b/src/hotspot/share/classfile/classLoaderDataGraph.cpp
-@@ -648,24 +648,6 @@
+@@ -661,24 +661,6 @@
    return NULL;
  }
  
@@ -63,7 +63,7 @@ diff --git a/src/hotspot/share/classfile/classLoaderDataGraph.cpp b/src/hotspot/
 diff --git a/src/hotspot/share/classfile/classLoaderDataGraph.hpp b/src/hotspot/share/classfile/classLoaderDataGraph.hpp
 --- a/src/hotspot/share/classfile/classLoaderDataGraph.hpp
 +++ b/src/hotspot/share/classfile/classLoaderDataGraph.hpp
-@@ -161,12 +161,4 @@
+@@ -162,12 +162,4 @@
    static Klass* next_klass_in_cldg(Klass* klass);
  };
  
@@ -114,49 +114,38 @@ diff --git a/src/hotspot/share/classfile/classLoaderStats.cpp b/src/hotspot/shar
 diff --git a/src/hotspot/share/gc/g1/g1CollectedHeap.cpp b/src/hotspot/share/gc/g1/g1CollectedHeap.cpp
 --- a/src/hotspot/share/gc/g1/g1CollectedHeap.cpp
 +++ b/src/hotspot/share/gc/g1/g1CollectedHeap.cpp
-@@ -1029,7 +1029,7 @@
+@@ -1034,7 +1034,7 @@
  
    // Delete metaspaces for unloaded class loaders and clean up loader_data graph
-   ClassLoaderDataGraph::purge();
+   ClassLoaderDataGraph::purge(/*at_safepoint*/true);
 -  MetaspaceUtils::verify_metrics();
-+  DEBUG_ONLY(MetaspaceUtils::verify(false);)
++  DEBUG_ONLY(MetaspaceUtils::verify();)
  
    // Prepare heap for normal collections.
    assert(num_free_regions() == 0, "we should not have added any free regions");
 diff --git a/src/hotspot/share/gc/parallel/psParallelCompact.cpp b/src/hotspot/share/gc/parallel/psParallelCompact.cpp
 --- a/src/hotspot/share/gc/parallel/psParallelCompact.cpp
 +++ b/src/hotspot/share/gc/parallel/psParallelCompact.cpp
-@@ -1057,7 +1057,7 @@
+@@ -1058,7 +1058,7 @@
  
    // Delete metaspaces for unloaded class loaders and clean up loader_data graph
-   ClassLoaderDataGraph::purge();
+   ClassLoaderDataGraph::purge(/*at_safepoint*/true);
 -  MetaspaceUtils::verify_metrics();
-+  DEBUG_ONLY(MetaspaceUtils::verify(false);)
++  DEBUG_ONLY(MetaspaceUtils::verify();)
  
    heap->prune_scavengable_nmethods();
  
 diff --git a/src/hotspot/share/gc/shared/collectedHeap.hpp b/src/hotspot/share/gc/shared/collectedHeap.hpp
 --- a/src/hotspot/share/gc/shared/collectedHeap.hpp
 +++ b/src/hotspot/share/gc/shared/collectedHeap.hpp
-@@ -29,6 +29,7 @@
- #include "gc/shared/gcWhen.hpp"
+@@ -30,6 +30,7 @@
  #include "gc/shared/verifyOption.hpp"
  #include "memory/allocation.hpp"
+ #include "memory/heapInspection.hpp"
 +#include "memory/metaspace.hpp"
  #include "memory/universe.hpp"
  #include "runtime/handles.hpp"
  #include "runtime/perfData.hpp"
-diff --git a/src/hotspot/share/gc/shared/gcTrace.cpp b/src/hotspot/share/gc/shared/gcTrace.cpp
---- a/src/hotspot/share/gc/shared/gcTrace.cpp
-+++ b/src/hotspot/share/gc/shared/gcTrace.cpp
-@@ -30,6 +30,7 @@
- #include "gc/shared/gcTrace.hpp"
- #include "gc/shared/objectCountEventSender.hpp"
- #include "gc/shared/referenceProcessorStats.hpp"
-+#include "memory/metaspace.hpp"
- #include "memory/heapInspection.hpp"
- #include "memory/resourceArea.hpp"
- #include "runtime/os.hpp"
 diff --git a/src/hotspot/share/gc/shared/gcVMOperations.hpp b/src/hotspot/share/gc/shared/gcVMOperations.hpp
 --- a/src/hotspot/share/gc/shared/gcVMOperations.hpp
 +++ b/src/hotspot/share/gc/shared/gcVMOperations.hpp
@@ -182,9 +171,9 @@ diff --git a/src/hotspot/share/gc/shared/genCollectedHeap.cpp b/src/hotspot/shar
 @@ -662,7 +663,7 @@
  
      // Delete metaspaces for unloaded class loaders and clean up loader_data graph
-     ClassLoaderDataGraph::purge();
+     ClassLoaderDataGraph::purge(/*at_safepoint*/true);
 -    MetaspaceUtils::verify_metrics();
-+    DEBUG_ONLY(MetaspaceUtils::verify(false);)
++    DEBUG_ONLY(MetaspaceUtils::verify();)
      // Resize the metaspace capacity after full collections
      MetaspaceGC::compute_new_size();
      update_full_collections_completed();
@@ -256,12 +245,12 @@ diff --git a/src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp b/src/hotspot/
 diff --git a/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp b/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
 --- a/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
 +++ b/src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp
-@@ -2202,7 +2202,7 @@
+@@ -2230,7 +2230,7 @@
    }
    // Resize and verify metaspace
    MetaspaceGC::compute_new_size();
 -  MetaspaceUtils::verify_metrics();
-+  DEBUG_ONLY(MetaspaceUtils::verify(false);)
++  DEBUG_ONLY(MetaspaceUtils::verify();)
  }
  
  // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
@@ -284,7 +273,7 @@ diff --git a/src/hotspot/share/gc/shenandoah/shenandoahUnload.cpp b/src/hotspot/
  void ShenandoahUnload::finish() {
    MetaspaceGC::compute_new_size();
 -  MetaspaceUtils::verify_metrics();
-+  DEBUG_ONLY(MetaspaceUtils::verify(false);)
++  DEBUG_ONLY(MetaspaceUtils::verify();)
  }
 diff --git a/src/hotspot/share/gc/z/zCollectedHeap.hpp b/src/hotspot/share/gc/z/zCollectedHeap.hpp
 --- a/src/hotspot/share/gc/z/zCollectedHeap.hpp
@@ -315,44 +304,25 @@ diff --git a/src/hotspot/share/gc/z/zStat.cpp b/src/hotspot/share/gc/z/zStat.cpp
 diff --git a/src/hotspot/share/gc/z/zUnload.cpp b/src/hotspot/share/gc/z/zUnload.cpp
 --- a/src/hotspot/share/gc/z/zUnload.cpp
 +++ b/src/hotspot/share/gc/z/zUnload.cpp
-@@ -1,5 +1,5 @@
- /*
-- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
 @@ -164,5 +164,5 @@
  void ZUnload::finish() {
    // Resize and verify metaspace
    MetaspaceGC::compute_new_size();
 -  MetaspaceUtils::verify_metrics();
-+  DEBUG_ONLY(MetaspaceUtils::verify(false);)
++  DEBUG_ONLY(MetaspaceUtils::verify();)
  }
 diff --git a/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp b/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
 --- a/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
 +++ b/src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp
-@@ -39,9 +39,10 @@
- #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
- #include "jfr/support/jfrThreadLocal.hpp"
+@@ -41,7 +41,7 @@
  #include "jfr/writers/jfrJavaEventWriter.hpp"
-+#include "memory/metaspace.hpp"
-+#include "memory/metaspace/metaspaceEnums.hpp"
  #include "jfr/utilities/jfrThreadIterator.hpp"
  #include "memory/iterator.hpp"
 -#include "memory/metaspaceGCThresholdUpdater.hpp"
++#include "memory/metaspace.hpp"
  #include "memory/referenceType.hpp"
  #include "memory/universe.hpp"
  #include "oops/compressedOops.hpp"
-@@ -196,7 +197,7 @@
-   writer.write_count(nof_entries);
-   for (u4 i = 0; i < nof_entries; ++i) {
-     writer.write_key(i);
--    writer.write(Metaspace::metadata_type_name((Metaspace::MetadataType)i));
-+    writer.write(metaspace::describe_mdtype((Metaspace::MetadataType)i));
-   }
- }
- 
 diff --git a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp b/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
 --- a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
 +++ b/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp
@@ -360,20 +330,13 @@ diff --git a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp b/src/hotspot/share/j
  #define SHARE_JVMCI_JVMCICOMPILERTOVM_HPP
  
  #include "gc/shared/cardTable.hpp"
-+#include "gc/shared/collectedHeap.hpp"
++//#include "gc/shared/collectedHeap.hpp"
  #include "jvmci/jvmciExceptions.hpp"
  #include "runtime/javaCalls.hpp"
  #include "runtime/signature.hpp"
 diff --git a/src/hotspot/share/memory/allocation.hpp b/src/hotspot/share/memory/allocation.hpp
 --- a/src/hotspot/share/memory/allocation.hpp
 +++ b/src/hotspot/share/memory/allocation.hpp
-@@ -1,5 +1,5 @@
- /*
-- * Copyright (c) 1997, 2019, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 1997, 2020, Oracle and/or its affiliates. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
 @@ -142,6 +142,7 @@
    f(mtSafepoint,      "Safepoint")                                                   \
    f(mtSynchronizer,   "Synchronization")                                             \
@@ -2316,107 +2279,207 @@ diff --git a/src/hotspot/share/memory/metadataFactory.hpp b/src/hotspot/share/me
  #include "utilities/exceptions.hpp"
  #include "utilities/globalDefinitions.hpp"
 diff --git a/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp b/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
+deleted file mode 100644
 --- a/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
-+++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.cpp
-@@ -1,6 +1,6 @@
- /*
++++ /dev/null
+@@ -1,104 +0,0 @@
+-/*
 - * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
 - * Copyright (c) 2018, SAP and/or its affiliates.
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
-@@ -22,8 +22,9 @@
-  * questions.
-  *
-  */
-+
- #include "precompiled.hpp"
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-#include "precompiled.hpp"
 -#include "memory/metaspace.hpp"
-+#include "memory/metaspace/metaspaceReport.hpp"
- #include "memory/metaspace/metaspaceDCmd.hpp"
- #include "memory/resourceArea.hpp"
- #include "services/diagnosticCommand.hpp"
-@@ -38,7 +39,6 @@
-   , _by_spacetype("by-spacetype", "Break down numbers by loader type.", "BOOLEAN", false, "false")
-   , _by_chunktype("by-chunktype", "Break down numbers by chunk type.", "BOOLEAN", false, "false")
-   , _show_vslist("vslist", "Shows details about the underlying virtual space.", "BOOLEAN", false, "false")
+-#include "memory/metaspace/metaspaceDCmd.hpp"
+-#include "memory/resourceArea.hpp"
+-#include "services/diagnosticCommand.hpp"
+-#include "services/nmtCommon.hpp"
+-
+-namespace metaspace {
+-
+-MetaspaceDCmd::MetaspaceDCmd(outputStream* output, bool heap)
+-  : DCmdWithParser(output, heap)
+-  , _basic("basic", "Prints a basic summary (does not need a safepoint).", "BOOLEAN", false, "false")
+-  , _show_loaders("show-loaders", "Shows usage by class loader.", "BOOLEAN", false, "false")
+-  , _by_spacetype("by-spacetype", "Break down numbers by loader type.", "BOOLEAN", false, "false")
+-  , _by_chunktype("by-chunktype", "Break down numbers by chunk type.", "BOOLEAN", false, "false")
+-  , _show_vslist("vslist", "Shows details about the underlying virtual space.", "BOOLEAN", false, "false")
 -  , _show_vsmap("vsmap", "Shows chunk composition of the underlying virtual spaces", "BOOLEAN", false, "false")
-   , _scale("scale", "Memory usage in which to scale. Valid values are: 1, KB, MB or GB (fixed scale) "
-            "or \"dynamic\" for a dynamically choosen scale.",
-            "STRING", false, "dynamic")
-@@ -50,7 +50,6 @@
-   _dcmdparser.add_dcmd_option(&_by_chunktype);
-   _dcmdparser.add_dcmd_option(&_by_spacetype);
-   _dcmdparser.add_dcmd_option(&_show_vslist);
+-  , _scale("scale", "Memory usage in which to scale. Valid values are: 1, KB, MB or GB (fixed scale) "
+-           "or \"dynamic\" for a dynamically choosen scale.",
+-           "STRING", false, "dynamic")
+-  , _show_classes("show-classes", "If show-loaders is set, shows loaded classes for each loader.", "BOOLEAN", false, "false")
+-{
+-  _dcmdparser.add_dcmd_option(&_basic);
+-  _dcmdparser.add_dcmd_option(&_show_loaders);
+-  _dcmdparser.add_dcmd_option(&_show_classes);
+-  _dcmdparser.add_dcmd_option(&_by_chunktype);
+-  _dcmdparser.add_dcmd_option(&_by_spacetype);
+-  _dcmdparser.add_dcmd_option(&_show_vslist);
 -  _dcmdparser.add_dcmd_option(&_show_vsmap);
-   _dcmdparser.add_dcmd_option(&_scale);
- }
- 
-@@ -81,7 +80,7 @@
-   }
-   if (_basic.value() == true) {
-     if (_show_loaders.value() || _by_chunktype.value() || _by_spacetype.value() ||
+-  _dcmdparser.add_dcmd_option(&_scale);
+-}
+-
+-int MetaspaceDCmd::num_arguments() {
+-  ResourceMark rm;
+-  MetaspaceDCmd* dcmd = new MetaspaceDCmd(NULL, false);
+-  if (dcmd != NULL) {
+-    DCmdMark mark(dcmd);
+-    return dcmd->_dcmdparser.num_arguments();
+-  } else {
+-    return 0;
+-  }
+-}
+-
+-void MetaspaceDCmd::execute(DCmdSource source, TRAPS) {
+-  // Parse scale value.
+-  const char* scale_value = _scale.value();
+-  size_t scale = 0;
+-  if (scale_value != NULL) {
+-    if (strcasecmp("dynamic", scale_value) == 0) {
+-      scale = 0;
+-    } else {
+-      scale = NMT_ONLY(NMTUtil::scale_from_name(scale_value)) NOT_NMT(0);
+-      if (scale == 0) {
+-        output()->print_cr("Invalid scale: \"%s\". Will use dynamic scaling.", scale_value);
+-      }
+-    }
+-  }
+-  if (_basic.value() == true) {
+-    if (_show_loaders.value() || _by_chunktype.value() || _by_spacetype.value() ||
 -        _show_vslist.value() || _show_vsmap.value()) {
-+        _show_vslist.value()) {
-       // Basic mode. Just print essentials. Does not need to be at a safepoint.
-       output()->print_cr("In basic mode, additional arguments are ignored.");
-     }
-@@ -89,12 +88,11 @@
-   } else {
-     // Full mode. Requires safepoint.
-     int flags = 0;
+-      // Basic mode. Just print essentials. Does not need to be at a safepoint.
+-      output()->print_cr("In basic mode, additional arguments are ignored.");
+-    }
+-    MetaspaceUtils::print_basic_report(output(), scale);
+-  } else {
+-    // Full mode. Requires safepoint.
+-    int flags = 0;
 -    if (_show_loaders.value())         flags |= MetaspaceUtils::rf_show_loaders;
 -    if (_show_classes.value())         flags |= MetaspaceUtils::rf_show_classes;
 -    if (_by_chunktype.value())         flags |= MetaspaceUtils::rf_break_down_by_chunktype;
 -    if (_by_spacetype.value())         flags |= MetaspaceUtils::rf_break_down_by_spacetype;
 -    if (_show_vslist.value())          flags |= MetaspaceUtils::rf_show_vslist;
 -    if (_show_vsmap.value())           flags |= MetaspaceUtils::rf_show_vsmap;
-+    if (_show_loaders.value())         flags |= MetaspaceReporter::rf_show_loaders;
-+    if (_show_classes.value())         flags |= MetaspaceReporter::rf_show_classes;
-+    if (_by_chunktype.value())         flags |= MetaspaceReporter::rf_break_down_by_chunktype;
-+    if (_by_spacetype.value())         flags |= MetaspaceReporter::rf_break_down_by_spacetype;
-+    if (_show_vslist.value())          flags |= MetaspaceReporter::rf_show_vslist;
-     VM_PrintMetadata op(output(), scale, flags);
-     VMThread::execute(&op);
-   }
+-    VM_PrintMetadata op(output(), scale, flags);
+-    VMThread::execute(&op);
+-  }
+-}
+-
+-} // namespace metaspace
+-
 diff --git a/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp b/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
+deleted file mode 100644
 --- a/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
-+++ b/src/hotspot/share/memory/metaspace/metaspaceDCmd.hpp
-@@ -1,6 +1,6 @@
- /*
++++ /dev/null
+@@ -1,66 +0,0 @@
+-/*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
 - * Copyright (c) 2018, SAP and/or its affiliates.
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
-@@ -38,7 +38,6 @@
-   DCmdArgument<bool> _by_spacetype;
-   DCmdArgument<bool> _by_chunktype;
-   DCmdArgument<bool> _show_vslist;
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_METASPACE_METASPACEDCMD_HPP
+-#define SHARE_MEMORY_METASPACE_METASPACEDCMD_HPP
+-
+-#include "services/diagnosticCommand.hpp"
+-
+-class outputStream;
+-
+-namespace metaspace {
+-
+-class MetaspaceDCmd : public DCmdWithParser {
+-  DCmdArgument<bool> _basic;
+-  DCmdArgument<bool> _show_loaders;
+-  DCmdArgument<bool> _by_spacetype;
+-  DCmdArgument<bool> _by_chunktype;
+-  DCmdArgument<bool> _show_vslist;
 -  DCmdArgument<bool> _show_vsmap;
-   DCmdArgument<char*> _scale;
-   DCmdArgument<bool> _show_classes;
- public:
+-  DCmdArgument<char*> _scale;
+-  DCmdArgument<bool> _show_classes;
+-public:
+-  MetaspaceDCmd(outputStream* output, bool heap);
+-  static const char* name() {
+-    return "VM.metaspace";
+-  }
+-  static const char* description() {
+-    return "Prints the statistics for the metaspace";
+-  }
+-  static const char* impact() {
+-      return "Medium: Depends on number of classes loaded.";
+-  }
+-  static const JavaPermission permission() {
+-    JavaPermission p = {"java.lang.management.ManagementPermission",
+-                        "monitor", NULL};
+-    return p;
+-  }
+-  static int num_arguments();
+-  virtual void execute(DCmdSource source, TRAPS);
+-};
+-
+-} // namespace metaspace
+-
+-#endif // SHARE_MEMORY_METASPACE_METASPACEDCMD_HPP
 diff --git a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
 +++ b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp
-@@ -26,6 +26,7 @@
+@@ -25,8 +25,8 @@
+ 
  #include "precompiled.hpp"
  
++#include "memory/metaspace/metaspaceSizesSnapshot.hpp"
  #include "memory/metaspace.hpp"
-+#include "memory/metaspace.hpp"
- #include "memory/metaspace/metaspaceSizesSnapshot.hpp"
+-#include "memory/metaspace/metaspaceSizesSnapshot.hpp"
  
  namespace metaspace {
+ 
 diff --git a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp
 --- a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp
 +++ b/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp
-@@ -28,6 +28,7 @@
+@@ -26,8 +26,11 @@
+ #ifndef SHARE_MEMORY_METASPACE_METASPACESIZESSNAPSHOT_HPP
+ #define SHARE_MEMORY_METASPACE_METASPACESIZESSNAPSHOT_HPP
  
++#include "utilities/globalDefinitions.hpp"
++
  namespace metaspace {
  
 +// Todo: clean up after jep387, see JDK-8251392
@@ -2424,72 +2487,377 @@ diff --git a/src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.hpp b/src
  public:
    MetaspaceSizesSnapshot();
 diff --git a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
+deleted file mode 100644
 --- a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
-+++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp
-@@ -1,5 +1,6 @@
- /*
-  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
-@@ -21,12 +22,14 @@
-  * questions.
-  *
-  */
-+
- #include "precompiled.hpp"
- #include "classfile/classLoaderData.inline.hpp"
- #include "classfile/javaClasses.hpp"
-+#include "memory/metaspace.hpp"
- #include "memory/metaspace/printCLDMetaspaceInfoClosure.hpp"
- #include "memory/metaspace/printMetaspaceInfoKlassClosure.hpp"
++++ /dev/null
+@@ -1,170 +0,0 @@
+-/*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-#include "precompiled.hpp"
+-#include "classfile/classLoaderData.inline.hpp"
+-#include "classfile/javaClasses.hpp"
+-#include "memory/metaspace/printCLDMetaspaceInfoClosure.hpp"
+-#include "memory/metaspace/printMetaspaceInfoKlassClosure.hpp"
 -#include "memory/metaspaceShared.hpp"
-+#include "memory/metaspace/metaspaceCommon.hpp"
- #include "memory/resourceArea.hpp"
- #include "runtime/safepoint.hpp"
- #include "utilities/globalDefinitions.hpp"
-@@ -80,7 +83,7 @@
-   }
- 
-   // Collect statistics for this class loader metaspace
+-#include "memory/resourceArea.hpp"
+-#include "runtime/safepoint.hpp"
+-#include "utilities/globalDefinitions.hpp"
+-#include "utilities/ostream.hpp"
+-
+-
+-namespace metaspace {
+-
+-PrintCLDMetaspaceInfoClosure::PrintCLDMetaspaceInfoClosure(outputStream* out, size_t scale, bool do_print,
+-    bool do_print_classes, bool break_down_by_chunktype)
+-: _out(out), _scale(scale), _do_print(do_print), _do_print_classes(do_print_classes)
+-, _break_down_by_chunktype(break_down_by_chunktype)
+-, _num_loaders(0), _num_loaders_without_metaspace(0), _num_loaders_unloading(0)
+-,  _num_classes(0), _num_classes_shared(0)
+-{
+-  memset(_num_loaders_by_spacetype, 0, sizeof(_num_loaders_by_spacetype));
+-  memset(_num_classes_by_spacetype, 0, sizeof(_num_classes_by_spacetype));
+-  memset(_num_classes_shared_by_spacetype, 0, sizeof(_num_classes_shared_by_spacetype));
+-}
+-
+-// A closure just to count classes
+-class CountKlassClosure : public KlassClosure {
+-public:
+-
+-  uintx _num_classes;
+-  uintx _num_classes_shared;
+-
+-  CountKlassClosure() : _num_classes(0), _num_classes_shared(0) {}
+-  void do_klass(Klass* k) {
+-    _num_classes ++;
+-    if (k->is_shared()) {
+-      _num_classes_shared ++;
+-    }
+-  }
+-
+-}; // end: PrintKlassInfoClosure
+-
+-void PrintCLDMetaspaceInfoClosure::do_cld(ClassLoaderData* cld) {
+-
+-  assert(SafepointSynchronize::is_at_safepoint(), "Must be at a safepoint");
+-
+-  if (cld->is_unloading()) {
+-    _num_loaders_unloading ++;
+-    return;
+-  }
+-
+-  ClassLoaderMetaspace* msp = cld->metaspace_or_null();
+-  if (msp == NULL) {
+-    _num_loaders_without_metaspace ++;
+-    return;
+-  }
+-
+-  // Collect statistics for this class loader metaspace
 -  ClassLoaderMetaspaceStatistics this_cld_stat;
-+  clms_stats_t this_cld_stat;
-   msp->add_to_statistics(&this_cld_stat);
- 
-   // And add it to the running totals
+-  msp->add_to_statistics(&this_cld_stat);
+-
+-  // And add it to the running totals
+-  _stats_total.add(this_cld_stat);
+-  _num_loaders ++;
+-  _stats_by_spacetype[msp->space_type()].add(this_cld_stat);
+-  _num_loaders_by_spacetype[msp->space_type()] ++;
+-
+-  // Count classes loaded by this CLD.
+-  CountKlassClosure ckc;
+-  cld->classes_do(&ckc);
+-  // accumulate.
+-  _num_classes += ckc._num_classes;
+-  _num_classes_by_spacetype[msp->space_type()] += ckc._num_classes;
+-  _num_classes_shared += ckc._num_classes_shared;
+-  _num_classes_shared_by_spacetype[msp->space_type()] += ckc._num_classes_shared;
+-
+-  // Optionally, print
+-  if (_do_print) {
+-
+-    _out->print(UINTX_FORMAT_W(4) ": ", _num_loaders);
+-
+-    // Print "CLD for [<loader name>,] instance of <loader class name>"
+-    // or    "CLD for <hidden or anonymous class>, loaded by [<loader name>,] instance of <loader class name>"
+-
+-    ResourceMark rm;
+-    const char* name = NULL;
+-    const char* class_name = NULL;
+-
+-    // Note: this should also work if unloading:
+-    Klass* k = cld->class_loader_klass();
+-    if (k != NULL) {
+-      class_name = k->external_name();
+-      Symbol* s = cld->name();
+-      if (s != NULL) {
+-        name = s->as_C_string();
+-      }
+-    } else {
+-      name = "<bootstrap>";
+-    }
+-
+-    // Print
+-    _out->print("CLD " PTR_FORMAT, p2i(cld));
+-    if (cld->is_unloading()) {
+-      _out->print(" (unloading)");
+-    }
+-    _out->print(":");
+-    if (cld->has_class_mirror_holder()) {
+-      _out->print(" <hidden or anonymous class>, loaded by");
+-    }
+-    if (name != NULL) {
+-      _out->print(" \"%s\"", name);
+-    }
+-    if (class_name != NULL) {
+-      _out->print(" instance of %s", class_name);
+-    }
+-
+-    if (_do_print_classes) {
+-      // Print a detailed description of all loaded classes.
+-      streamIndentor sti(_out, 6);
+-      _out->cr_indent();
+-      _out->print("Loaded classes");
+-      if (ckc._num_classes_shared > 0) {
+-        _out->print("('s' = shared)");
+-      }
+-      _out->print(":");
+-      PrintMetaspaceInfoKlassClosure pkic(_out, true);
+-      cld->classes_do(&pkic);
+-      _out->cr_indent();
+-      _out->print("-total-: ");
+-      print_number_of_classes(_out, ckc._num_classes, ckc._num_classes_shared);
+-    } else {
+-      // Just print a summary about how many classes have been loaded.
+-      _out->print(", ");
+-      print_number_of_classes(_out, ckc._num_classes, ckc._num_classes_shared);
+-    }
+-
+-    // Print statistics
+-    this_cld_stat.print_on(_out, _scale, _break_down_by_chunktype);
+-    _out->cr();
+-
+-  }
+-
+-}
+-
+-} // namespace metaspace
+-
 diff --git a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
+deleted file mode 100644
 --- a/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
-+++ b/src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.hpp
-@@ -1,5 +1,6 @@
- /*
++++ /dev/null
+@@ -1,68 +0,0 @@
+-/*
 - * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-+ * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
-  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
-  *
-  * This code is free software; you can redistribute it and/or modify it
-@@ -28,6 +29,7 @@
- #include "memory/iterator.hpp"
- #include "memory/metaspace.hpp"
- #include "memory/metaspace/metaspaceStatistics.hpp"
-+#include "memory/metaspace/metaspaceEnums.hpp"
- #include "utilities/globalDefinitions.hpp"
- 
- class outputStream;
-@@ -47,10 +49,10 @@
-   uintx                           _num_loaders;
-   uintx                           _num_loaders_without_metaspace;
-   uintx                           _num_loaders_unloading;
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_METASPACE_PRINTCLDMETASPACEINFOCLOSURE_HPP
+-#define SHARE_MEMORY_METASPACE_PRINTCLDMETASPACEINFOCLOSURE_HPP
+-
+-#include "memory/iterator.hpp"
+-#include "memory/metaspace.hpp"
+-#include "memory/metaspace/metaspaceStatistics.hpp"
+-#include "utilities/globalDefinitions.hpp"
+-
+-class outputStream;
+-
+-namespace metaspace {
+-
+-class PrintCLDMetaspaceInfoClosure : public CLDClosure {
+-private:
+-  outputStream* const _out;
+-  const size_t        _scale;
+-  const bool          _do_print;
+-  const bool          _do_print_classes;
+-  const bool          _break_down_by_chunktype;
+-
+-public:
+-
+-  uintx                           _num_loaders;
+-  uintx                           _num_loaders_without_metaspace;
+-  uintx                           _num_loaders_unloading;
 -  ClassLoaderMetaspaceStatistics  _stats_total;
-+  clms_stats_t                    _stats_total;
- 
-   uintx                           _num_loaders_by_spacetype [Metaspace::MetaspaceTypeCount];
+-
+-  uintx                           _num_loaders_by_spacetype [Metaspace::MetaspaceTypeCount];
 -  ClassLoaderMetaspaceStatistics  _stats_by_spacetype [Metaspace::MetaspaceTypeCount];
-+  clms_stats_t                    _stats_by_spacetype [Metaspace::MetaspaceTypeCount];
- 
-   uintx                           _num_classes_by_spacetype [Metaspace::MetaspaceTypeCount];
-   uintx                           _num_classes_shared_by_spacetype [Metaspace::MetaspaceTypeCount];
+-
+-  uintx                           _num_classes_by_spacetype [Metaspace::MetaspaceTypeCount];
+-  uintx                           _num_classes_shared_by_spacetype [Metaspace::MetaspaceTypeCount];
+-  uintx                           _num_classes;
+-  uintx                           _num_classes_shared;
+-
+-  PrintCLDMetaspaceInfoClosure(outputStream* out, size_t scale, bool do_print,
+-      bool do_print_classes, bool break_down_by_chunktype);
+-  void do_cld(ClassLoaderData* cld);
+-
+-};
+-
+-} // namespace metaspace
+-
+-#endif // SHARE_MEMORY_METASPACE_PRINTCLDMETASPACEINFOCLOSURE_HPP
+diff --git a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.cpp
++++ /dev/null
+@@ -1,60 +0,0 @@
+-/*
+- * Copyright (c) 2018, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, SAP and/or its affiliates.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-#include "precompiled.hpp"
+-
+-#include "memory/metaspaceShared.hpp"
+-#include "memory/metaspace/printMetaspaceInfoKlassClosure.hpp"
+-#include "memory/resourceArea.hpp"
+-#include "oops/reflectionAccessorImplKlassHelper.hpp"
+-#include "utilities/globalDefinitions.hpp"
+-#include "utilities/ostream.hpp"
+-
+-
+-namespace metaspace {
+-
+-PrintMetaspaceInfoKlassClosure::PrintMetaspaceInfoKlassClosure(outputStream* out, bool do_print)
+-: _out(out), _cnt(0)
+-{}
+-
+-void PrintMetaspaceInfoKlassClosure::do_klass(Klass* k) {
+-  _cnt ++;
+-  _out->cr_indent();
+-  _out->print(UINTX_FORMAT_W(4) ": ", _cnt);
+-
+-  // Print a 's' for shared classes
+-  _out->put(k->is_shared() ? 's': ' ');
+-
+-  ResourceMark rm;
+-  _out->print("  %s", k->external_name());
+-
+-  // Special treatment for generated core reflection accessor classes: print invocation target.
+-  if (ReflectionAccessorImplKlassHelper::is_generated_accessor(k)) {
+-    _out->print(" (invokes: ");
+-    ReflectionAccessorImplKlassHelper::print_invocation_target(_out, k);
+-    _out->print(")");
+-  }
+-}
+-
+-} // namespace metaspace
+diff --git a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp b/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
+deleted file mode 100644
+--- a/src/hotspot/share/memory/metaspace/printMetaspaceInfoKlassClosure.hpp
++++ /dev/null
+@@ -1,54 +0,0 @@
+-/*
+- * Copyright (c) 2018, 2019, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, SAP and/or its affiliates.
+- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+- *
+- * This code is free software; you can redistribute it and/or modify it
+- * under the terms of the GNU General Public License version 2 only, as
+- * published by the Free Software Foundation.
+- *
+- * This code is distributed in the hope that it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+- * version 2 for more details (a copy is included in the LICENSE file that
+- * accompanied this code).
+- *
+- * You should have received a copy of the GNU General Public License version
+- * 2 along with this work; if not, write to the Free Software Foundation,
+- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+- *
+- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+- * or visit www.oracle.com if you need additional information or have any
+- * questions.
+- *
+- */
+-
+-#ifndef SHARE_MEMORY_METASPACE_PRINTMETASPACEINFOKLASSCLOSURE_HPP
+-#define SHARE_MEMORY_METASPACE_PRINTMETASPACEINFOKLASSCLOSURE_HPP
+-
+-#include "memory/iterator.hpp"
+-#include "utilities/globalDefinitions.hpp"
+-
+-class outputStream;
+-class InstanceKlass;
+-
+-namespace metaspace {
+-
+-// Helper class for MetaspaceUtils::print_report()
+-class PrintMetaspaceInfoKlassClosure : public KlassClosure {
+-private:
+-  outputStream* const _out;
+-  uintx _cnt;
+-
+-  bool print_reflection_invocation_target(outputStream* out, InstanceKlass* magic_accessor_impl_class);
+-
+-public:
+-
+-  PrintMetaspaceInfoKlassClosure(outputStream* out, bool do_print);
+-  void do_klass(Klass* k);
+-
+-}; // end: PrintKlassInfoClosure
+-
+-} // namespace metaspace
+-
+-#endif // SHARE_MEMORY_METASPACE_PRINTMETASPACEINFOKLASSCLOSURE_HPP
 diff --git a/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp b/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
 --- a/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
 +++ b/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp
@@ -2506,15 +2874,15 @@ diff --git a/src/hotspot/share/memory/metaspaceChunkFreeListSummary.hpp b/src/ho
 diff --git a/src/hotspot/share/memory/metaspaceClosure.hpp b/src/hotspot/share/memory/metaspaceClosure.hpp
 --- a/src/hotspot/share/memory/metaspaceClosure.hpp
 +++ b/src/hotspot/share/memory/metaspaceClosure.hpp
-@@ -106,7 +106,7 @@
+@@ -105,7 +105,7 @@
    //         Symbol*     bar() { return (Symbol*)    _obj; }
    //
    // [2] All Array<T> dimensions are statically declared.
 -  class Ref : public CHeapObj<mtInternal> {
 +  class Ref : public CHeapObj<mtMetaspace> {
      Writability _writability;
+     bool _keep_after_pushing;
      Ref* _next;
-     NONCOPYABLE(Ref);
 diff --git a/src/hotspot/share/memory/metaspaceCounters.cpp b/src/hotspot/share/memory/metaspaceCounters.cpp
 --- a/src/hotspot/share/memory/metaspaceCounters.cpp
 +++ b/src/hotspot/share/memory/metaspaceCounters.cpp
@@ -2635,14 +3003,14 @@ diff --git a/src/hotspot/share/memory/universe.cpp b/src/hotspot/share/memory/un
    if (should_verify_subset(Verify_MetaspaceUtils)) {
      log_debug(gc, verify)("MetaspaceUtils");
 -    MetaspaceUtils::verify_free_chunks();
-+    DEBUG_ONLY(MetaspaceUtils::verify(true);)
++    DEBUG_ONLY(MetaspaceUtils::verify();)
    }
    if (should_verify_subset(Verify_JNIHandles)) {
      log_debug(gc, verify)("JNIHandles");
 diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/globals.hpp
 --- a/src/hotspot/share/runtime/globals.hpp
 +++ b/src/hotspot/share/runtime/globals.hpp
-@@ -900,7 +900,6 @@
+@@ -907,7 +907,6 @@
            NOT_LP64(2200*K) LP64_ONLY(4*M),                                  \
            "(Deprecated) Initial size of the boot class loader data metaspace") \
            range(30*K, max_uintx/BytesPerWord)                               \
@@ -2650,7 +3018,7 @@ diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/g
                                                                              \
    product(bool, PrintHeapAtSIGBREAK, true,                                  \
            "Print heap layout in response to SIGBREAK")                      \
-@@ -1551,6 +1550,18 @@
+@@ -1558,6 +1557,18 @@
            "class pointers are used")                                        \
            range(1*M, 3*G)                                                   \
                                                                              \
@@ -2664,8 +3032,8 @@ diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/g
 +          "Metapace allocations are guarded.")                              \
 +                                                                            \
 +  develop(bool, MetaspaceHandleDeallocations, true,                         \
-+	        "Switch off Metapace deallocation handling.")                     \
-+																		                                        \
++          "Switch off Metapace deallocation handling.")                     \
++                                                                            \
    manageable(uintx, MinHeapFreeRatio, 40,                                   \
            "The minimum percentage of heap free after GC to avoid expansion."\
            " For most GCs this applies to the old generation. In G1 and"     \
@@ -2676,11 +3044,11 @@ diff --git a/src/hotspot/share/runtime/vmOperations.cpp b/src/hotspot/share/runt
  #include "logging/logStream.hpp"
  #include "logging/logConfiguration.hpp"
  #include "memory/heapInspection.hpp"
-+#include "memory/metaspace/metaspaceReport.hpp"
++#include "memory/metaspace/msReport.hpp"
  #include "memory/resourceArea.hpp"
  #include "memory/universe.hpp"
  #include "oops/symbol.hpp"
-@@ -183,7 +184,7 @@
+@@ -186,7 +187,7 @@
  }
  
  void VM_PrintMetadata::doit() {
@@ -2700,146 +3068,62 @@ diff --git a/src/hotspot/share/runtime/vmStructs.cpp b/src/hotspot/share/runtime
  #include "memory/padded.hpp"
  #include "memory/referenceType.hpp"
  #include "memory/universe.hpp"
+diff --git a/src/hotspot/share/services/diagnosticCommand.cpp b/src/hotspot/share/services/diagnosticCommand.cpp
+--- a/src/hotspot/share/services/diagnosticCommand.cpp
++++ b/src/hotspot/share/services/diagnosticCommand.cpp
+@@ -30,7 +30,7 @@
+ #include "compiler/compileBroker.hpp"
+ #include "compiler/directivesParser.hpp"
+ #include "gc/shared/gcVMOperations.hpp"
+-#include "memory/metaspace/metaspaceDCmd.hpp"
++#include "memory/metaspace/msDCmd.hpp"
+ #include "memory/resourceArea.hpp"
+ #include "memory/universe.hpp"
+ #include "oops/objArrayOop.inline.hpp"
 diff --git a/src/hotspot/share/services/memReporter.cpp b/src/hotspot/share/services/memReporter.cpp
 --- a/src/hotspot/share/services/memReporter.cpp
 +++ b/src/hotspot/share/services/memReporter.cpp
-@@ -23,7 +23,10 @@
+@@ -23,7 +23,9 @@
   */
  #include "precompiled.hpp"
  
 +
  #include "memory/allocation.hpp"
 +#include "memory/metaspace.hpp"
-+#include "memory/metaspace/metaspaceEnums.hpp"
  #include "services/mallocTracker.hpp"
  #include "services/memReporter.hpp"
  #include "services/threadStackTracker.hpp"
-@@ -209,26 +212,26 @@
-   }
- }
- 
--void MemSummaryReporter::report_metadata(Metaspace::MetadataType type) const {
--  assert(type == Metaspace::NonClassType || type == Metaspace::ClassType,
--    "Invalid metadata type");
--  const char* name = (type == Metaspace::NonClassType) ?
--    "Metadata:   " : "Class space:";
-+void MemSummaryReporter::report_metadata(Metaspace::MetadataType mdType) const {
-+  DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));
-+  const char* const name = metaspace::describe_mdtype(mdType);
- 
-   outputStream* out = output();
+@@ -219,9 +221,10 @@
    const char* scale = current_scale();
--  size_t committed   = MetaspaceUtils::committed_bytes(type);
--  size_t used = MetaspaceUtils::used_bytes(type);
+   size_t committed   = MetaspaceUtils::committed_bytes(type);
+   size_t used = MetaspaceUtils::used_bytes(type);
 -  size_t free = (MetaspaceUtils::capacity_bytes(type) - used)
 -              + MetaspaceUtils::free_chunks_total_bytes(type)
 -              + MetaspaceUtils::free_in_vs_bytes(type);
-+  size_t committed   = MetaspaceUtils::committed_bytes(mdType);
-+  size_t used = MetaspaceUtils::used_bytes(mdType);
-+  size_t free = 0; //
-+      // TODO think this thru. What is free in this context?
-+      // (MetaspaceUtils::capacity_bytes(type) - used)
-+  //         + MetaspaceUtils::free_chunks_total_bytes(type)
-+  //          + MetaspaceUtils::free_in_vs_bytes(type);
++
++  // The answer to "what is free" in metaspace is complex and cannot be answered with a single number.
++  // Free as in available to all loaders? Free, pinned to one loader? For now, keep it simple.
++  size_t free = committed - used;
  
    assert(committed >= used + free, "Sanity");
    size_t waste = committed - (used + free);
- 
-   out->print_cr("%27s (  %s)", " ", name);
-   out->print("%27s (    ", " ");
--  print_total(MetaspaceUtils::reserved_bytes(type), committed);
-+  print_total(MetaspaceUtils::reserved_bytes(mdType), committed);
-   out->print_cr(")");
-   out->print_cr("%27s (    used=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(used), scale);
-   out->print_cr("%27s (    free=" SIZE_FORMAT "%s)", " ", amount_in_current_scale(free), scale);
-@@ -599,37 +602,37 @@
-   }
- }
- 
--void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType type,
-+void MemSummaryDiffReporter::print_metaspace_diff(Metaspace::MetadataType mdType,
-                                                   const MetaspaceSnapshot* current_ms,
-                                                   const MetaspaceSnapshot* early_ms) const {
--  const char* name = (type == Metaspace::NonClassType) ?
--    "Metadata:   " : "Class space:";
-+  DEBUG_ONLY(metaspace::check_valid_mdtype(mdType));
-+  const char* const name = metaspace::describe_mdtype(mdType);
- 
-   outputStream* out = output();
-   const char* scale = current_scale();
- 
-   out->print_cr("%27s (  %s)", " ", name);
-   out->print("%27s (    ", " ");
--  print_virtual_memory_diff(current_ms->reserved_in_bytes(type),
--                            current_ms->committed_in_bytes(type),
--                            early_ms->reserved_in_bytes(type),
--                            early_ms->committed_in_bytes(type));
-+  print_virtual_memory_diff(current_ms->reserved_in_bytes(mdType),
-+                            current_ms->committed_in_bytes(mdType),
-+                            early_ms->reserved_in_bytes(mdType),
-+                            early_ms->committed_in_bytes(mdType));
-   out->print_cr(")");
- 
--  long diff_used = diff_in_current_scale(current_ms->used_in_bytes(type),
--                                         early_ms->used_in_bytes(type));
--  long diff_free = diff_in_current_scale(current_ms->free_in_bytes(type),
--                                         early_ms->free_in_bytes(type));
-+  long diff_used = diff_in_current_scale(current_ms->used_in_bytes(mdType),
-+                                         early_ms->used_in_bytes(mdType));
-+  long diff_free = diff_in_current_scale(current_ms->free_in_bytes(mdType),
-+                                         early_ms->free_in_bytes(mdType));
- 
--  size_t current_waste = current_ms->committed_in_bytes(type)
--    - (current_ms->used_in_bytes(type) + current_ms->free_in_bytes(type));
--  size_t early_waste = early_ms->committed_in_bytes(type)
--    - (early_ms->used_in_bytes(type) + early_ms->free_in_bytes(type));
-+  size_t current_waste = current_ms->committed_in_bytes(mdType)
-+    - (current_ms->used_in_bytes(mdType) + current_ms->free_in_bytes(mdType));
-+  size_t early_waste = early_ms->committed_in_bytes(mdType)
-+    - (early_ms->used_in_bytes(mdType) + early_ms->free_in_bytes(mdType));
-   long diff_waste = diff_in_current_scale(current_waste, early_waste);
- 
-   // Diff used
-   out->print("%27s (    used=" SIZE_FORMAT "%s", " ",
--    amount_in_current_scale(current_ms->used_in_bytes(type)), scale);
-+    amount_in_current_scale(current_ms->used_in_bytes(mdType)), scale);
-   if (diff_used != 0) {
-     out->print(" %+ld%s", diff_used, scale);
-   }
-@@ -637,7 +640,7 @@
- 
-   // Diff free
-   out->print("%27s (    free=" SIZE_FORMAT "%s", " ",
--    amount_in_current_scale(current_ms->free_in_bytes(type)), scale);
-+    amount_in_current_scale(current_ms->free_in_bytes(mdType)), scale);
-   if (diff_free != 0) {
-     out->print(" %+ld%s", diff_free, scale);
-   }
-@@ -647,7 +650,7 @@
-   // Diff waste
-   out->print("%27s (    waste=" SIZE_FORMAT "%s =%2.2f%%", " ",
-     amount_in_current_scale(current_waste), scale,
--    ((float)current_waste * 100) / current_ms->committed_in_bytes(type));
-+    ((float)current_waste * 100) / current_ms->committed_in_bytes(mdType));
-   if (diff_waste != 0) {
-     out->print(" %+ld%s", diff_waste, scale);
-   }
 diff --git a/src/hotspot/share/services/virtualMemoryTracker.cpp b/src/hotspot/share/services/virtualMemoryTracker.cpp
 --- a/src/hotspot/share/services/virtualMemoryTracker.cpp
 +++ b/src/hotspot/share/services/virtualMemoryTracker.cpp
-@@ -667,9 +667,9 @@
+@@ -667,10 +667,9 @@
    mss._committed_in_bytes[type]  = MetaspaceUtils::committed_bytes(type);
    mss._used_in_bytes[type]       = MetaspaceUtils::used_bytes(type);
  
 -  size_t free_in_bytes = (MetaspaceUtils::capacity_bytes(type) - MetaspaceUtils::used_bytes(type))
 -                       + MetaspaceUtils::free_chunks_total_bytes(type)
 -                       + MetaspaceUtils::free_in_vs_bytes(type);
-+  size_t free_in_bytes = 0;// TODO fix(MetaspaceUtils::capacity_bytes(type) - MetaspaceUtils::used_bytes(type))
-+                     //  + MetaspaceUtils::free_chunks_total_bytes(type)
-+                     //  + MetaspaceUtils::free_in_vs_bytes(type);
-   mss._free_in_bytes[type] = free_in_bytes;
+-  mss._free_in_bytes[type] = free_in_bytes;
++  // The answer to "what is free" in metaspace is complex and cannot be answered with a single number.
++  // Free as in available to all loaders? Free, pinned to one loader? For now, keep it simple.
++  mss._free_in_bytes[type] = mss._committed_in_bytes[type] - mss._used_in_bytes[type];
  }
  
+ void MetaspaceSnapshot::snapshot(MetaspaceSnapshot& mss) {
 diff --git a/src/hotspot/share/services/virtualMemoryTracker.hpp b/src/hotspot/share/services/virtualMemoryTracker.hpp
 --- a/src/hotspot/share/services/virtualMemoryTracker.hpp
 +++ b/src/hotspot/share/services/virtualMemoryTracker.hpp

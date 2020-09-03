@@ -82,99 +82,99 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center><a href='../../../../../src/hotspot/share/gc/shared/jvmFlagConstraintsGC.hpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shenandoah/shenandoahHeap.hpp.sdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/gc/shenandoah/shenandoahHeap.cpp</h2>
 <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre>
 
 <table><tr valign="top">
 <td><pre>
 
 </pre><hr></hr><pre>
-2185   {
-2186     ShenandoahGCPhase phase(full_gc ?
-2187                             ShenandoahPhaseTimings::full_gc_purge_class_unload :
-2188                             ShenandoahPhaseTimings::purge_class_unload);
-2189     bool purged_class = SystemDictionary::do_unloading(gc_timer());
-2190 
-2191     ShenandoahIsAliveSelector is_alive;
-2192     uint num_workers = _workers-&gt;active_workers();
-2193     ShenandoahClassUnloadingTask unlink_task(is_alive.is_alive_closure(), num_workers, purged_class);
-2194     _workers-&gt;run_task(&amp;unlink_task);
-2195   }
-2196 
-2197   {
-2198     ShenandoahGCPhase phase(full_gc ?
-2199                             ShenandoahPhaseTimings::full_gc_purge_cldg :
-2200                             ShenandoahPhaseTimings::purge_cldg);
-2201     ClassLoaderDataGraph::purge();
-2202   }
-2203   // Resize and verify metaspace
-2204   MetaspaceGC::compute_new_size();
-<span class="changed">2205   MetaspaceUtils::verify_metrics();</span>
-2206 }
-2207 
-2208 // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
-2209 // so they should not have forwarded oops.
-2210 // However, we do need to "null" dead oops in the roots, if can not be done
-2211 // in concurrent cycles.
-2212 void ShenandoahHeap::stw_process_weak_roots(bool full_gc) {
-2213   ShenandoahGCPhase root_phase(full_gc ?
-2214                                ShenandoahPhaseTimings::full_gc_purge :
-2215                                ShenandoahPhaseTimings::purge);
-2216   uint num_workers = _workers-&gt;active_workers();
-2217   ShenandoahPhaseTimings::Phase timing_phase = full_gc ?
-2218                                                ShenandoahPhaseTimings::full_gc_purge_weak_par :
-2219                                                ShenandoahPhaseTimings::purge_weak_par;
-2220   ShenandoahGCPhase phase(timing_phase);
-2221   ShenandoahGCWorkerPhase worker_phase(timing_phase);
-2222 
-2223   // Cleanup weak roots
-2224   if (has_forwarded_objects()) {
-2225     ShenandoahForwardedIsAliveClosure is_alive;
+2213   {
+2214     ShenandoahGCPhase phase(full_gc ?
+2215                             ShenandoahPhaseTimings::full_gc_purge_class_unload :
+2216                             ShenandoahPhaseTimings::purge_class_unload);
+2217     bool purged_class = SystemDictionary::do_unloading(gc_timer());
+2218 
+2219     ShenandoahIsAliveSelector is_alive;
+2220     uint num_workers = _workers-&gt;active_workers();
+2221     ShenandoahClassUnloadingTask unlink_task(is_alive.is_alive_closure(), num_workers, purged_class);
+2222     _workers-&gt;run_task(&amp;unlink_task);
+2223   }
+2224 
+2225   {
+2226     ShenandoahGCPhase phase(full_gc ?
+2227                             ShenandoahPhaseTimings::full_gc_purge_cldg :
+2228                             ShenandoahPhaseTimings::purge_cldg);
+2229     ClassLoaderDataGraph::purge(/*at_safepoint*/true);
+2230   }
+2231   // Resize and verify metaspace
+2232   MetaspaceGC::compute_new_size();
+<span class="changed">2233   MetaspaceUtils::verify_metrics();</span>
+2234 }
+2235 
+2236 // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
+2237 // so they should not have forwarded oops.
+2238 // However, we do need to "null" dead oops in the roots, if can not be done
+2239 // in concurrent cycles.
+2240 void ShenandoahHeap::stw_process_weak_roots(bool full_gc) {
+2241   ShenandoahGCPhase root_phase(full_gc ?
+2242                                ShenandoahPhaseTimings::full_gc_purge :
+2243                                ShenandoahPhaseTimings::purge);
+2244   uint num_workers = _workers-&gt;active_workers();
+2245   ShenandoahPhaseTimings::Phase timing_phase = full_gc ?
+2246                                                ShenandoahPhaseTimings::full_gc_purge_weak_par :
+2247                                                ShenandoahPhaseTimings::purge_weak_par;
+2248   ShenandoahGCPhase phase(timing_phase);
+2249   ShenandoahGCWorkerPhase worker_phase(timing_phase);
+2250 
+2251   // Cleanup weak roots
+2252   if (has_forwarded_objects()) {
+2253     ShenandoahForwardedIsAliveClosure is_alive;
 
 </pre><hr></hr>
 </pre></td><td><pre>
 
 </pre><hr></hr><pre>
-2185   {
-2186     ShenandoahGCPhase phase(full_gc ?
-2187                             ShenandoahPhaseTimings::full_gc_purge_class_unload :
-2188                             ShenandoahPhaseTimings::purge_class_unload);
-2189     bool purged_class = SystemDictionary::do_unloading(gc_timer());
-2190 
-2191     ShenandoahIsAliveSelector is_alive;
-2192     uint num_workers = _workers-&gt;active_workers();
-2193     ShenandoahClassUnloadingTask unlink_task(is_alive.is_alive_closure(), num_workers, purged_class);
-2194     _workers-&gt;run_task(&amp;unlink_task);
-2195   }
-2196 
-2197   {
-2198     ShenandoahGCPhase phase(full_gc ?
-2199                             ShenandoahPhaseTimings::full_gc_purge_cldg :
-2200                             ShenandoahPhaseTimings::purge_cldg);
-2201     ClassLoaderDataGraph::purge();
-2202   }
-2203   // Resize and verify metaspace
-2204   MetaspaceGC::compute_new_size();
-<span class="changed">2205   DEBUG_ONLY(MetaspaceUtils::verify(false);)</span>
-2206 }
-2207 
-2208 // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
-2209 // so they should not have forwarded oops.
-2210 // However, we do need to "null" dead oops in the roots, if can not be done
-2211 // in concurrent cycles.
-2212 void ShenandoahHeap::stw_process_weak_roots(bool full_gc) {
-2213   ShenandoahGCPhase root_phase(full_gc ?
-2214                                ShenandoahPhaseTimings::full_gc_purge :
-2215                                ShenandoahPhaseTimings::purge);
-2216   uint num_workers = _workers-&gt;active_workers();
-2217   ShenandoahPhaseTimings::Phase timing_phase = full_gc ?
-2218                                                ShenandoahPhaseTimings::full_gc_purge_weak_par :
-2219                                                ShenandoahPhaseTimings::purge_weak_par;
-2220   ShenandoahGCPhase phase(timing_phase);
-2221   ShenandoahGCWorkerPhase worker_phase(timing_phase);
-2222 
-2223   // Cleanup weak roots
-2224   if (has_forwarded_objects()) {
-2225     ShenandoahForwardedIsAliveClosure is_alive;
+2213   {
+2214     ShenandoahGCPhase phase(full_gc ?
+2215                             ShenandoahPhaseTimings::full_gc_purge_class_unload :
+2216                             ShenandoahPhaseTimings::purge_class_unload);
+2217     bool purged_class = SystemDictionary::do_unloading(gc_timer());
+2218 
+2219     ShenandoahIsAliveSelector is_alive;
+2220     uint num_workers = _workers-&gt;active_workers();
+2221     ShenandoahClassUnloadingTask unlink_task(is_alive.is_alive_closure(), num_workers, purged_class);
+2222     _workers-&gt;run_task(&amp;unlink_task);
+2223   }
+2224 
+2225   {
+2226     ShenandoahGCPhase phase(full_gc ?
+2227                             ShenandoahPhaseTimings::full_gc_purge_cldg :
+2228                             ShenandoahPhaseTimings::purge_cldg);
+2229     ClassLoaderDataGraph::purge(/*at_safepoint*/true);
+2230   }
+2231   // Resize and verify metaspace
+2232   MetaspaceGC::compute_new_size();
+<span class="changed">2233   DEBUG_ONLY(MetaspaceUtils::verify();)</span>
+2234 }
+2235 
+2236 // Weak roots are either pre-evacuated (final mark) or updated (final updaterefs),
+2237 // so they should not have forwarded oops.
+2238 // However, we do need to "null" dead oops in the roots, if can not be done
+2239 // in concurrent cycles.
+2240 void ShenandoahHeap::stw_process_weak_roots(bool full_gc) {
+2241   ShenandoahGCPhase root_phase(full_gc ?
+2242                                ShenandoahPhaseTimings::full_gc_purge :
+2243                                ShenandoahPhaseTimings::purge);
+2244   uint num_workers = _workers-&gt;active_workers();
+2245   ShenandoahPhaseTimings::Phase timing_phase = full_gc ?
+2246                                                ShenandoahPhaseTimings::full_gc_purge_weak_par :
+2247                                                ShenandoahPhaseTimings::purge_weak_par;
+2248   ShenandoahGCPhase phase(timing_phase);
+2249   ShenandoahGCWorkerPhase worker_phase(timing_phase);
+2250 
+2251   // Cleanup weak roots
+2252   if (has_forwarded_objects()) {
+2253     ShenandoahForwardedIsAliveClosure is_alive;
 
 </pre><hr></hr>
 </pre></td>

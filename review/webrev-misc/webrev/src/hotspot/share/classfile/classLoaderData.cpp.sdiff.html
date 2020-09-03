@@ -82,7 +82,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center>&lt prev <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/classfile/classLoaderData.hpp.sdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/classfile/classLoaderData.cpp</h2>
 <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre>
 
 <table><tr valign="top">
 <td><pre>
@@ -115,62 +115,62 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   65 #include "oops/oop.inline.hpp"
   66 #include "oops/oopHandle.inline.hpp"
   67 #include "oops/weakHandle.inline.hpp"
-  68 #include "runtime/atomic.hpp"
-  69 #include "runtime/handles.inline.hpp"
-  70 #include "runtime/mutex.hpp"
-  71 #include "runtime/safepoint.hpp"
-  72 #include "utilities/growableArray.hpp"
-  73 #include "utilities/macros.hpp"
-  74 #include "utilities/ostream.hpp"
-  75 
-  76 ClassLoaderData * ClassLoaderData::_the_null_class_loader_data = NULL;
-  77 
-  78 void ClassLoaderData::init_null_class_loader_data() {
-  79   assert(_the_null_class_loader_data == NULL, "cannot initialize twice");
-  80   assert(ClassLoaderDataGraph::_head == NULL, "cannot initialize twice");
-  81 
+  68 #include "runtime/arguments.hpp"
+  69 #include "runtime/atomic.hpp"
+  70 #include "runtime/handles.inline.hpp"
+  71 #include "runtime/mutex.hpp"
+  72 #include "runtime/safepoint.hpp"
+  73 #include "utilities/growableArray.hpp"
+  74 #include "utilities/macros.hpp"
+  75 #include "utilities/ostream.hpp"
+  76 
+  77 ClassLoaderData * ClassLoaderData::_the_null_class_loader_data = NULL;
+  78 
+  79 void ClassLoaderData::init_null_class_loader_data() {
+  80   assert(_the_null_class_loader_data == NULL, "cannot initialize twice");
+  81   assert(ClassLoaderDataGraph::_head == NULL, "cannot initialize twice");
 
 </pre><hr></hr><pre>
- 933 
- 934   if (_jmethod_ids != NULL) {
- 935     Method::print_jmethod_ids(this, out);
- 936   }
- 937   out-&gt;print(" handles count %d", _handles.count());
- 938   out-&gt;print(" dependencies %d", _dependency_count);
- 939   out-&gt;print_cr("}");
- 940 }
- 941 #endif // PRODUCT
- 942 
- 943 void ClassLoaderData::print() const { print_on(tty); }
- 944 
- 945 void ClassLoaderData::verify() {
- 946   assert_locked_or_safepoint(_metaspace_lock);
- 947   oop cl = class_loader();
- 948 
- 949   guarantee(this == class_loader_data(cl) || has_class_mirror_holder(), "Must be the same");
- 950   guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
+ 936 
+ 937   if (_jmethod_ids != NULL) {
+ 938     Method::print_jmethod_ids(this, out);
+ 939   }
+ 940   out-&gt;print(" handles count %d", _handles.count());
+ 941   out-&gt;print(" dependencies %d", _dependency_count);
+ 942   out-&gt;print_cr("}");
+ 943 }
+ 944 #endif // PRODUCT
+ 945 
+ 946 void ClassLoaderData::print() const { print_on(tty); }
+ 947 
+ 948 void ClassLoaderData::verify() {
+ 949   assert_locked_or_safepoint(_metaspace_lock);
+ 950   oop cl = class_loader();
  951 
- 952   // Verify the integrity of the allocated space.
+ 952   guarantee(this == class_loader_data(cl) || has_class_mirror_holder(), "Must be the same");
+ 953   guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
+ 954 
+ 955   // Verify the integrity of the allocated space.
 
- 953   if (metaspace_or_null() != NULL) {
- 954     metaspace_or_null()-&gt;verify();
- 955   }
+ 956   if (metaspace_or_null() != NULL) {
+ 957     metaspace_or_null()-&gt;verify();
+ 958   }
 
- 956 
- 957   for (Klass* k = _klasses; k != NULL; k = k-&gt;next_link()) {
- 958     guarantee(k-&gt;class_loader_data() == this, "Must be the same");
- 959     k-&gt;verify();
- 960     assert(k != k-&gt;next_link(), "no loops!");
- 961   }
- 962 }
- 963 
- 964 bool ClassLoaderData::contains_klass(Klass* klass) {
- 965   // Lock-free access requires load_acquire
- 966   for (Klass* k = Atomic::load_acquire(&amp;_klasses); k != NULL; k = k-&gt;next_link()) {
- 967     if (k == klass) return true;
- 968   }
- 969   return false;
- 970 }
+ 959 
+ 960   for (Klass* k = _klasses; k != NULL; k = k-&gt;next_link()) {
+ 961     guarantee(k-&gt;class_loader_data() == this, "Must be the same");
+ 962     k-&gt;verify();
+ 963     assert(k != k-&gt;next_link(), "no loops!");
+ 964   }
+ 965 }
+ 966 
+ 967 bool ClassLoaderData::contains_klass(Klass* klass) {
+ 968   // Lock-free access requires load_acquire
+ 969   for (Klass* k = Atomic::load_acquire(&amp;_klasses); k != NULL; k = k-&gt;next_link()) {
+ 970     if (k == klass) return true;
+ 971   }
+ 972   return false;
+ 973 }
 </pre></td><td><pre>
 
 </pre><hr></hr><pre>
@@ -201,62 +201,62 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   66 #include "oops/oop.inline.hpp"
   67 #include "oops/oopHandle.inline.hpp"
   68 #include "oops/weakHandle.inline.hpp"
-  69 #include "runtime/atomic.hpp"
-  70 #include "runtime/handles.inline.hpp"
-  71 #include "runtime/mutex.hpp"
-  72 #include "runtime/safepoint.hpp"
-  73 #include "utilities/growableArray.hpp"
-  74 #include "utilities/macros.hpp"
-  75 #include "utilities/ostream.hpp"
-  76 
-  77 ClassLoaderData * ClassLoaderData::_the_null_class_loader_data = NULL;
-  78 
-  79 void ClassLoaderData::init_null_class_loader_data() {
-  80   assert(_the_null_class_loader_data == NULL, "cannot initialize twice");
-  81   assert(ClassLoaderDataGraph::_head == NULL, "cannot initialize twice");
-  82 
+  69 #include "runtime/arguments.hpp"
+  70 #include "runtime/atomic.hpp"
+  71 #include "runtime/handles.inline.hpp"
+  72 #include "runtime/mutex.hpp"
+  73 #include "runtime/safepoint.hpp"
+  74 #include "utilities/growableArray.hpp"
+  75 #include "utilities/macros.hpp"
+  76 #include "utilities/ostream.hpp"
+  77 
+  78 ClassLoaderData * ClassLoaderData::_the_null_class_loader_data = NULL;
+  79 
+  80 void ClassLoaderData::init_null_class_loader_data() {
+  81   assert(_the_null_class_loader_data == NULL, "cannot initialize twice");
+  82   assert(ClassLoaderDataGraph::_head == NULL, "cannot initialize twice");
 
 </pre><hr></hr><pre>
- 934 
- 935   if (_jmethod_ids != NULL) {
- 936     Method::print_jmethod_ids(this, out);
- 937   }
- 938   out-&gt;print(" handles count %d", _handles.count());
- 939   out-&gt;print(" dependencies %d", _dependency_count);
- 940   out-&gt;print_cr("}");
- 941 }
- 942 #endif // PRODUCT
- 943 
- 944 void ClassLoaderData::print() const { print_on(tty); }
- 945 
- 946 void ClassLoaderData::verify() {
- 947   assert_locked_or_safepoint(_metaspace_lock);
- 948   oop cl = class_loader();
- 949 
- 950   guarantee(this == class_loader_data(cl) || has_class_mirror_holder(), "Must be the same");
- 951   guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
+ 937 
+ 938   if (_jmethod_ids != NULL) {
+ 939     Method::print_jmethod_ids(this, out);
+ 940   }
+ 941   out-&gt;print(" handles count %d", _handles.count());
+ 942   out-&gt;print(" dependencies %d", _dependency_count);
+ 943   out-&gt;print_cr("}");
+ 944 }
+ 945 #endif // PRODUCT
+ 946 
+ 947 void ClassLoaderData::print() const { print_on(tty); }
+ 948 
+ 949 void ClassLoaderData::verify() {
+ 950   assert_locked_or_safepoint(_metaspace_lock);
+ 951   oop cl = class_loader();
  952 
- 953   // Verify the integrity of the allocated space.
-<span class="new"> 954 #ifdef ASSERT</span>
- 955   if (metaspace_or_null() != NULL) {
- 956     metaspace_or_null()-&gt;verify();
- 957   }
-<span class="new"> 958 #endif</span>
- 959 
- 960   for (Klass* k = _klasses; k != NULL; k = k-&gt;next_link()) {
- 961     guarantee(k-&gt;class_loader_data() == this, "Must be the same");
- 962     k-&gt;verify();
- 963     assert(k != k-&gt;next_link(), "no loops!");
- 964   }
- 965 }
- 966 
- 967 bool ClassLoaderData::contains_klass(Klass* klass) {
- 968   // Lock-free access requires load_acquire
- 969   for (Klass* k = Atomic::load_acquire(&amp;_klasses); k != NULL; k = k-&gt;next_link()) {
- 970     if (k == klass) return true;
- 971   }
- 972   return false;
- 973 }
+ 953   guarantee(this == class_loader_data(cl) || has_class_mirror_holder(), "Must be the same");
+ 954   guarantee(cl != NULL || this == ClassLoaderData::the_null_class_loader_data() || has_class_mirror_holder(), "must be");
+ 955 
+ 956   // Verify the integrity of the allocated space.
+<span class="new"> 957 #ifdef ASSERT</span>
+ 958   if (metaspace_or_null() != NULL) {
+ 959     metaspace_or_null()-&gt;verify();
+ 960   }
+<span class="new"> 961 #endif</span>
+ 962 
+ 963   for (Klass* k = _klasses; k != NULL; k = k-&gt;next_link()) {
+ 964     guarantee(k-&gt;class_loader_data() == this, "Must be the same");
+ 965     k-&gt;verify();
+ 966     assert(k != k-&gt;next_link(), "no loops!");
+ 967   }
+ 968 }
+ 969 
+ 970 bool ClassLoaderData::contains_klass(Klass* klass) {
+ 971   // Lock-free access requires load_acquire
+ 972   for (Klass* k = Atomic::load_acquire(&amp;_klasses); k != NULL; k = k-&gt;next_link()) {
+ 973     if (k == klass) return true;
+ 974   }
+ 975   return false;
+ 976 }
 </pre></td>
 </tr></table>
 <center>&lt prev <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/classfile/classLoaderData.hpp.sdiff.html' target='_top'>next &gt</a></center>

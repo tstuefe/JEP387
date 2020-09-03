@@ -107,61 +107,63 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   25 
   26 /*
   27  * @test id=debug
-  28  * @library /test/lib
-  29  * @modules java.base/jdk.internal.misc
-  30  *          java.management
-  31  * @build sun.hotspot.WhiteBox
-  32  * @requires (vm.debug == true)
-  33  *
-  34  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
-  35  *
-  36  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10                                        TestMetaspaceAllocation
-  37  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocation
-  38  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocation
-  39  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocation
-  40  *
-  41  */
-  42 
-  43 /*
-  44  * @test id=ndebug
-  45  * @library /test/lib
-  46  * @modules java.base/jdk.internal.misc
-  47  *          java.management
-  48  * @build sun.hotspot.WhiteBox
-  49  * @requires (vm.debug == false)
-  50  *
-  51  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  28  * @bug 8251158
+  29  * @library /test/lib
+  30  * @modules java.base/jdk.internal.misc
+  31  *          java.management
+  32  * @build sun.hotspot.WhiteBox
+  33  * @requires (vm.debug == true)
+  34  *
+  35  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  36  *
+  37  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10                                        TestMetaspaceAllocation
+  38  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocation
+  39  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocation
+  40  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocation
+  41  *
+  42  */
+  43 
+  44 /*
+  45  * @test id=ndebug
+  46  * @bug 8251158
+  47  * @library /test/lib
+  48  * @modules java.base/jdk.internal.misc
+  49  *          java.management
+  50  * @build sun.hotspot.WhiteBox
+  51  * @requires (vm.debug == false)
   52  *
-  53  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI                                        TestMetaspaceAllocation
-  54  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocation
-  55  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocation
-  56  */
-  57 
-  58 public class TestMetaspaceAllocation {
+  53  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  54  *
+  55  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI                                        TestMetaspaceAllocation
+  56  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocation
+  57  * @run main/othervm -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocation
+  58  */
   59 
-  60     public static void main(String[] args) {
+  60 public class TestMetaspaceAllocation {
   61 
-  62         MetaspaceTestContext context = new MetaspaceTestContext();
-  63         MetaspaceTestArena arena1 = context.createArena(false, 1024 * 1024 * 4);
-  64         MetaspaceTestArena arena2 = context.createArena(true,1024 * 1024 * 4);
-  65 
-  66         Allocation a1 = arena1.allocate(100);
-  67         Allocation a2 = arena2.allocate(100);
-  68 
-  69         long used = context.usedWords();
-  70         long committed = context.committedWords();
-  71 
-  72         System.out.println("used " + used + " committed " + committed);
+  62     public static void main(String[] args) {
+  63 
+  64         MetaspaceTestContext context = new MetaspaceTestContext();
+  65         MetaspaceTestArena arena1 = context.createArena(false, 1024 * 1024 * 4);
+  66         MetaspaceTestArena arena2 = context.createArena(true,1024 * 1024 * 4);
+  67 
+  68         Allocation a1 = arena1.allocate(100);
+  69         Allocation a2 = arena2.allocate(100);
+  70 
+  71         long used = context.usedWords();
+  72         long committed = context.committedWords();
   73 
-  74         arena1.deallocate(a1);
+  74         System.out.println("used " + used + " committed " + committed);
   75 
-  76         context.destroyArena(arena2);
-  77         context.destroyArena(arena1);
-  78 
-  79         context.purge();
+  76         arena1.deallocate(a1);
+  77 
+  78         context.destroyArena(arena2);
+  79         context.destroyArena(arena1);
   80 
-  81         context.destroy();
+  81         context.purge();
   82 
-  83     }
-  84 }
+  83         context.destroy();
+  84 
+  85     }
+  86 }
 </pre></body></html>

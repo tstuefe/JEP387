@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -106,324 +106,328 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   24  */
   25 
   26 #include "precompiled.hpp"
-  27 #include "runtime/os.hpp"
-  28 
-  29 #include "metaspaceTestsCommon.hpp"
-  30 #include "metaspace/metaspace_rangehelpers.hpp"
-  31 
-  32 static int get_random(int limit) { return os::random() % limit; }
+  27 
+  28 #include "memory/metaspace/msCommitMask.hpp"
+  29 #include "memory/metaspace/msSettings.hpp"
+  30 #include "runtime/os.hpp"
+  31 #include "utilities/align.hpp"
+  32 #include "utilities/debug.hpp"
   33 
-  34 class CommitMaskTest {
-  35   const MetaWord* const _base;
-  36   const size_t _word_size;
-  37 
-  38   CommitMask _mask;
+  34 #include "metaspaceGtestCommon.hpp"
+  35 #include "metaspaceGtestRangeHelpers.hpp"
+  36 
+  37 using metaspace::CommitMask;
+  38 using metaspace::Settings;
   39 
-  40   void verify_mask() {
-  41     // Note: we omit the touch test since we operate on fictional
-  42     // memory
-  43     DEBUG_ONLY(_mask.verify(false);)
-  44   }
+  40 static int get_random(int limit) { return os::random() % limit; }
+  41 
+  42 class CommitMaskTest {
+  43   const MetaWord* const _base;
+  44   const size_t _word_size;
   45 
-  46   // Return a random sub range within [_base.._base + word_size),
-  47   // aligned to granule size
-  48   const MetaWord* calc_random_subrange(size_t* p_word_size) {
-  49     size_t l1 = get_random((int)_word_size);
-  50     size_t l2 = get_random((int)_word_size);
-  51     if (l1 &gt; l2) {
-  52       size_t l = l1;
-  53       l1 = l2;
-  54       l2 = l;
-  55     }
-  56     l1 = align_down(l1, Settings::commit_granule_words());
-  57     l2 = align_up(l2, Settings::commit_granule_words());
-  58 
-  59     const MetaWord* p = _base + l1;
-  60     const size_t len = l2 - l1;
-  61 
-  62     assert(p &gt;= _base &amp;&amp; p + len &lt;= _base + _word_size,
-  63            "Sanity");
-  64     *p_word_size = len;
-  65 
-  66     return p;
-  67   }
-  68 
-  69   void test1() {
-  70 
-  71     LOG("test1");
-  72 
-  73     // Commit everything
-  74     size_t prior_committed = _mask.mark_range_as_committed(_base, _word_size);
-  75     verify_mask();
-  76     ASSERT_LE(prior_committed, _word_size); // We do not really know
-  77 
-  78     // Commit everything again, should be a noop
-  79     prior_committed = _mask.mark_range_as_committed(_base, _word_size);
-  80     verify_mask();
-  81     ASSERT_EQ(prior_committed, _word_size);
-  82 
-  83     ASSERT_EQ(_mask.get_committed_size(),
-  84               _word_size);
-  85     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
-  86               _word_size);
-  87 
-  88     for (const MetaWord* p = _base; p &lt; _base + _word_size; p ++) {
-  89       ASSERT_TRUE(_mask.is_committed_address(p));
-  90     }
-  91 
-  92     // Now make an uncommitted hole
-  93     size_t sr_word_size;
-  94     const MetaWord* sr_base = calc_random_subrange(&amp;sr_word_size);
-  95     LOG("subrange " PTR_FORMAT "-" PTR_FORMAT ".",
-  96         p2i(sr_base), p2i(sr_base + sr_word_size));
-  97 
-  98     size_t prior_uncommitted =
-  99         _mask.mark_range_as_uncommitted(sr_base, sr_word_size);
- 100     verify_mask();
- 101     ASSERT_EQ(prior_uncommitted, (size_t)0);
- 102 
- 103     // Again, for fun, should be a noop now.
- 104     prior_uncommitted = _mask.mark_range_as_uncommitted(sr_base, sr_word_size);
- 105     verify_mask();
- 106     ASSERT_EQ(prior_uncommitted, sr_word_size);
- 107 
- 108     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
- 109               (size_t)0);
- 110     ASSERT_EQ(_mask.get_committed_size(),
- 111               _word_size - sr_word_size);
- 112     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
- 113               _word_size - sr_word_size);
- 114     for (const MetaWord* p = _base; p &lt; _base + _word_size; p ++) {
- 115       if (p &gt;= sr_base &amp;&amp; p &lt; sr_base + sr_word_size) {
- 116         ASSERT_FALSE(_mask.is_committed_address(p));
- 117       } else {
- 118         ASSERT_TRUE(_mask.is_committed_address(p));
- 119       }
- 120     }
- 121 
- 122     // Recommit whole range
- 123     prior_committed = _mask.mark_range_as_committed(_base, _word_size);
- 124     verify_mask();
- 125     ASSERT_EQ(prior_committed, _word_size - sr_word_size);
- 126 
- 127     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
- 128               sr_word_size);
- 129     ASSERT_EQ(_mask.get_committed_size(),
- 130               _word_size);
- 131     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
- 132               _word_size);
- 133     for (const MetaWord* p = _base; p &lt; _base + _word_size; p ++) {
- 134       ASSERT_TRUE(_mask.is_committed_address(p));
- 135     }
- 136 
- 137   }
- 138 
- 139   void test2() {
- 140 
- 141     LOG("test2");
- 142 
- 143     // Uncommit everything
- 144     size_t prior_uncommitted = _mask.mark_range_as_uncommitted(_base, _word_size);
- 145     verify_mask();
- 146     ASSERT_LE(prior_uncommitted, _word_size);
- 147 
- 148     // Uncommit everything again, should be a noop
- 149     prior_uncommitted = _mask.mark_range_as_uncommitted(_base, _word_size);
- 150     verify_mask();
- 151     ASSERT_EQ(prior_uncommitted, _word_size);
- 152 
- 153     ASSERT_EQ(_mask.get_committed_size(),
- 154         (size_t)0);
- 155     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
- 156         (size_t)0);
- 157 
- 158     // Now make an committed region
- 159     size_t sr_word_size;
- 160     const MetaWord* sr_base = calc_random_subrange(&amp;sr_word_size);
- 161     LOG("subrange " PTR_FORMAT "-" PTR_FORMAT ".",
- 162         p2i(sr_base), p2i(sr_base + sr_word_size));
- 163 
- 164     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
- 165               (size_t)0);
- 166     for (const MetaWord* p = _base; p &lt; _base + _word_size; p ++) {
- 167       ASSERT_FALSE(_mask.is_committed_address(p));
- 168     }
- 169 
- 170     size_t prior_committed = _mask.mark_range_as_committed(sr_base, sr_word_size);
- 171     verify_mask();
- 172     ASSERT_EQ(prior_committed, (size_t)0);
- 173 
- 174     // Again, for fun, should be a noop now.
- 175     prior_committed = _mask.mark_range_as_committed(sr_base, sr_word_size);
- 176     verify_mask();
- 177     ASSERT_EQ(prior_committed, sr_word_size);
- 178 
- 179     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
- 180         sr_word_size);
- 181     ASSERT_EQ(_mask.get_committed_size(),
- 182         sr_word_size);
- 183     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
- 184         sr_word_size);
- 185     for (const MetaWord* p = _base; p &lt; _base + _word_size; p ++) {
- 186       if (p &gt;= sr_base &amp;&amp; p &lt; sr_base + sr_word_size) {
- 187         ASSERT_TRUE(_mask.is_committed_address(p));
- 188       } else {
- 189         ASSERT_FALSE(_mask.is_committed_address(p));
- 190       }
- 191     }
- 192 
- 193     // Re-uncommit whole range
- 194     prior_uncommitted = _mask.mark_range_as_uncommitted(_base, _word_size);
- 195     verify_mask();
- 196     ASSERT_EQ(prior_uncommitted, _word_size - sr_word_size);
- 197 
- 198     EXPECT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
- 199         (size_t)0);
- 200     EXPECT_EQ(_mask.get_committed_size(),
- 201         (size_t)0);
- 202     EXPECT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
- 203         (size_t)0);
- 204     for (const MetaWord* p = _base; p &lt; _base + _word_size; p ++) {
- 205       ASSERT_FALSE(_mask.is_committed_address(p));
- 206     }
- 207 
- 208   }
- 209 
- 210 
- 211   void test3() {
- 212 
- 213     // arbitrary ranges are set and cleared and compared with the test map
- 214     TestMap map(_word_size);
+  46   CommitMask _mask;
+  47 
+  48   void verify_mask() {
+  49     // Note: we omit the touch test since we operate on fictional
+  50     // memory
+  51     DEBUG_ONLY(_mask.verify();)
+  52   }
+  53 
+  54   // Return a random sub range within [_base.._base + word_size),
+  55   // aligned to granule size
+  56   const MetaWord* calc_random_subrange(size_t* p_word_size) {
+  57     size_t l1 = get_random((int)_word_size);
+  58     size_t l2 = get_random((int)_word_size);
+  59     if (l1 &gt; l2) {
+  60       size_t l = l1;
+  61       l1 = l2;
+  62       l2 = l;
+  63     }
+  64     l1 = align_down(l1, Settings::commit_granule_words());
+  65     l2 = align_up(l2, Settings::commit_granule_words());
+  66 
+  67     const MetaWord* p = _base + l1;
+  68     const size_t len = l2 - l1;
+  69 
+  70     assert(p &gt;= _base &amp;&amp; p + len &lt;= _base + _word_size,
+  71            "Sanity");
+  72     *p_word_size = len;
+  73 
+  74     return p;
+  75   }
+  76 
+  77   void test1() {
+  78 
+  79     LOG("test1");
+  80 
+  81     // Commit everything
+  82     size_t prior_committed = _mask.mark_range_as_committed(_base, _word_size);
+  83     verify_mask();
+  84     ASSERT_LE(prior_committed, _word_size); // We do not really know
+  85 
+  86     // Commit everything again, should be a noop
+  87     prior_committed = _mask.mark_range_as_committed(_base, _word_size);
+  88     verify_mask();
+  89     ASSERT_EQ(prior_committed, _word_size);
+  90 
+  91     ASSERT_EQ(_mask.get_committed_size(),
+  92               _word_size);
+  93     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+  94               _word_size);
+  95 
+  96     for (const MetaWord* p = _base; p &lt; _base + _word_size; p++) {
+  97       ASSERT_TRUE(_mask.is_committed_address(p));
+  98     }
+  99 
+ 100     // Now make an uncommitted hole
+ 101     size_t sr_word_size;
+ 102     const MetaWord* sr_base = calc_random_subrange(&amp;sr_word_size);
+ 103     LOG("subrange " PTR_FORMAT "-" PTR_FORMAT ".",
+ 104         p2i(sr_base), p2i(sr_base + sr_word_size));
+ 105 
+ 106     size_t prior_uncommitted =
+ 107         _mask.mark_range_as_uncommitted(sr_base, sr_word_size);
+ 108     verify_mask();
+ 109     ASSERT_EQ(prior_uncommitted, (size_t)0);
+ 110 
+ 111     // Again, for fun, should be a noop now.
+ 112     prior_uncommitted = _mask.mark_range_as_uncommitted(sr_base, sr_word_size);
+ 113     verify_mask();
+ 114     ASSERT_EQ(prior_uncommitted, sr_word_size);
+ 115 
+ 116     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
+ 117               (size_t)0);
+ 118     ASSERT_EQ(_mask.get_committed_size(),
+ 119               _word_size - sr_word_size);
+ 120     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+ 121               _word_size - sr_word_size);
+ 122     for (const MetaWord* p = _base; p &lt; _base + _word_size; p++) {
+ 123       if (p &gt;= sr_base &amp;&amp; p &lt; sr_base + sr_word_size) {
+ 124         ASSERT_FALSE(_mask.is_committed_address(p));
+ 125       } else {
+ 126         ASSERT_TRUE(_mask.is_committed_address(p));
+ 127       }
+ 128     }
+ 129 
+ 130     // Recommit whole range
+ 131     prior_committed = _mask.mark_range_as_committed(_base, _word_size);
+ 132     verify_mask();
+ 133     ASSERT_EQ(prior_committed, _word_size - sr_word_size);
+ 134 
+ 135     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
+ 136               sr_word_size);
+ 137     ASSERT_EQ(_mask.get_committed_size(),
+ 138               _word_size);
+ 139     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+ 140               _word_size);
+ 141     for (const MetaWord* p = _base; p &lt; _base + _word_size; p++) {
+ 142       ASSERT_TRUE(_mask.is_committed_address(p));
+ 143     }
+ 144 
+ 145   }
+ 146 
+ 147   void test2() {
+ 148 
+ 149     LOG("test2");
+ 150 
+ 151     // Uncommit everything
+ 152     size_t prior_uncommitted = _mask.mark_range_as_uncommitted(_base, _word_size);
+ 153     verify_mask();
+ 154     ASSERT_LE(prior_uncommitted, _word_size);
+ 155 
+ 156     // Uncommit everything again, should be a noop
+ 157     prior_uncommitted = _mask.mark_range_as_uncommitted(_base, _word_size);
+ 158     verify_mask();
+ 159     ASSERT_EQ(prior_uncommitted, _word_size);
+ 160 
+ 161     ASSERT_EQ(_mask.get_committed_size(),
+ 162         (size_t)0);
+ 163     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+ 164         (size_t)0);
+ 165 
+ 166     // Now make an committed region
+ 167     size_t sr_word_size;
+ 168     const MetaWord* sr_base = calc_random_subrange(&amp;sr_word_size);
+ 169     LOG("subrange " PTR_FORMAT "-" PTR_FORMAT ".",
+ 170         p2i(sr_base), p2i(sr_base + sr_word_size));
+ 171 
+ 172     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
+ 173               (size_t)0);
+ 174     for (const MetaWord* p = _base; p &lt; _base + _word_size; p++) {
+ 175       ASSERT_FALSE(_mask.is_committed_address(p));
+ 176     }
+ 177 
+ 178     size_t prior_committed = _mask.mark_range_as_committed(sr_base, sr_word_size);
+ 179     verify_mask();
+ 180     ASSERT_EQ(prior_committed, (size_t)0);
+ 181 
+ 182     // Again, for fun, should be a noop now.
+ 183     prior_committed = _mask.mark_range_as_committed(sr_base, sr_word_size);
+ 184     verify_mask();
+ 185     ASSERT_EQ(prior_committed, sr_word_size);
+ 186 
+ 187     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
+ 188         sr_word_size);
+ 189     ASSERT_EQ(_mask.get_committed_size(),
+ 190         sr_word_size);
+ 191     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+ 192         sr_word_size);
+ 193     for (const MetaWord* p = _base; p &lt; _base + _word_size; p++) {
+ 194       if (p &gt;= sr_base &amp;&amp; p &lt; sr_base + sr_word_size) {
+ 195         ASSERT_TRUE(_mask.is_committed_address(p));
+ 196       } else {
+ 197         ASSERT_FALSE(_mask.is_committed_address(p));
+ 198       }
+ 199     }
+ 200 
+ 201     // Re-uncommit whole range
+ 202     prior_uncommitted = _mask.mark_range_as_uncommitted(_base, _word_size);
+ 203     verify_mask();
+ 204     ASSERT_EQ(prior_uncommitted, _word_size - sr_word_size);
+ 205 
+ 206     EXPECT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
+ 207         (size_t)0);
+ 208     EXPECT_EQ(_mask.get_committed_size(),
+ 209         (size_t)0);
+ 210     EXPECT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+ 211         (size_t)0);
+ 212     for (const MetaWord* p = _base; p &lt; _base + _word_size; p++) {
+ 213       ASSERT_FALSE(_mask.is_committed_address(p));
+ 214     }
  215 
- 216     _mask.clear_large();
+ 216   }
  217 
- 218     for (int run = 0; run &lt; 100; run ++) {
+ 218   void test3() {
  219 
- 220       // A random range
- 221       SizeRange r = SizeRange(_word_size).random_aligned_subrange(Settings::commit_granule_words());
+ 220     // arbitrary ranges are set and cleared and compared with the test map
+ 221     TestMap map(_word_size);
  222 
- 223       if (os::random() % 100 &lt; 50) {
- 224         _mask.mark_range_as_committed(_base + r.lowest(), r.size());
- 225         map.set_range(r.lowest(), r.end());
- 226       } else {
- 227         _mask.mark_range_as_uncommitted(_base + r.lowest(), r.size());
- 228         map.clear_range(r.lowest(), r.end());
- 229       }
- 230 
- 231       ASSERT_EQ(_mask.get_committed_size(), (size_t)map.get_num_set());
- 232 
- 233       ASSERT_EQ(_mask.get_committed_size_in_range(_base + r.lowest(), r.size()),
- 234                 (size_t)map.get_num_set(r.lowest(), r.end()));
- 235 
- 236     }
+ 223     _mask.clear_large();
+ 224 
+ 225     for (int run = 0; run &lt; 100; run++) {
+ 226 
+ 227       // A random range
+ 228       SizeRange r = SizeRange(_word_size).random_aligned_subrange(Settings::commit_granule_words());
+ 229 
+ 230       if (os::random() % 100 &lt; 50) {
+ 231         _mask.mark_range_as_committed(_base + r.lowest(), r.size());
+ 232         map.set_range(r.lowest(), r.end());
+ 233       } else {
+ 234         _mask.mark_range_as_uncommitted(_base + r.lowest(), r.size());
+ 235         map.clear_range(r.lowest(), r.end());
+ 236       }
  237 
- 238   }
+ 238       ASSERT_EQ(_mask.get_committed_size(), (size_t)map.get_num_set());
  239 
- 240 
- 241 public:
+ 240       ASSERT_EQ(_mask.get_committed_size_in_range(_base + r.lowest(), r.size()),
+ 241                 (size_t)map.get_num_set(r.lowest(), r.end()));
  242 
- 243   CommitMaskTest(const MetaWord* base, size_t size)
- 244     : _base(base), _word_size(size), _mask(base, size)
- 245   {}
+ 243     }
+ 244 
+ 245   }
  246 
- 247   void test() {
- 248     LOG("mask range: " PTR_FORMAT "-" PTR_FORMAT
- 249          " (" SIZE_FORMAT " words).",
- 250          p2i(_base), p2i(_base + _word_size), _word_size);
- 251     for (int i = 0; i &lt; 5; i ++) {
- 252       test1(); test2(); test3();
- 253     }
- 254   }
- 255 
- 256 
- 257 };
- 258 
- 259 TEST_VM(metaspace, commit_mask_basics) {
- 260 
- 261   const MetaWord* const base = (const MetaWord*) 0x100000;
- 262 
- 263   CommitMask mask1(base, Settings::commit_granule_words());
- 264   ASSERT_EQ(mask1.size(), (BitMap::idx_t)1);
+ 247 public:
+ 248 
+ 249   CommitMaskTest(const MetaWord* base, size_t size)
+ 250     : _base(base), _word_size(size), _mask(base, size)
+ 251   {}
+ 252 
+ 253   void test() {
+ 254     LOG("mask range: " PTR_FORMAT "-" PTR_FORMAT
+ 255          " (" SIZE_FORMAT " words).",
+ 256          p2i(_base), p2i(_base + _word_size), _word_size);
+ 257     for (int i = 0; i &lt; 5; i++) {
+ 258       test1(); test2(); test3();
+ 259     }
+ 260   }
+ 261 
+ 262 };
+ 263 
+ 264 TEST_VM(metaspace, commit_mask_basics) {
  265 
- 266   CommitMask mask2(base, Settings::commit_granule_words() * 4);
- 267   ASSERT_EQ(mask2.size(), (BitMap::idx_t)4);
- 268 
- 269   CommitMask mask3(base, Settings::commit_granule_words() * 43);
- 270   ASSERT_EQ(mask3.size(), (BitMap::idx_t)43);
- 271 
- 272   mask3.mark_range_as_committed(base, Settings::commit_granule_words());
- 273   mask3.mark_range_as_committed(base + (Settings::commit_granule_words() * 42), Settings::commit_granule_words());
- 274 
- 275   ASSERT_EQ(mask3.at(0), 1);
- 276   for (int i = 1; i &lt; 42; i ++) {
- 277     ASSERT_EQ(mask3.at(i), 0);
- 278   }
- 279   ASSERT_EQ(mask3.at(42), 1);
- 280 
- 281 }
- 282 
- 283 TEST_VM(metaspace, commit_mask_small) {
- 284 
- 285   const MetaWord* const base = (const MetaWord*) 0x100000;
- 286 
- 287   CommitMaskTest test(base, Settings::commit_granule_words());
- 288   test.test();
+ 266   const MetaWord* const base = (const MetaWord*) 0x100000;
+ 267 
+ 268   CommitMask mask1(base, Settings::commit_granule_words());
+ 269   ASSERT_EQ(mask1.size(), (BitMap::idx_t)1);
+ 270 
+ 271   CommitMask mask2(base, Settings::commit_granule_words() * 4);
+ 272   ASSERT_EQ(mask2.size(), (BitMap::idx_t)4);
+ 273 
+ 274   CommitMask mask3(base, Settings::commit_granule_words() * 43);
+ 275   ASSERT_EQ(mask3.size(), (BitMap::idx_t)43);
+ 276 
+ 277   mask3.mark_range_as_committed(base, Settings::commit_granule_words());
+ 278   mask3.mark_range_as_committed(base + (Settings::commit_granule_words() * 42), Settings::commit_granule_words());
+ 279 
+ 280   ASSERT_EQ(mask3.at(0), 1);
+ 281   for (int i = 1; i &lt; 42; i++) {
+ 282     ASSERT_EQ(mask3.at(i), 0);
+ 283   }
+ 284   ASSERT_EQ(mask3.at(42), 1);
+ 285 
+ 286 }
+ 287 
+ 288 TEST_VM(metaspace, commit_mask_small) {
  289 
- 290 }
+ 290   const MetaWord* const base = (const MetaWord*) 0x100000;
  291 
- 292 TEST_VM(metaspace, commit_mask_range) {
- 293 
- 294   const MetaWord* const base = (const MetaWord*) 0x100000;
- 295   const size_t len = Settings::commit_granule_words() * 4;
- 296   const MetaWord* const end = base + len;
- 297   CommitMask mask(base, len);
+ 292   CommitMaskTest test(base, Settings::commit_granule_words());
+ 293   test.test();
+ 294 
+ 295 }
+ 296 
+ 297 TEST_VM(metaspace, commit_mask_range) {
  298 
- 299   LOG("total range: " PTR_FORMAT "-" PTR_FORMAT "\n", p2i(base), p2i(end));
- 300 
- 301   size_t l = mask.mark_range_as_committed(base, len);
- 302   ASSERT_LE(l, len);
+ 299   const MetaWord* const base = (const MetaWord*) 0x100000;
+ 300   const size_t len = Settings::commit_granule_words() * 4;
+ 301   const MetaWord* const end = base + len;
+ 302   CommitMask mask(base, len);
  303 
- 304   for (const MetaWord* p = base; p &lt;= end - Settings::commit_granule_words();
- 305        p += Settings::commit_granule_words()) {
- 306     for (const MetaWord* p2 = p + Settings::commit_granule_words();
- 307          p2 &lt;= end; p2 += Settings::commit_granule_words()) {
- 308       LOG(PTR_FORMAT "-" PTR_FORMAT "\n", p2i(p), p2i(p2));
- 309       EXPECT_EQ(mask.get_committed_size_in_range(p, p2 - p),
- 310                 (size_t)(p2 - p));
- 311     }
- 312   }
- 313 
- 314   l = mask.mark_range_as_uncommitted(base, len);
- 315   ASSERT_EQ(l, (size_t)0);
- 316 
- 317   for (const MetaWord* p = base; p &lt;= end - Settings::commit_granule_words();
- 318        p += Settings::commit_granule_words()) {
- 319     for (const MetaWord* p2 = p + Settings::commit_granule_words();
- 320          p2 &lt;= end; p2 += Settings::commit_granule_words()) {
- 321       LOG(PTR_FORMAT "-" PTR_FORMAT "\n", p2i(p), p2i(p2));
- 322       EXPECT_EQ(mask.get_committed_size_in_range(p, p2 - p),
- 323                 (size_t)(0));
- 324     }
- 325   }
- 326 
- 327 }
- 328 
- 329 
- 330 TEST_VM(metaspace, commit_mask_random) {
+ 304   LOG("total range: " PTR_FORMAT "-" PTR_FORMAT "\n", p2i(base), p2i(end));
+ 305 
+ 306   size_t l = mask.mark_range_as_committed(base, len);
+ 307   ASSERT_LE(l, len);
+ 308 
+ 309   for (const MetaWord* p = base; p &lt;= end - Settings::commit_granule_words();
+ 310        p += Settings::commit_granule_words()) {
+ 311     for (const MetaWord* p2 = p + Settings::commit_granule_words();
+ 312          p2 &lt;= end; p2 += Settings::commit_granule_words()) {
+ 313       LOG(PTR_FORMAT "-" PTR_FORMAT "\n", p2i(p), p2i(p2));
+ 314       EXPECT_EQ(mask.get_committed_size_in_range(p, p2 - p),
+ 315                 (size_t)(p2 - p));
+ 316     }
+ 317   }
+ 318 
+ 319   l = mask.mark_range_as_uncommitted(base, len);
+ 320   ASSERT_EQ(l, (size_t)0);
+ 321 
+ 322   for (const MetaWord* p = base; p &lt;= end - Settings::commit_granule_words();
+ 323        p += Settings::commit_granule_words()) {
+ 324     for (const MetaWord* p2 = p + Settings::commit_granule_words();
+ 325          p2 &lt;= end; p2 += Settings::commit_granule_words()) {
+ 326       LOG(PTR_FORMAT "-" PTR_FORMAT "\n", p2i(p), p2i(p2));
+ 327       EXPECT_EQ(mask.get_committed_size_in_range(p, p2 - p),
+ 328                 (size_t)(0));
+ 329     }
+ 330   }
  331 
- 332   for (int i = 0; i &lt; 5; i ++) {
+ 332 }
  333 
- 334     // make up a range out of thin air
- 335     const MetaWord* const base =
- 336         align_down( (const MetaWord*) ((uintptr_t) os::random() * os::random()),
- 337                     Settings::commit_granule_bytes());
- 338     const size_t len = align_up( 1 + (os::random() % M),
- 339                     Settings::commit_granule_words());
- 340 
- 341     CommitMaskTest test(base, len);
- 342     test.test();
- 343 
- 344   }
- 345 
- 346 }
+ 334 TEST_VM(metaspace, commit_mask_random) {
+ 335 
+ 336   for (int i = 0; i &lt; 5; i++) {
+ 337 
+ 338     // make up a range out of thin air
+ 339     const MetaWord* const base =
+ 340         align_down( (const MetaWord*) ((uintptr_t) os::random() * os::random()),
+ 341                     Settings::commit_granule_bytes());
+ 342     const size_t len = align_up( 1 + (os::random() % M),
+ 343                     Settings::commit_granule_words());
+ 344 
+ 345     CommitMaskTest test(base, len);
+ 346     test.test();
+ 347 
+ 348   }
+ 349 
+ 350 }
 </pre></body></html>

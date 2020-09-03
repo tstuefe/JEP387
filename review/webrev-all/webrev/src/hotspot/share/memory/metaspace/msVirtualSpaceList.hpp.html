@@ -1,0 +1,236 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msVirtualSpaceList.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_MSVIRTUALSPACELIST_HPP
+  27 #define SHARE_MEMORY_METASPACE_MSVIRTUALSPACELIST_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/msCounter.hpp"
+  31 #include "memory/metaspace/msCommitLimiter.hpp"
+  32 #include "memory/metaspace/msVirtualSpaceNode.hpp"
+  33 #include "memory/virtualspace.hpp"
+  34 #include "utilities/globalDefinitions.hpp"
+  35 
+  36 class outputStream;
+  37 
+  38 namespace metaspace {
+  39 
+  40 class Metachunk;
+  41 class FreeChunkListVector;
+  42 
+  43 // VirtualSpaceList manages a single (if its non-expandable) or
+  44 //  a series of (if its expandable) virtual memory regions used
+  45 //  for metaspace.
+  46 //
+  47 // Internally it holds a list of nodes (VirtualSpaceNode) each
+  48 //  managing a single contiguous memory region. The first node of
+  49 //  this list is the current node and used for allocation of new
+  50 //  root chunks.
+  51 //
+  52 // Beyond access to those nodes and the ability to grow new nodes
+  53 //  (if expandable) it allows for purging: purging this list means
+  54 //  removing and unmapping all memory regions which are unused.
+  55 
+  56 class VirtualSpaceList : public CHeapObj&lt;mtClass&gt; {
+  57 
+  58   // Name
+  59   const char* const _name;
+  60 
+  61   // Head of the list.
+  62   VirtualSpaceNode* _first_node;
+  63 
+  64   // Number of nodes (kept for statistics only).
+  65   IntCounter _nodes_counter;
+  66 
+  67   // Whether this list can expand by allocating new nodes.
+  68   const bool _can_expand;
+  69 
+  70   // Whether this list can be purged.
+  71   const bool _can_purge;
+  72 
+  73   // Used to check limits before committing memory.
+  74   CommitLimiter* const _commit_limiter;
+  75 
+  76   // Statistics
+  77 
+  78   // Holds sum of reserved space, in words, over all list nodes.
+  79   SizeCounter _reserved_words_counter;
+  80 
+  81   // Holds sum of committed space, in words, over all list nodes.
+  82   SizeCounter _committed_words_counter;
+  83 
+  84   // Create a new node and append it to the list. After
+  85   // this function, _current_node shall point to a new empty node.
+  86   // List must be expandable for this to work.
+  87   void create_new_node();
+  88 
+  89 public:
+  90 
+  91   // Create a new, empty, expandable list.
+  92   VirtualSpaceList(const char* name, CommitLimiter* commit_limiter);
+  93 
+  94   // Create a new list. The list will contain one node only, which uses the given ReservedSpace.
+  95   // It will be not expandable beyond that first node.
+  96   VirtualSpaceList(const char* name, ReservedSpace rs, CommitLimiter* commit_limiter);
+  97 
+  98   virtual ~VirtualSpaceList();
+  99 
+ 100   // Allocate a root chunk from this list.
+ 101   // Note: this just returns a chunk whose memory is reserved; no memory is committed yet.
+ 102   // Hence, before using this chunk, it must be committed.
+ 103   // May return NULL if vslist would need to be expanded to hold the new root node but
+ 104   // the list cannot be expanded (in practice this means we reached CompressedClassSpaceSize).
+ 105   Metachunk* allocate_root_chunk();
+ 106 
+ 107   // Attempts to purge nodes. This will remove and delete nodes which only contain free chunks.
+ 108   // The free chunks are removed from the freelists before the nodes are deleted.
+ 109   // Return number of purged nodes.
+ 110   int purge(FreeChunkListVector* freelists);
+ 111 
+ 112   //// Statistics ////
+ 113 
+ 114   // Return sum of reserved words in all nodes.
+ 115   size_t reserved_words() const     { return _reserved_words_counter.get(); }
+ 116 
+ 117   // Return sum of committed words in all nodes.
+ 118   size_t committed_words() const    { return _committed_words_counter.get(); }
+ 119 
+ 120   // Return number of nodes in this list.
+ 121   int num_nodes() const             { return _nodes_counter.get(); }
+ 122 
+ 123   //// Debug stuff ////
+ 124   DEBUG_ONLY(void verify() const;)
+ 125   DEBUG_ONLY(void verify_locked() const;)
+ 126 
+ 127   // Print all nodes in this space list.
+ 128   void print_on(outputStream* st) const;
+ 129 
+ 130   // Returns true if this pointer is contained in one of our nodes.
+ 131   bool contains(const MetaWord* p) const;
+ 132 
+ 133   // Returns true if the list is not expandable and no more root chunks
+ 134   // can be allocated.
+ 135   bool is_full() const;
+ 136 
+ 137   // Convenience methods to return the global class-space vslist
+ 138   //  and non-class vslist, respectively.
+ 139   static VirtualSpaceList* vslist_class();
+ 140   static VirtualSpaceList* vslist_nonclass();
+ 141 
+ 142   // These exist purely to print limits of the compressed class space;
+ 143   // if we ever change the ccs to not use a degenerated-list-of-one-node this
+ 144   // will go away.
+ 145   MetaWord* base_of_first_node() const { return _first_node != NULL ? _first_node-&gt;base() : NULL; }
+ 146   size_t word_size_of_first_node() const { return _first_node != NULL ? _first_node-&gt;word_size() : 0; }
+ 147 
+ 148 };
+ 149 
+ 150 } // namespace metaspace
+ 151 
+ 152 #endif // SHARE_MEMORY_METASPACE_MSVIRTUALSPACELIST_HPP
+ 153 
+</pre></body></html>

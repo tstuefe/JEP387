@@ -91,39 +91,22 @@ span.new {
 <center><a href='../../../../../../../src/hotspot/share/gc/z/zUnload.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../../src/hotspot/share/jvmci/jvmciCompilerToVM.hpp.udiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp</h2>
         <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre>
         <pre>
 </pre><hr /><pre>
-<span class="newmarker">@@ -37,13 +37,14 @@</span>
- #include "jfr/recorder/jfrRecorder.hpp"
- #include "jfr/recorder/checkpoint/types/jfrThreadGroup.hpp"
+<span class="newmarker">@@ -39,11 +39,11 @@</span>
  #include "jfr/recorder/checkpoint/types/jfrThreadState.hpp"
  #include "jfr/support/jfrThreadLocal.hpp"
  #include "jfr/writers/jfrJavaEventWriter.hpp"
-<span class="new">+#include "memory/metaspace.hpp"</span>
-<span class="new">+#include "memory/metaspace/metaspaceEnums.hpp"</span>
  #include "jfr/utilities/jfrThreadIterator.hpp"
  #include "memory/iterator.hpp"
 <span class="removed">-#include "memory/metaspaceGCThresholdUpdater.hpp"</span>
+<span class="new">+#include "memory/metaspace.hpp"</span>
  #include "memory/referenceType.hpp"
  #include "memory/universe.hpp"
  #include "oops/compressedOops.hpp"
  #include "runtime/flags/jvmFlag.hpp"
  #include "runtime/mutexLocker.hpp"
-</pre><hr /><pre>
-<span class="newmarker">@@ -194,11 +195,11 @@</span>
- void MetadataTypeConstant::serialize(JfrCheckpointWriter&amp; writer) {
-   static const u4 nof_entries = Metaspace::MetadataTypeCount;
-   writer.write_count(nof_entries);
-   for (u4 i = 0; i &lt; nof_entries; ++i) {
-     writer.write_key(i);
-<span class="removed">-    writer.write(Metaspace::metadata_type_name((Metaspace::MetadataType)i));</span>
-<span class="new">+    writer.write(metaspace::describe_mdtype((Metaspace::MetadataType)i));</span>
-   }
- }
- 
- void MetaspaceObjectTypeConstant::serialize(JfrCheckpointWriter&amp; writer) {
-   static const u4 nof_entries = MetaspaceObj::_number_of_types;
 </pre>
 <center><a href='../../../../../../../src/hotspot/share/gc/z/zUnload.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../../src/hotspot/share/jvmci/jvmciCompilerToVM.hpp.udiff.html' target='_top'>next &gt</a></center>
 </body></html>

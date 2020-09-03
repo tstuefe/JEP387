@@ -79,16 +79,15 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 
 <title>source Sdiff src/hotspot/share/gc/shared </title>
 </head><body id="SUNWwebrev">
-<center><a href='../../../../../src/hotspot/share/gc/parallel/psParallelCompact.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/gcTrace.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<center><a href='../../../../../src/hotspot/share/gc/parallel/psParallelCompact.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/gcVMOperations.hpp.sdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/gc/shared/collectedHeap.hpp</h2>
 <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre>
 
 <table><tr valign="top">
 <td><pre>
 
 </pre><hr></hr><pre>
-  12  * version 2 for more details (a copy is included in the LICENSE file that
   13  * accompanied this code).
   14  *
   15  * You should have received a copy of the GNU General Public License version
@@ -108,53 +107,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   29 #include "gc/shared/gcWhen.hpp"
   30 #include "gc/shared/verifyOption.hpp"
   31 #include "memory/allocation.hpp"
+  32 #include "memory/heapInspection.hpp"
 
-  32 #include "memory/universe.hpp"
-  33 #include "runtime/handles.hpp"
-  34 #include "runtime/perfData.hpp"
-  35 #include "runtime/safepoint.hpp"
-  36 #include "services/memoryUsage.hpp"
-  37 #include "utilities/debug.hpp"
-  38 #include "utilities/events.hpp"
-  39 #include "utilities/formatBuffer.hpp"
-  40 #include "utilities/growableArray.hpp"
-  41 
-  42 // A "CollectedHeap" is an implementation of a java heap for HotSpot.  This
-  43 // is an abstract class: there may be many different kinds of heaps.  This
-  44 // class defines the functions that a heap must implement, and contains
-  45 // infrastructure common to all heaps.
-  46 
-  47 class AdaptiveSizePolicy;
-  48 class BarrierSet;
-  49 class GCHeapSummary;
-  50 class GCTimer;
-  51 class GCTracer;
-
-</pre><hr></hr>
-</pre></td><td><pre>
-
-</pre><hr></hr><pre>
-  12  * version 2 for more details (a copy is included in the LICENSE file that
-  13  * accompanied this code).
-  14  *
-  15  * You should have received a copy of the GNU General Public License version
-  16  * 2 along with this work; if not, write to the Free Software Foundation,
-  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-  18  *
-  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
-  20  * or visit www.oracle.com if you need additional information or have any
-  21  * questions.
-  22  *
-  23  */
-  24 
-  25 #ifndef SHARE_GC_SHARED_COLLECTEDHEAP_HPP
-  26 #define SHARE_GC_SHARED_COLLECTEDHEAP_HPP
-  27 
-  28 #include "gc/shared/gcCause.hpp"
-  29 #include "gc/shared/gcWhen.hpp"
-  30 #include "gc/shared/verifyOption.hpp"
-  31 #include "memory/allocation.hpp"
-<span class="new">  32 #include "memory/metaspace.hpp"</span>
   33 #include "memory/universe.hpp"
   34 #include "runtime/handles.hpp"
   35 #include "runtime/perfData.hpp"
@@ -170,14 +124,60 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   45 // class defines the functions that a heap must implement, and contains
   46 // infrastructure common to all heaps.
   47 
-  48 class AdaptiveSizePolicy;
-  49 class BarrierSet;
-  50 class GCHeapSummary;
-  51 class GCTimer;
-  52 class GCTracer;
+  48 class AbstractGangTask;
+  49 class AdaptiveSizePolicy;
+  50 class BarrierSet;
+  51 class GCHeapSummary;
+  52 class GCTimer;
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  13  * accompanied this code).
+  14  *
+  15  * You should have received a copy of the GNU General Public License version
+  16  * 2 along with this work; if not, write to the Free Software Foundation,
+  17  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  18  *
+  19  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  20  * or visit www.oracle.com if you need additional information or have any
+  21  * questions.
+  22  *
+  23  */
+  24 
+  25 #ifndef SHARE_GC_SHARED_COLLECTEDHEAP_HPP
+  26 #define SHARE_GC_SHARED_COLLECTEDHEAP_HPP
+  27 
+  28 #include "gc/shared/gcCause.hpp"
+  29 #include "gc/shared/gcWhen.hpp"
+  30 #include "gc/shared/verifyOption.hpp"
+  31 #include "memory/allocation.hpp"
+  32 #include "memory/heapInspection.hpp"
+<span class="new">  33 #include "memory/metaspace.hpp"</span>
+  34 #include "memory/universe.hpp"
+  35 #include "runtime/handles.hpp"
+  36 #include "runtime/perfData.hpp"
+  37 #include "runtime/safepoint.hpp"
+  38 #include "services/memoryUsage.hpp"
+  39 #include "utilities/debug.hpp"
+  40 #include "utilities/events.hpp"
+  41 #include "utilities/formatBuffer.hpp"
+  42 #include "utilities/growableArray.hpp"
+  43 
+  44 // A "CollectedHeap" is an implementation of a java heap for HotSpot.  This
+  45 // is an abstract class: there may be many different kinds of heaps.  This
+  46 // class defines the functions that a heap must implement, and contains
+  47 // infrastructure common to all heaps.
+  48 
+  49 class AbstractGangTask;
+  50 class AdaptiveSizePolicy;
+  51 class BarrierSet;
+  52 class GCHeapSummary;
+  53 class GCTimer;
 
 </pre><hr></hr>
 </pre></td>
 </tr></table>
-<center><a href='../../../../../src/hotspot/share/gc/parallel/psParallelCompact.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/gcTrace.cpp.sdiff.html' target='_top'>next &gt</a></center>
+<center><a href='../../../../../src/hotspot/share/gc/parallel/psParallelCompact.cpp.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../index.html' target='_top'>index</a> <a href='../../../../../src/hotspot/share/gc/shared/gcVMOperations.hpp.sdiff.html' target='_top'>next &gt</a></center>
 </body></html>

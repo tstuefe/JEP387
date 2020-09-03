@@ -81,8 +81,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
-   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
    4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    5  *
    6  * This code is free software; you can redistribute it and/or modify it
@@ -107,48 +107,51 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   25 
   26 #include "precompiled.hpp"
   27 
-  28 //#define LOG_PLEASE
-  29 
-  30 #include "metaspaceTestsCommon.hpp"
+  28 #include "memory/metaspace.hpp"
+  29 #include "memory/metaspace/msArenaGrowthPolicy.hpp"
+  30 #include "memory/metaspace/msChunklevel.hpp"
   31 
-  32 static void test_arena_growth_policy(Metaspace::MetaspaceType spacetype, bool is_class) {
-  33 
-  34   const ArenaGrowthPolicy* a =
-  35       ArenaGrowthPolicy::policy_for_space_type((Metaspace::MetaspaceType)spacetype, is_class);
-  36 
-  37   // initial level
-  38   chunklevel_t lvl = a-&gt;get_level_at_step(0);
-  39   ASSERT_TRUE(is_valid_level(lvl));
-  40   if (spacetype != Metaspace::BootMetaspaceType) {
-  41     // All types save boot loader should start with small or very small chunks
-  42     ASSERT_GE(lvl, CHUNK_LEVEL_4K);
-  43   }
-  44 
-  45   for (int step = 1; step &lt; 100; step ++) {
-  46     chunklevel_t lvl2 = a-&gt;get_level_at_step(step);
-  47     ASSERT_TRUE(is_valid_level(lvl2));
-  48     // limit steepness: no growth allowed beyond last chunksize * 2
-  49     ASSERT_LE(word_size_for_level(lvl2), word_size_for_level(lvl) * 2);
-  50     lvl = lvl2;
-  51   }
-  52 }
-  53 
-  54 #define DEFINE_GROWTH_POLICY_TEST(spacetype, is_class) \
-  55 TEST_VM(metaspace, arena_growth_policy_##spacetype##_##is_class) { \
-  56         test_arena_growth_policy(Metaspace::spacetype, is_class); \
-  57 }
-  58 
-  59 DEFINE_GROWTH_POLICY_TEST(ReflectionMetaspaceType, true)
-  60 DEFINE_GROWTH_POLICY_TEST(ReflectionMetaspaceType, false)
-  61 DEFINE_GROWTH_POLICY_TEST(ClassMirrorHolderMetaspaceType, true)
-  62 DEFINE_GROWTH_POLICY_TEST(ClassMirrorHolderMetaspaceType, false)
-  63 DEFINE_GROWTH_POLICY_TEST(StandardMetaspaceType, true)
-  64 DEFINE_GROWTH_POLICY_TEST(StandardMetaspaceType, false)
-  65 DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, true)
-  66 DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, false)
-  67 
-  68 
-  69 
-  70 
-  71 
+  32 //#define LOG_PLEASE
+  33 #include "metaspaceGtestCommon.hpp"
+  34 
+  35 using metaspace::ArenaGrowthPolicy;
+  36 using metaspace::chunklevel_t;
+  37 using namespace metaspace::chunklevel;
+  38 
+  39 static void test_arena_growth_policy(Metaspace::MetaspaceType spacetype, bool is_class) {
+  40 
+  41   const ArenaGrowthPolicy* a =
+  42       ArenaGrowthPolicy::policy_for_space_type((Metaspace::MetaspaceType)spacetype, is_class);
+  43 
+  44   // initial level
+  45   chunklevel_t lvl = a-&gt;get_level_at_step(0);
+  46   ASSERT_TRUE(is_valid_level(lvl));
+  47   if (spacetype != Metaspace::BootMetaspaceType) {
+  48     // All types save boot loader should start with small or very small chunks
+  49     ASSERT_GE(lvl, CHUNK_LEVEL_4K);
+  50   }
+  51 
+  52   for (int step = 1; step &lt; 100; step++) {
+  53     chunklevel_t lvl2 = a-&gt;get_level_at_step(step);
+  54     ASSERT_TRUE(is_valid_level(lvl2));
+  55     // limit steepness: no growth allowed beyond last chunksize * 2
+  56     ASSERT_LE(word_size_for_level(lvl2), word_size_for_level(lvl) * 2);
+  57     lvl = lvl2;
+  58   }
+  59 }
+  60 
+  61 #define DEFINE_GROWTH_POLICY_TEST(spacetype, is_class) \
+  62 TEST_VM(metaspace, arena_growth_policy_##spacetype##_##is_class) { \
+  63   test_arena_growth_policy(Metaspace::spacetype, is_class); \
+  64 }
+  65 
+  66 DEFINE_GROWTH_POLICY_TEST(ReflectionMetaspaceType, true)
+  67 DEFINE_GROWTH_POLICY_TEST(ReflectionMetaspaceType, false)
+  68 DEFINE_GROWTH_POLICY_TEST(ClassMirrorHolderMetaspaceType, true)
+  69 DEFINE_GROWTH_POLICY_TEST(ClassMirrorHolderMetaspaceType, false)
+  70 DEFINE_GROWTH_POLICY_TEST(StandardMetaspaceType, true)
+  71 DEFINE_GROWTH_POLICY_TEST(StandardMetaspaceType, false)
+  72 DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, true)
+  73 DEFINE_GROWTH_POLICY_TEST(BootMetaspaceType, false)
+  74 
 </pre></body></html>

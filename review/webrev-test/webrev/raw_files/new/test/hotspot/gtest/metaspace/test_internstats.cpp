@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2020 SAP SE. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -25,10 +25,10 @@
 
 #include "precompiled.hpp"
 
-//#define LOG_PLEASE
+#include "memory/metaspace/msInternalStats.hpp"
 
-#include "metaspaceTestsCommon.hpp"
-#include "memory/metaspace/internStat.hpp"
+//#define LOG_PLEASE
+#include "metaspaceGtestCommon.hpp"
 
 // Very simple test, since the VM is fired up we should see a little
 // Metaspace activity already which should show up in the stats.

@@ -83,7 +83,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <center><a href='../../../../src/hotspot/share/memory/universe.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/globals.hpp.cdiff.html' target='_top'>next &gt</a></center>
 <h2>src/hotspot/share/prims/whitebox.cpp</h2>
         <a class="print" href="javascript:print()">Print this page</a>
-<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-all.patch</pre>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-all.patch</pre>
         <pre>
 <hr /><span class="oldmarker">*** 44,53 ****</span>
 <span class="newmarker">--- 44,54 ----</span>
@@ -92,7 +92,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   #include "memory/heapShared.inline.hpp"
   #include "memory/metaspaceShared.hpp"
   #include "memory/metadataFactory.hpp"
-<span class="new">+ #include "memory/metaspace/metaspace_test.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msTestHelpers.hpp"</span>
   #include "memory/iterator.hpp"
   #include "memory/resourceArea.hpp"
   #include "memory/universe.hpp"
@@ -111,8 +111,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   #endif // INCLUDE_CDS
   #if INCLUDE_G1GC
   #include "gc/g1/g1Arguments.hpp"
-<hr /><span class="oldmarker">*** 1688,1697 ****</span>
-<span class="newmarker">--- 1690,1758 ----</span>
+<hr /><span class="oldmarker">*** 1690,1699 ****</span>
+<span class="newmarker">--- 1692,1760 ----</span>
   
   int WhiteBox::array_bytes_to_length(size_t bytes) {
     return Array&lt;u1&gt;::bytes_to_length(bytes);
@@ -182,7 +182,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
       THROW_MSG_0(vmSymbols::java_lang_IllegalArgumentException(),
           err_msg("WB_AllocateMetaspace: size is negative: " JLONG_FORMAT, size));
     }
-<hr /><span class="oldmarker">*** 1704,1722 ****</span>
+<hr /><span class="oldmarker">*** 1706,1724 ****</span>
     void* metadata = MetadataFactory::new_array&lt;u1&gt;(cld, WhiteBox::array_bytes_to_length((size_t)size), thread);
   
     return (jlong)(uintptr_t)metadata;
@@ -202,8 +202,8 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     Modules::define_module(module, is_open, version, location, packages, CHECK);
   WB_END
   
-<span class="newmarker">--- 1765,1774 ----</span>
-<hr /><span class="oldmarker">*** 2433,2444 ****</span>
+<span class="newmarker">--- 1767,1776 ----</span>
+<hr /><span class="oldmarker">*** 2414,2425 ****</span>
     {CC"fullGC",   CC"()V",                             (void*)&amp;WB_FullGC },
     {CC"youngGC",  CC"()V",                             (void*)&amp;WB_YoungGC },
     {CC"readReservedMemory", CC"()V",                   (void*)&amp;WB_ReadReservedMemory },
@@ -216,9 +216,9 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     {CC"metaspaceReserveAlignment", CC"()J",            (void*)&amp;WB_MetaspaceReserveAlignment },
     {CC"getCPUFeatures",     CC"()Ljava/lang/String;",  (void*)&amp;WB_GetCPUFeatures     },
     {CC"getNMethod0",         CC"(Ljava/lang/reflect/Executable;Z)[Ljava/lang/Object;",
-<span class="newmarker">--- 2485,2494 ----</span>
-<hr /><span class="oldmarker">*** 2531,2540 ****</span>
-<span class="newmarker">--- 2581,2603 ----</span>
+<span class="newmarker">--- 2466,2475 ----</span>
+<hr /><span class="oldmarker">*** 2510,2519 ****</span>
+<span class="newmarker">--- 2560,2582 ----</span>
     {CC"disableElfSectionCache",    CC"()V",            (void*)&amp;WB_DisableElfSectionCache },
     {CC"resolvedMethodItemsCount",  CC"()J",            (void*)&amp;WB_ResolvedMethodItemsCount },
     {CC"protectionDomainRemovedCount",   CC"()I",       (void*)&amp;WB_ProtectionDomainRemovedCount },
@@ -237,11 +237,11 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <span class="new">+   {CC"deallocateToMetaspaceTestArena", CC"(JJJ)V",    (void*)&amp;WB_DeallocateToMetaspaceTestArena},</span>
 <span class="new">+   {CC"maxMetaspaceAllocationSize", CC"()J",           (void*)&amp;WB_GetMaxMetaspaceAllocationSize},</span>
 <span class="new">+ </span>
+    {CC"isJVMTIIncluded", CC"()Z",                      (void*)&amp;WB_IsJVMTIIncluded},
   };
   
   
   #undef CC
-  
 </pre>
 <center><a href='../../../../src/hotspot/share/memory/universe.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/runtime/globals.hpp.cdiff.html' target='_top'>next &gt</a></center>
 </body></html>

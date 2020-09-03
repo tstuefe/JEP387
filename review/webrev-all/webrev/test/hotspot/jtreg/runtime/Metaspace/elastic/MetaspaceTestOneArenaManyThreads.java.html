@@ -114,51 +114,50 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   32     // Several threads allocate from a single arena.
   33     // This mimicks several threads loading classes via the same class loader.
   34 
-  35 
-  36     public MetaspaceTestOneArenaManyThreads(MetaspaceTestContext context, long testAllocationCeiling, int numThreads, int seconds) {
-  37         super(context, testAllocationCeiling, numThreads, seconds);
-  38     }
-  39 
-  40     public void runTest() throws Exception {
-  41 
-  42         long t_start = currentTimeMillis();
-  43         long t_stop = t_start + (seconds * 1000);
-  44 
-  45         // We create a single arena, and n threads which will allocate from that single arena.
-  46 
-  47         MetaspaceTestArena arena = context.createArena(RandomHelper.fiftyfifty(), testAllocationCeiling);
-  48         CyclicBarrier gate = new CyclicBarrier(numThreads + 1);
-  49 
-  50         for (int i = 0; i &lt; numThreads; i ++) {
-  51             RandomAllocator allocator = new RandomAllocator(arena);
-  52             RandomAllocatorThread thread = new RandomAllocatorThread(gate, allocator, i);
-  53             threads[i] = thread;
-  54             thread.start();
-  55         }
-  56 
-  57         gate.await();
-  58 
-  59         while (System.currentTimeMillis() &lt; t_stop) {
-  60             Thread.sleep(200);
-  61         }
-  62 
-  63         stopAllThreads();
-  64 
-  65         context.updateTotals();
-  66         System.out.println("  ## Finished: " + context);
-  67 
-  68         context.checkStatistics();
-  69 
-  70         context.destroyArena(arena);
-  71 
-  72         context.purge();
-  73 
-  74         context.destroy();
-  75 
-  76         System.out.println("This took " + (System.currentTimeMillis() - t_start) + "ms");
-  77 
-  78     }
-  79 
-  80 }
-  81 
+  35     public MetaspaceTestOneArenaManyThreads(MetaspaceTestContext context, long testAllocationCeiling, int numThreads, int seconds) {
+  36         super(context, testAllocationCeiling, numThreads, seconds);
+  37     }
+  38 
+  39     public void runTest() throws Exception {
+  40 
+  41         long t_start = currentTimeMillis();
+  42         long t_stop = t_start + (seconds * 1000);
+  43 
+  44         // We create a single arena, and n threads which will allocate from that single arena.
+  45 
+  46         MetaspaceTestArena arena = context.createArena(RandomHelper.fiftyfifty(), testAllocationCeiling);
+  47         CyclicBarrier gate = new CyclicBarrier(numThreads + 1);
+  48 
+  49         for (int i = 0; i &lt; numThreads; i ++) {
+  50             RandomAllocator allocator = new RandomAllocator(arena);
+  51             RandomAllocatorThread thread = new RandomAllocatorThread(gate, allocator, i);
+  52             threads[i] = thread;
+  53             thread.start();
+  54         }
+  55 
+  56         gate.await();
+  57 
+  58         while (System.currentTimeMillis() &lt; t_stop) {
+  59             Thread.sleep(200);
+  60         }
+  61 
+  62         stopAllThreads();
+  63 
+  64         context.updateTotals();
+  65         System.out.println("  ## Finished: " + context);
+  66 
+  67         context.checkStatistics();
+  68 
+  69         context.destroyArena(arena);
+  70 
+  71         context.purge();
+  72 
+  73         context.destroy();
+  74 
+  75         System.out.println("This took " + (System.currentTimeMillis() - t_start) + "ms");
+  76 
+  77     }
+  78 
+  79 }
+  80 
 </pre></body></html>

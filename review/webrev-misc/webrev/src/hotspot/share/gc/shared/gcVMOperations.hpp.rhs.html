@@ -81,7 +81,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
     </head>
     <body id="SUNWwebrev" onkeypress="keypress(event);">
     <a name="0"></a>
-    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60538">60538</a> : imported patch jep387-misc.patch</pre><hr></hr>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60800">60800</a> : imported patch jep387-misc.patch</pre><hr></hr>
 <pre>
    1 /*
    2  * Copyright (c) 2005, 2020, Oracle and/or its affiliates. All rights reserved.
@@ -211,106 +211,109 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
  126  private:
  127   outputStream* _out;
  128   bool _full_gc;
- 129  public:
- 130   VM_GC_HeapInspection(outputStream* out, bool request_full_gc) :
- 131     VM_GC_Operation(0 /* total collections,      dummy, ignored */,
- 132                     GCCause::_heap_inspection /* GC Cause */,
- 133                     0 /* total full collections, dummy, ignored */,
- 134                     request_full_gc), _out(out), _full_gc(request_full_gc) {}
- 135 
- 136   ~VM_GC_HeapInspection() {}
- 137   virtual VMOp_Type type() const { return VMOp_GC_HeapInspection; }
- 138   virtual bool skip_operation() const;
- 139   virtual void doit();
- 140  protected:
- 141   bool collect();
- 142 };
- 143 
- 144 class VM_CollectForAllocation : public VM_GC_Operation {
- 145  protected:
- 146   size_t    _word_size; // Size of object to be allocated (in number of words)
- 147   HeapWord* _result;    // Allocation result (NULL if allocation failed)
- 148 
- 149  public:
- 150   VM_CollectForAllocation(size_t word_size, uint gc_count_before, GCCause::Cause cause);
+ 129   uint _parallel_thread_num;
+ 130  public:
+ 131   VM_GC_HeapInspection(outputStream* out, bool request_full_gc,
+ 132                        uint parallel_thread_num = 1) :
+ 133     VM_GC_Operation(0 /* total collections,      dummy, ignored */,
+ 134                     GCCause::_heap_inspection /* GC Cause */,
+ 135                     0 /* total full collections, dummy, ignored */,
+ 136                     request_full_gc), _out(out), _full_gc(request_full_gc),
+ 137                     _parallel_thread_num(parallel_thread_num) {}
+ 138 
+ 139   ~VM_GC_HeapInspection() {}
+ 140   virtual VMOp_Type type() const { return VMOp_GC_HeapInspection; }
+ 141   virtual bool skip_operation() const;
+ 142   virtual void doit();
+ 143  protected:
+ 144   bool collect();
+ 145 };
+ 146 
+ 147 class VM_CollectForAllocation : public VM_GC_Operation {
+ 148  protected:
+ 149   size_t    _word_size; // Size of object to be allocated (in number of words)
+ 150   HeapWord* _result;    // Allocation result (NULL if allocation failed)
  151 
- 152   HeapWord* result() const {
- 153     return _result;
- 154   }
- 155 };
- 156 
- 157 class VM_GenCollectForAllocation : public VM_CollectForAllocation {
- 158  private:
- 159   bool        _tlab;                       // alloc is of a tlab.
- 160  public:
- 161   VM_GenCollectForAllocation(size_t word_size,
- 162                              bool tlab,
- 163                              uint gc_count_before)
- 164     : VM_CollectForAllocation(word_size, gc_count_before, GCCause::_allocation_failure),
- 165       _tlab(tlab) {
- 166     assert(word_size != 0, "An allocation should always be requested with this operation.");
- 167   }
- 168   ~VM_GenCollectForAllocation()  {}
- 169   virtual VMOp_Type type() const { return VMOp_GenCollectForAllocation; }
- 170   virtual void doit();
- 171 };
- 172 
- 173 // VM operation to invoke a collection of the heap as a
- 174 // GenCollectedHeap heap.
- 175 class VM_GenCollectFull: public VM_GC_Operation {
- 176  private:
- 177   GenCollectedHeap::GenerationType _max_generation;
- 178  public:
- 179   VM_GenCollectFull(uint gc_count_before,
- 180                     uint full_gc_count_before,
- 181                     GCCause::Cause gc_cause,
- 182                     GenCollectedHeap::GenerationType max_generation)
- 183     : VM_GC_Operation(gc_count_before, gc_cause, full_gc_count_before,
- 184                       max_generation != GenCollectedHeap::YoungGen /* full */),
- 185       _max_generation(max_generation) { }
- 186   ~VM_GenCollectFull() {}
- 187   virtual VMOp_Type type() const { return VMOp_GenCollectFull; }
- 188   virtual void doit();
- 189 };
- 190 
- 191 class VM_CollectForMetadataAllocation: public VM_GC_Operation {
- 192  private:
- 193   MetaWord*                _result;
- 194   size_t                   _size;     // size of object to be allocated
- 195   Metaspace::MetadataType  _mdtype;
- 196   ClassLoaderData*         _loader_data;
- 197 
- 198  public:
- 199   VM_CollectForMetadataAllocation(ClassLoaderData* loader_data,
- 200                                   size_t size,
- 201                                   Metaspace::MetadataType mdtype,
- 202                                   uint gc_count_before,
- 203                                   uint full_gc_count_before,
- 204                                   GCCause::Cause gc_cause);
- 205 
- 206   virtual VMOp_Type type() const { return VMOp_CollectForMetadataAllocation; }
- 207   virtual void doit();
- 208   MetaWord* result() const       { return _result; }
- 209 
- 210   bool initiate_concurrent_GC();
- 211 };
+ 152  public:
+ 153   VM_CollectForAllocation(size_t word_size, uint gc_count_before, GCCause::Cause cause);
+ 154 
+ 155   HeapWord* result() const {
+ 156     return _result;
+ 157   }
+ 158 };
+ 159 
+ 160 class VM_GenCollectForAllocation : public VM_CollectForAllocation {
+ 161  private:
+ 162   bool        _tlab;                       // alloc is of a tlab.
+ 163  public:
+ 164   VM_GenCollectForAllocation(size_t word_size,
+ 165                              bool tlab,
+ 166                              uint gc_count_before)
+ 167     : VM_CollectForAllocation(word_size, gc_count_before, GCCause::_allocation_failure),
+ 168       _tlab(tlab) {
+ 169     assert(word_size != 0, "An allocation should always be requested with this operation.");
+ 170   }
+ 171   ~VM_GenCollectForAllocation()  {}
+ 172   virtual VMOp_Type type() const { return VMOp_GenCollectForAllocation; }
+ 173   virtual void doit();
+ 174 };
+ 175 
+ 176 // VM operation to invoke a collection of the heap as a
+ 177 // GenCollectedHeap heap.
+ 178 class VM_GenCollectFull: public VM_GC_Operation {
+ 179  private:
+ 180   GenCollectedHeap::GenerationType _max_generation;
+ 181  public:
+ 182   VM_GenCollectFull(uint gc_count_before,
+ 183                     uint full_gc_count_before,
+ 184                     GCCause::Cause gc_cause,
+ 185                     GenCollectedHeap::GenerationType max_generation)
+ 186     : VM_GC_Operation(gc_count_before, gc_cause, full_gc_count_before,
+ 187                       max_generation != GenCollectedHeap::YoungGen /* full */),
+ 188       _max_generation(max_generation) { }
+ 189   ~VM_GenCollectFull() {}
+ 190   virtual VMOp_Type type() const { return VMOp_GenCollectFull; }
+ 191   virtual void doit();
+ 192 };
+ 193 
+ 194 class VM_CollectForMetadataAllocation: public VM_GC_Operation {
+ 195  private:
+ 196   MetaWord*                _result;
+ 197   size_t                   _size;     // size of object to be allocated
+ 198   Metaspace::MetadataType  _mdtype;
+ 199   ClassLoaderData*         _loader_data;
+ 200 
+ 201  public:
+ 202   VM_CollectForMetadataAllocation(ClassLoaderData* loader_data,
+ 203                                   size_t size,
+ 204                                   Metaspace::MetadataType mdtype,
+ 205                                   uint gc_count_before,
+ 206                                   uint full_gc_count_before,
+ 207                                   GCCause::Cause gc_cause);
+ 208 
+ 209   virtual VMOp_Type type() const { return VMOp_CollectForMetadataAllocation; }
+ 210   virtual void doit();
+ 211   MetaWord* result() const       { return _result; }
  212 
- 213 class SvcGCMarker : public StackObj {
- 214  private:
- 215   JvmtiGCMarker _jgcm;
- 216  public:
- 217   typedef enum { MINOR, FULL, CONCURRENT } reason_type;
- 218 
- 219   SvcGCMarker(reason_type reason ) {
- 220     VM_GC_Operation::notify_gc_begin(reason == FULL);
- 221   }
- 222 
- 223   ~SvcGCMarker() {
- 224     VM_GC_Operation::notify_gc_end();
- 225   }
- 226 };
- 227 
- 228 #endif // SHARE_GC_SHARED_GCVMOPERATIONS_HPP
+ 213   bool initiate_concurrent_GC();
+ 214 };
+ 215 
+ 216 class SvcGCMarker : public StackObj {
+ 217  private:
+ 218   JvmtiGCMarker _jgcm;
+ 219  public:
+ 220   typedef enum { MINOR, FULL, CONCURRENT } reason_type;
+ 221 
+ 222   SvcGCMarker(reason_type reason ) {
+ 223     VM_GC_Operation::notify_gc_begin(reason == FULL);
+ 224   }
+ 225 
+ 226   ~SvcGCMarker() {
+ 227     VM_GC_Operation::notify_gc_end();
+ 228   }
+ 229 };
+ 230 
+ 231 #endif // SHARE_GC_SHARED_GCVMOPERATIONS_HPP
 <a name="2" id="anc2"></a><b style="font-size: large; color: red">--- EOF ---</b>
 
 

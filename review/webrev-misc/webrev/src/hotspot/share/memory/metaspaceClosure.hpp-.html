@@ -81,7 +81,7 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
 <body id="SUNWwebrev">
 <pre>
    1 /*
-   2  * Copyright (c) 2017, 2019, Oracle and/or its affiliates. All rights reserved.
+   2  * Copyright (c) 2017, 2020, Oracle and/or its affiliates. All rights reserved.
    3  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
    4  *
    5  * This code is free software; you can redistribute it and/or modify it
@@ -142,257 +142,288 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   60 // root references (such as all Klass'es in the SystemDictionary).
   61 //
   62 // Currently it is used for compacting the CDS archive by eliminate temporary
-  63 // objects allocated during archive creation time. See ArchiveCompactor in
-  64 // metaspaceShared.cpp for an example.
-  65 //
-  66 // To support MetaspaceClosure, each subclass of MetaspaceObj must provide
-  67 // a method of the type void metaspace_pointers_do(MetaspaceClosure*). This method
-  68 // should call MetaspaceClosure::push() on every pointer fields of this
-  69 // class that points to a MetaspaceObj. See Annotations::metaspace_pointers_do()
-  70 // for an example.
-  71 class MetaspaceClosure {
-  72 public:
-  73   enum Writability {
-  74     _writable,
-  75     _not_writable,
-  76     _default
-  77   };
-  78 
-  79   enum SpecialRef {
-  80     _method_entry_ref
-  81   };
-  82 
-  83   // class MetaspaceClosure::Ref --
-  84   //
-  85   // MetaspaceClosure can be viewed as a very simple type of copying garbage
-  86   // collector. For it to function properly, it requires each subclass of
-  87   // MetaspaceObj to provide two methods:
-  88   //
-  89   //  size_t size();                                 -- to determine how much data to copy
-  90   //  void metaspace_pointers_do(MetaspaceClosure*); -- to locate all the embedded pointers
-  91   //
-  92   // Calling these methods would be trivial if these two were virtual methods.
-  93   // However, to save space, MetaspaceObj has NO vtable. The vtable is introduced
-  94   // only in the Metadata class.
-  95   //
-  96   // To work around the lack of a vtable, we use Ref class with templates
-  97   // (see ObjectRef, PrimitiveArrayRef and PointerArrayRef)
-  98   // so that we can statically discover the type of a object. The use of Ref
-  99   // depends on the fact that:
- 100   //
- 101   // [1] We don't use polymorphic pointers for MetaspaceObj's that are not subclasses
- 102   //     of Metadata. I.e., we don't do this:
- 103   //     class Klass {
- 104   //         MetaspaceObj *_obj;
- 105   //         Array&lt;int&gt;* foo() { return (Array&lt;int&gt;*)_obj; }
- 106   //         Symbol*     bar() { return (Symbol*)    _obj; }
- 107   //
- 108   // [2] All Array&lt;T&gt; dimensions are statically declared.
- 109   class Ref : public CHeapObj&lt;mtInternal&gt; {
- 110     Writability _writability;
+  63 // objects allocated during archive creation time. See ArchiveBuilder for an example.
+  64 //
+  65 // To support MetaspaceClosure, each subclass of MetaspaceObj must provide
+  66 // a method of the type void metaspace_pointers_do(MetaspaceClosure*). This method
+  67 // should call MetaspaceClosure::push() on every pointer fields of this
+  68 // class that points to a MetaspaceObj. See Annotations::metaspace_pointers_do()
+  69 // for an example.
+  70 class MetaspaceClosure {
+  71 public:
+  72   enum Writability {
+  73     _writable,
+  74     _not_writable,
+  75     _default
+  76   };
+  77 
+  78   enum SpecialRef {
+  79     _method_entry_ref
+  80   };
+  81 
+  82   // class MetaspaceClosure::Ref --
+  83   //
+  84   // MetaspaceClosure can be viewed as a very simple type of copying garbage
+  85   // collector. For it to function properly, it requires each subclass of
+  86   // MetaspaceObj to provide two methods:
+  87   //
+  88   //  size_t size();                                 -- to determine how much data to copy
+  89   //  void metaspace_pointers_do(MetaspaceClosure*); -- to locate all the embedded pointers
+  90   //
+  91   // Calling these methods would be trivial if these two were virtual methods.
+  92   // However, to save space, MetaspaceObj has NO vtable. The vtable is introduced
+  93   // only in the Metadata class.
+  94   //
+  95   // To work around the lack of a vtable, we use Ref class with templates
+  96   // (see ObjectRef, PrimitiveArrayRef and PointerArrayRef)
+  97   // so that we can statically discover the type of a object. The use of Ref
+  98   // depends on the fact that:
+  99   //
+ 100   // [1] We don't use polymorphic pointers for MetaspaceObj's that are not subclasses
+ 101   //     of Metadata. I.e., we don't do this:
+ 102   //     class Klass {
+ 103   //         MetaspaceObj *_obj;
+ 104   //         Array&lt;int&gt;* foo() { return (Array&lt;int&gt;*)_obj; }
+ 105   //         Symbol*     bar() { return (Symbol*)    _obj; }
+ 106   //
+ 107   // [2] All Array&lt;T&gt; dimensions are statically declared.
+ 108   class Ref : public CHeapObj&lt;mtInternal&gt; {
+ 109     Writability _writability;
+ 110     bool _keep_after_pushing;
  111     Ref* _next;
- 112     NONCOPYABLE(Ref);
- 113 
- 114   protected:
- 115     virtual void** mpp() const = 0;
- 116     Ref(Writability w) : _writability(w), _next(NULL) {}
- 117   public:
- 118     virtual bool not_null() const = 0;
- 119     virtual int size() const = 0;
- 120     virtual void metaspace_pointers_do(MetaspaceClosure *it) const = 0;
- 121     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const = 0;
- 122     virtual MetaspaceObj::Type msotype() const = 0;
- 123     virtual bool is_read_only_by_default() const = 0;
- 124     virtual ~Ref() {}
- 125 
- 126     address obj() const {
- 127       // In some rare cases (see CPSlot in constantPool.hpp) we store some flags in the lowest
- 128       // 2 bits of a MetaspaceObj pointer. Unmask these when manipulating the pointer.
- 129       uintx p = (uintx)*mpp();
- 130       return (address)(p &amp; (~FLAG_MASK));
- 131     }
- 132 
- 133     address* addr() const {
- 134       return (address*)mpp();
- 135     }
- 136 
- 137     void update(address new_loc) const;
- 138 
- 139     Writability writability() const { return _writability; };
- 140     void set_next(Ref* n)           { _next = n; }
- 141     Ref* next() const               { return _next; }
- 142 
- 143   private:
- 144     static const uintx FLAG_MASK = 0x03;
- 145 
- 146     int flag_bits() const {
- 147       uintx p = (uintx)*mpp();
- 148       return (int)(p &amp; FLAG_MASK);
- 149     }
- 150   };
- 151 
- 152 private:
- 153   // -------------------------------------------------- ObjectRef
- 154   template &lt;class T&gt; class ObjectRef : public Ref {
- 155     T** _mpp;
- 156     T* dereference() const {
- 157       return *_mpp;
- 158     }
- 159   protected:
- 160     virtual void** mpp() const {
- 161       return (void**)_mpp;
- 162     }
- 163 
- 164   public:
- 165     ObjectRef(T** mpp, Writability w) : Ref(w), _mpp(mpp) {}
- 166 
- 167     virtual bool is_read_only_by_default() const { return T::is_read_only_by_default(); }
- 168     virtual bool not_null()                const { return dereference() != NULL; }
- 169     virtual int size()                     const { return dereference()-&gt;size(); }
- 170     virtual MetaspaceObj::Type msotype()   const { return dereference()-&gt;type(); }
+ 112     void* _user_data;
+ 113     NONCOPYABLE(Ref);
+ 114 
+ 115   protected:
+ 116     virtual void** mpp() const = 0;
+ 117     Ref(Writability w) : _writability(w), _keep_after_pushing(false), _next(NULL), _user_data(NULL) {}
+ 118   public:
+ 119     virtual bool not_null() const = 0;
+ 120     virtual int size() const = 0;
+ 121     virtual void metaspace_pointers_do(MetaspaceClosure *it) const = 0;
+ 122     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const = 0;
+ 123     virtual MetaspaceObj::Type msotype() const = 0;
+ 124     virtual bool is_read_only_by_default() const = 0;
+ 125     virtual ~Ref() {}
+ 126 
+ 127     address obj() const {
+ 128       // In some rare cases (see CPSlot in constantPool.hpp) we store some flags in the lowest
+ 129       // 2 bits of a MetaspaceObj pointer. Unmask these when manipulating the pointer.
+ 130       uintx p = (uintx)*mpp();
+ 131       return (address)(p &amp; (~FLAG_MASK));
+ 132     }
+ 133 
+ 134     address* addr() const {
+ 135       return (address*)mpp();
+ 136     }
+ 137 
+ 138     void update(address new_loc) const;
+ 139 
+ 140     Writability writability() const { return _writability; };
+ 141     void set_keep_after_pushing()   { _keep_after_pushing = true; }
+ 142     bool keep_after_pushing()       { return _keep_after_pushing; }
+ 143     void set_user_data(void* data)  { _user_data = data; }
+ 144     void* user_data()               { return _user_data; }
+ 145     void set_next(Ref* n)           { _next = n; }
+ 146     Ref* next() const               { return _next; }
+ 147 
+ 148   private:
+ 149     static const uintx FLAG_MASK = 0x03;
+ 150 
+ 151     int flag_bits() const {
+ 152       uintx p = (uintx)*mpp();
+ 153       return (int)(p &amp; FLAG_MASK);
+ 154     }
+ 155   };
+ 156 
+ 157 private:
+ 158   // -------------------------------------------------- ObjectRef
+ 159   template &lt;class T&gt; class ObjectRef : public Ref {
+ 160     T** _mpp;
+ 161     T* dereference() const {
+ 162       return *_mpp;
+ 163     }
+ 164   protected:
+ 165     virtual void** mpp() const {
+ 166       return (void**)_mpp;
+ 167     }
+ 168 
+ 169   public:
+ 170     ObjectRef(T** mpp, Writability w) : Ref(w), _mpp(mpp) {}
  171 
- 172     virtual void metaspace_pointers_do(MetaspaceClosure *it) const {
- 173       dereference()-&gt;metaspace_pointers_do(it);
- 174     }
- 175     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const {
- 176       ((T*)new_loc)-&gt;metaspace_pointers_do(it);
- 177     }
- 178   };
- 179 
- 180   // -------------------------------------------------- PrimitiveArrayRef
- 181   template &lt;class T&gt; class PrimitiveArrayRef : public Ref {
- 182     Array&lt;T&gt;** _mpp;
- 183     Array&lt;T&gt;* dereference() const {
- 184       return *_mpp;
- 185     }
- 186   protected:
- 187     virtual void** mpp() const {
- 188       return (void**)_mpp;
- 189     }
- 190 
- 191   public:
- 192     PrimitiveArrayRef(Array&lt;T&gt;** mpp, Writability w) : Ref(w), _mpp(mpp) {}
- 193 
- 194     // all Arrays are read-only by default
- 195     virtual bool is_read_only_by_default() const { return true; }
- 196     virtual bool not_null()                const { return dereference() != NULL;  }
- 197     virtual int size()                     const { return dereference()-&gt;size(); }
- 198     virtual MetaspaceObj::Type msotype()   const { return MetaspaceObj::array_type(sizeof(T)); }
- 199 
- 200     virtual void metaspace_pointers_do(MetaspaceClosure *it) const {
- 201       Array&lt;T&gt;* array = dereference();
- 202       log_trace(cds)("Iter(PrimitiveArray): %p [%d]", array, array-&gt;length());
- 203     }
- 204     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const {
- 205       Array&lt;T&gt;* array = (Array&lt;T&gt;*)new_loc;
- 206       log_trace(cds)("Iter(PrimitiveArray): %p [%d]", array, array-&gt;length());
- 207     }
- 208   };
- 209 
- 210   // -------------------------------------------------- PointerArrayRef
- 211   template &lt;class T&gt; class PointerArrayRef : public Ref {
- 212     Array&lt;T*&gt;** _mpp;
- 213     Array&lt;T*&gt;* dereference() const {
- 214       return *_mpp;
- 215     }
- 216   protected:
- 217     virtual void** mpp() const {
- 218       return (void**)_mpp;
- 219     }
- 220 
- 221   public:
- 222     PointerArrayRef(Array&lt;T*&gt;** mpp, Writability w) : Ref(w), _mpp(mpp) {}
- 223 
- 224     // all Arrays are read-only by default
- 225     virtual bool is_read_only_by_default() const { return true; }
- 226     virtual bool not_null()                const { return dereference() != NULL; }
- 227     virtual int size()                     const { return dereference()-&gt;size(); }
- 228     virtual MetaspaceObj::Type msotype()   const { return MetaspaceObj::array_type(sizeof(T*)); }
- 229 
- 230     virtual void metaspace_pointers_do(MetaspaceClosure *it) const {
- 231       metaspace_pointers_do_at_impl(it, dereference());
- 232     }
- 233     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const {
- 234       metaspace_pointers_do_at_impl(it, (Array&lt;T*&gt;*)new_loc);
- 235     }
- 236   private:
- 237     void metaspace_pointers_do_at_impl(MetaspaceClosure *it, Array&lt;T*&gt;* array) const {
- 238       log_trace(cds)("Iter(ObjectArray): %p [%d]", array, array-&gt;length());
- 239       for (int i = 0; i &lt; array-&gt;length(); i++) {
- 240         T** mpp = array-&gt;adr_at(i);
- 241         it-&gt;push(mpp);
- 242       }
- 243     }
- 244   };
- 245 
- 246   // If recursion is too deep, save the Refs in _pending_refs, and push them later using
- 247   // MetaspaceClosure::finish()
- 248   static const int MAX_NEST_LEVEL = 5;
- 249   Ref* _pending_refs;
- 250   int _nest_level;
- 251 
- 252   void push_impl(Ref* ref);
- 253   void do_push(Ref* ref);
- 254 
- 255 public:
- 256   MetaspaceClosure(): _pending_refs(NULL), _nest_level(0) {}
- 257   ~MetaspaceClosure();
+ 172     virtual bool is_read_only_by_default() const { return T::is_read_only_by_default(); }
+ 173     virtual bool not_null()                const { return dereference() != NULL; }
+ 174     virtual int size()                     const { return dereference()-&gt;size(); }
+ 175     virtual MetaspaceObj::Type msotype()   const { return dereference()-&gt;type(); }
+ 176 
+ 177     virtual void metaspace_pointers_do(MetaspaceClosure *it) const {
+ 178       dereference()-&gt;metaspace_pointers_do(it);
+ 179     }
+ 180     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const {
+ 181       ((T*)new_loc)-&gt;metaspace_pointers_do(it);
+ 182     }
+ 183   };
+ 184 
+ 185   // -------------------------------------------------- PrimitiveArrayRef
+ 186   template &lt;class T&gt; class PrimitiveArrayRef : public Ref {
+ 187     Array&lt;T&gt;** _mpp;
+ 188     Array&lt;T&gt;* dereference() const {
+ 189       return *_mpp;
+ 190     }
+ 191   protected:
+ 192     virtual void** mpp() const {
+ 193       return (void**)_mpp;
+ 194     }
+ 195 
+ 196   public:
+ 197     PrimitiveArrayRef(Array&lt;T&gt;** mpp, Writability w) : Ref(w), _mpp(mpp) {}
+ 198 
+ 199     // all Arrays are read-only by default
+ 200     virtual bool is_read_only_by_default() const { return true; }
+ 201     virtual bool not_null()                const { return dereference() != NULL;  }
+ 202     virtual int size()                     const { return dereference()-&gt;size(); }
+ 203     virtual MetaspaceObj::Type msotype()   const { return MetaspaceObj::array_type(sizeof(T)); }
+ 204 
+ 205     virtual void metaspace_pointers_do(MetaspaceClosure *it) const {
+ 206       Array&lt;T&gt;* array = dereference();
+ 207       log_trace(cds)("Iter(PrimitiveArray): %p [%d]", array, array-&gt;length());
+ 208     }
+ 209     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const {
+ 210       Array&lt;T&gt;* array = (Array&lt;T&gt;*)new_loc;
+ 211       log_trace(cds)("Iter(PrimitiveArray): %p [%d]", array, array-&gt;length());
+ 212     }
+ 213   };
+ 214 
+ 215   // -------------------------------------------------- PointerArrayRef
+ 216   template &lt;class T&gt; class PointerArrayRef : public Ref {
+ 217     Array&lt;T*&gt;** _mpp;
+ 218     Array&lt;T*&gt;* dereference() const {
+ 219       return *_mpp;
+ 220     }
+ 221   protected:
+ 222     virtual void** mpp() const {
+ 223       return (void**)_mpp;
+ 224     }
+ 225 
+ 226   public:
+ 227     PointerArrayRef(Array&lt;T*&gt;** mpp, Writability w) : Ref(w), _mpp(mpp) {}
+ 228 
+ 229     // all Arrays are read-only by default
+ 230     virtual bool is_read_only_by_default() const { return true; }
+ 231     virtual bool not_null()                const { return dereference() != NULL; }
+ 232     virtual int size()                     const { return dereference()-&gt;size(); }
+ 233     virtual MetaspaceObj::Type msotype()   const { return MetaspaceObj::array_type(sizeof(T*)); }
+ 234 
+ 235     virtual void metaspace_pointers_do(MetaspaceClosure *it) const {
+ 236       metaspace_pointers_do_at_impl(it, dereference());
+ 237     }
+ 238     virtual void metaspace_pointers_do_at(MetaspaceClosure *it, address new_loc) const {
+ 239       metaspace_pointers_do_at_impl(it, (Array&lt;T*&gt;*)new_loc);
+ 240     }
+ 241   private:
+ 242     void metaspace_pointers_do_at_impl(MetaspaceClosure *it, Array&lt;T*&gt;* array) const {
+ 243       log_trace(cds)("Iter(ObjectArray): %p [%d]", array, array-&gt;length());
+ 244       for (int i = 0; i &lt; array-&gt;length(); i++) {
+ 245         T** mpp = array-&gt;adr_at(i);
+ 246         it-&gt;push(mpp);
+ 247       }
+ 248     }
+ 249   };
+ 250 
+ 251   // Normally, chains of references like a-&gt;b-&gt;c-&gt;d are iterated recursively. However,
+ 252   // if recursion is too deep, we save the Refs in _pending_refs, and push them later in
+ 253   // MetaspaceClosure::finish(). This avoids overflowing the C stack.
+ 254   static const int MAX_NEST_LEVEL = 5;
+ 255   Ref* _pending_refs;
+ 256   int _nest_level;
+ 257   Ref* _enclosing_ref;
  258 
- 259   void finish();
- 260 
- 261   // returns true if we want to keep iterating the pointers embedded inside &lt;ref&gt;
- 262   virtual bool do_ref(Ref* ref, bool read_only) = 0;
- 263 
- 264   // When you do:
- 265   //     void MyType::metaspace_pointers_do(MetaspaceClosure* it) {
- 266   //       it-&gt;push(_my_field)
- 267   //     }
- 268   //
- 269   // C++ will try to match the "most specific" template function. This one will
- 270   // will be matched if possible (if mpp is an Array&lt;&gt; of any pointer type).
- 271   template &lt;typename T&gt; void push(Array&lt;T*&gt;** mpp, Writability w = _default) {
- 272     push_impl(new PointerArrayRef&lt;T&gt;(mpp, w));
- 273   }
- 274 
- 275   // If the above function doesn't match (mpp is an Array&lt;&gt;, but T is not a pointer type), then
- 276   // this is the second choice.
- 277   template &lt;typename T&gt; void push(Array&lt;T&gt;** mpp, Writability w = _default) {
- 278     push_impl(new PrimitiveArrayRef&lt;T&gt;(mpp, w));
- 279   }
- 280 
- 281   // If the above function doesn't match (mpp is not an Array&lt;&gt; type), then
- 282   // this will be matched by default.
- 283   template &lt;class T&gt; void push(T** mpp, Writability w = _default) {
- 284     push_impl(new ObjectRef&lt;T&gt;(mpp, w));
- 285   }
- 286 
- 287   template &lt;class T&gt; void push_method_entry(T** mpp, intptr_t* p) {
- 288     push_special(_method_entry_ref, new ObjectRef&lt;T&gt;(mpp, _default), (intptr_t*)p);
- 289   }
+ 259   void push_impl(Ref* ref);
+ 260   void do_push(Ref* ref);
+ 261 
+ 262 public:
+ 263   MetaspaceClosure(): _pending_refs(NULL), _nest_level(0), _enclosing_ref(NULL) {}
+ 264   ~MetaspaceClosure();
+ 265 
+ 266   void finish();
+ 267 
+ 268   // enclosing_ref() is used to compute the offset of a field in a C++ class. For example
+ 269   // class Foo { intx scala; Bar* ptr; }
+ 270   //    Foo *f = 0x100;
+ 271   // when the f-&gt;ptr field is iterated with do_ref() on 64-bit platforms, we will have
+ 272   //    do_ref(Ref* r) {
+ 273   //       r-&gt;addr() == 0x108;                // == &amp;f-&gt;ptr;
+ 274   //       enclosing_ref()-&gt;obj() == 0x100;   // == foo
+ 275   // So we know that we are iterating upon a field at offset 8 of the object at 0x100.
+ 276   //
+ 277   // Note that if we have stack overflow, do_pending_ref(r) will be called first and
+ 278   // do_ref(r) will be called later, for the same r. In this case, enclosing_ref() is valid only
+ 279   // when do_pending_ref(r) is called, and will return NULL when do_ref(r) is called.
+ 280   Ref* enclosing_ref() const {
+ 281     return _enclosing_ref;
+ 282   }
+ 283 
+ 284   // This is called when a reference is placed in _pending_refs. Override this
+ 285   // function if you're using enclosing_ref(). See notes above.
+ 286   virtual void do_pending_ref(Ref* ref) {}
+ 287 
+ 288   // returns true if we want to keep iterating the pointers embedded inside &lt;ref&gt;
+ 289   virtual bool do_ref(Ref* ref, bool read_only) = 0;
  290 
- 291   // This is for tagging special pointers that are not a reference to MetaspaceObj. It's currently
- 292   // used to mark the method entry points in Method/ConstMethod.
- 293   virtual void push_special(SpecialRef type, Ref* obj, intptr_t* p) {
- 294     assert(type == _method_entry_ref, "only special type allowed for now");
- 295   }
- 296 };
- 297 
- 298 // This is a special MetaspaceClosure that visits each unique MetaspaceObj once.
- 299 class UniqueMetaspaceClosure : public MetaspaceClosure {
- 300   static const int INITIAL_TABLE_SIZE = 15889;
- 301   static const int MAX_TABLE_SIZE     = 1000000;
- 302 
- 303   // Do not override. Returns true if we are discovering ref-&gt;obj() for the first time.
- 304   virtual bool do_ref(Ref* ref, bool read_only);
- 305 
- 306 public:
- 307   // Gets called the first time we discover an object.
- 308   virtual bool do_unique_ref(Ref* ref, bool read_only) = 0;
- 309   UniqueMetaspaceClosure() : _has_been_visited(INITIAL_TABLE_SIZE) {}
- 310 
- 311 private:
- 312   KVHashtable&lt;address, bool, mtInternal&gt; _has_been_visited;
- 313 };
- 314 
- 315 #endif // SHARE_MEMORY_METASPACECLOSURE_HPP
+ 291   // When you do:
+ 292   //     void MyType::metaspace_pointers_do(MetaspaceClosure* it) {
+ 293   //       it-&gt;push(_my_field)
+ 294   //     }
+ 295   //
+ 296   // C++ will try to match the "most specific" template function. This one will
+ 297   // will be matched if possible (if mpp is an Array&lt;&gt; of any pointer type).
+ 298   template &lt;typename T&gt; void push(Array&lt;T*&gt;** mpp, Writability w = _default) {
+ 299     push_impl(new PointerArrayRef&lt;T&gt;(mpp, w));
+ 300   }
+ 301 
+ 302   // If the above function doesn't match (mpp is an Array&lt;&gt;, but T is not a pointer type), then
+ 303   // this is the second choice.
+ 304   template &lt;typename T&gt; void push(Array&lt;T&gt;** mpp, Writability w = _default) {
+ 305     push_impl(new PrimitiveArrayRef&lt;T&gt;(mpp, w));
+ 306   }
+ 307 
+ 308   // If the above function doesn't match (mpp is not an Array&lt;&gt; type), then
+ 309   // this will be matched by default.
+ 310   template &lt;class T&gt; void push(T** mpp, Writability w = _default) {
+ 311     push_impl(new ObjectRef&lt;T&gt;(mpp, w));
+ 312   }
+ 313 
+ 314   template &lt;class T&gt; void push_method_entry(T** mpp, intptr_t* p) {
+ 315     Ref* ref = new ObjectRef&lt;T&gt;(mpp, _default);
+ 316     push_special(_method_entry_ref, ref, (intptr_t*)p);
+ 317     if (!ref-&gt;keep_after_pushing()) {
+ 318       delete ref;
+ 319     }
+ 320   }
+ 321 
+ 322   // This is for tagging special pointers that are not a reference to MetaspaceObj. It's currently
+ 323   // used to mark the method entry points in Method/ConstMethod.
+ 324   virtual void push_special(SpecialRef type, Ref* obj, intptr_t* p) {
+ 325     assert(type == _method_entry_ref, "only special type allowed for now");
+ 326   }
+ 327 };
+ 328 
+ 329 // This is a special MetaspaceClosure that visits each unique MetaspaceObj once.
+ 330 class UniqueMetaspaceClosure : public MetaspaceClosure {
+ 331   static const int INITIAL_TABLE_SIZE = 15889;
+ 332   static const int MAX_TABLE_SIZE     = 1000000;
+ 333 
+ 334   // Do not override. Returns true if we are discovering ref-&gt;obj() for the first time.
+ 335   virtual bool do_ref(Ref* ref, bool read_only);
+ 336 
+ 337 public:
+ 338   // Gets called the first time we discover an object.
+ 339   virtual bool do_unique_ref(Ref* ref, bool read_only) = 0;
+ 340   UniqueMetaspaceClosure() : _has_been_visited(INITIAL_TABLE_SIZE) {}
+ 341 
+ 342 private:
+ 343   KVHashtable&lt;address, bool, mtInternal&gt; _has_been_visited;
+ 344 };
+ 345 
+ 346 #endif // SHARE_MEMORY_METASPACECLOSURE_HPP
 </pre></body></html>
