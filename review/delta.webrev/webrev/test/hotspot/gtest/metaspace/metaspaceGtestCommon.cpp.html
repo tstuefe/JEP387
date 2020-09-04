@@ -1,0 +1,184 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New test/hotspot/gtest/metaspace/metaspaceGtestCommon.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "runtime/os.hpp"
+  29 
+  30 #include "metaspaceGtestCommon.hpp"
+  31 #include "metaspaceGtestRangeHelpers.hpp"
+  32 
+  33 
+  34 void zap_range(MetaWord* p, size_t word_size) {
+  35   for (MetaWord* pzap = p; pzap &lt; p + word_size; pzap += os::vm_page_size() / BytesPerWord) {
+  36     *pzap = (MetaWord)NOT_LP64(0xFEFEFEFE) LP64_ONLY(0xFEFEFEFEEFEFEFEFULL);
+  37   }
+  38 }
+  39 
+  40 // Writes a unique pattern to p
+  41 void mark_address(MetaWord* p, uintx pattern) {
+  42   MetaWord x = (MetaWord)((uintx) p ^ pattern);
+  43   *p = x;
+  44 }
+  45 
+  46 // checks pattern at address
+  47 void check_marked_address(const MetaWord* p, uintx pattern) {
+  48   MetaWord x = (MetaWord)((uintx) p ^ pattern);
+  49   EXPECT_EQ(*p, x);
+  50 }
+  51 
+  52 // "fill_range_with_pattern" fills a range of heap words with pointers to itself.
+  53 //
+  54 // The idea is to fill a memory range with a pattern which is both marked clearly to the caller
+  55 // and cannot be moved without becoming invalid.
+  56 //
+  57 // The filled range can be checked with check_range_for_pattern. One also can only check
+  58 // a sub range of the original range.
+  59 void fill_range_with_pattern(MetaWord* p, size_t word_size, uintx pattern) {
+  60   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+  61   for (MetaWord* p2 = p; p2 &lt; p + word_size; p2++) {
+  62     mark_address(p2, pattern);
+  63   }
+  64 }
+  65 
+  66 void check_range_for_pattern(const MetaWord* p, size_t word_size, uintx pattern) {
+  67   assert(p != NULL, "sanity");
+  68   const MetaWord* p2 = p;
+  69   while (p2 &lt; p + word_size) {
+  70     check_marked_address(p2, pattern);
+  71     p2++;
+  72   }
+  73 }
+  74 
+  75 // Similar to fill_range_with_pattern, but only marks start and end. This is optimized for cases
+  76 // where fill_range_with_pattern just is too slow.
+  77 // Use check_marked_range to check the range. In contrast to check_range_for_pattern, only the original
+  78 // range can be checked.
+  79 void mark_range(MetaWord* p, size_t word_size, uintx pattern) {
+  80   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+  81   mark_address(p, pattern);
+  82   mark_address(p + word_size - 1, pattern);
+  83 }
+  84 
+  85 void check_marked_range(const MetaWord* p, size_t word_size, uintx pattern) {
+  86   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+  87   check_marked_address(p, pattern);
+  88   check_marked_address(p + word_size - 1, pattern);
+  89 }
+  90 
+  91 void mark_range(MetaWord* p, size_t word_size) {
+  92   assert(word_size &gt; 0 &amp;&amp; p != NULL, "sanity");
+  93   uintx pattern = (uintx)p2i(p);
+  94   mark_range(p, word_size, pattern);
+  95 }
+  96 
+  97 void check_marked_range(const MetaWord* p, size_t word_size) {
+  98   uintx pattern = (uintx)p2i(p);
+  99   check_marked_range(p, word_size, pattern);
+ 100 }
+ 101 
+</pre></body></html>

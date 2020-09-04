@@ -1,0 +1,184 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff test/hotspot/jtreg/runtime/Metaspace/elastic </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocation.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT2.java.sdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT1.java</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  23  *
+  24  */
+  25 
+  26 /*
+  27  * This is a stress test for allocating from a single MetaspaceArena from
+  28  *  multiple threads, optionally with reserve limit (mimicking the non-expandable CompressedClassSpace)
+  29  * or commit limit (mimimcking MaxMetaspaceSize).
+  30  *
+  31  * The test threads will start to allocate from the Arena, and occasionally deallocate.
+  32  * The threads run with a safety allocation max; if reached (or, if the underlying arena
+  33  * hits either commit or reserve limit, if given) they will switch to deallocation and then
+  34  * kind of float at the allocation ceiling, alternating between allocation and deallocation.
+  35  *
+  36  * We test with various flags, to exercise all 3 reclaim policies (none, balanced (default)
+  37  * and aggessive) as well as one run with allocation guards enabled.
+  38  *
+  39  * We also set MetaspaceVerifyInterval very low to trigger many verifications in debug vm.
+  40  *
+  41  */
+  42 
+<span class="removed">  43 </span>
+  44 /*
+  45  * @test id=debug
+  46  * @library /test/lib
+  47  * @modules java.base/jdk.internal.misc
+  48  *          java.management
+  49  * @build sun.hotspot.WhiteBox
+  50  * @key randomness
+  51  * @requires (vm.debug == true)
+  52  *
+  53  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  54  *
+  55  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10                                        TestMetaspaceAllocationMT1
+  56  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT1
+  57  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT1
+  58  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocationMT1
+  59  *
+  60  */
+  61 
+  62 /*
+  63  * @test id=ndebug
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  23  *
+  24  */
+  25 
+  26 /*
+  27  * This is a stress test for allocating from a single MetaspaceArena from
+  28  *  multiple threads, optionally with reserve limit (mimicking the non-expandable CompressedClassSpace)
+  29  * or commit limit (mimimcking MaxMetaspaceSize).
+  30  *
+  31  * The test threads will start to allocate from the Arena, and occasionally deallocate.
+  32  * The threads run with a safety allocation max; if reached (or, if the underlying arena
+  33  * hits either commit or reserve limit, if given) they will switch to deallocation and then
+  34  * kind of float at the allocation ceiling, alternating between allocation and deallocation.
+  35  *
+  36  * We test with various flags, to exercise all 3 reclaim policies (none, balanced (default)
+  37  * and aggessive) as well as one run with allocation guards enabled.
+  38  *
+  39  * We also set MetaspaceVerifyInterval very low to trigger many verifications in debug vm.
+  40  *
+  41  */
+  42 
+
+  43 /*
+  44  * @test id=debug
+  45  * @library /test/lib
+  46  * @modules java.base/jdk.internal.misc
+  47  *          java.management
+  48  * @build sun.hotspot.WhiteBox
+  49  * @key randomness
+  50  * @requires (vm.debug == true)
+  51  *
+  52  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  53  *
+  54  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10                                        TestMetaspaceAllocationMT1
+  55  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT1
+  56  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT1
+  57  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocationMT1
+  58  *
+  59  */
+  60 
+  61 /*
+  62  * @test id=ndebug
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocation.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT2.java.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

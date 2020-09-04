@@ -1,0 +1,202 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msAllocationGuard.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_MSALLOCATIONGUARD_HPP
+  27 #define SHARE_MEMORY_METASPACE_MSALLOCATIONGUARD_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/msChunklevel.hpp"
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 // In Debug builds, Metadata in Metaspace can be optionally guarded - enclosed in canaries -
+  35 // to detect memory overwriters.
+  36 //
+  37 // These canaries are periodically checked, e.g. when the Metaspace is purged in a context
+  38 // of a GC.
+  39 
+  40 // The canaries precede any allocated block...
+  41 //
+  42 // +---------------+
+  43 // |  'METAMETA'   |
+  44 // +---------------+
+  45 // |  block size   |
+  46 // +---------------+
+  47 // |  block...     |
+  48 // .               .
+  49 // .               .
+  50 // .               .
+  51 // |               |
+  52 // +---------------+
+  53 // . &lt;padding&gt;     .
+  54 // +---------------+
+  55 // |  'METAMETA'   |
+  56 // +---------------+
+  57 // |  block size   |
+  58 // +---------------+
+  59 // |  block...     |
+  60 
+  61 // ... and since the blocks are allocated via pointer bump and closely follow each other,
+  62 // one block's prefix is its predecessor's suffix, so apart from the last block all
+  63 // blocks have an overwriter canary on both ends.
+  64 //
+  65 
+  66 // Note: this feature is only available in debug, and is activated using
+  67 //  -XX:+MetaspaceGuardAllocations. When active, it disables deallocation handling - since
+  68 //  freeblock handling in the freeblock lists would get too complex - so one may run leaks
+  69 //  in deallocation-heavvy scenarios (e.g. lots of class redefinitions).
+  70 //
+  71 
+  72 namespace metaspace {
+  73 
+  74 #ifdef ASSERT
+  75 
+  76 struct Prefix {
+  77   static const uintx EyeCatcher =
+  78       NOT_LP64(0x77698465) LP64_ONLY(0x7769846577698465ULL); // "META" resp "METAMETA"
+  79 
+  80   const uintx _mark;
+  81   const size_t _word_size;   // raw word size including prefix
+  82   // MetaWord payload [0];   // varsized (but unfortunately not all our compilers understand that)
+  83 
+  84   Prefix(size_t word_size)
+  85     : _mark(EyeCatcher),
+  86       _word_size(word_size)
+  87   {}
+  88 
+  89   MetaWord* payload() const {
+  90     return (MetaWord*)(this + 1);
+  91   }
+  92 
+  93   void check() const {
+  94     assert(_mark == EyeCatcher, "Corrupt block: missing eyecatcher (at " PTR_FORMAT ").", p2i(this));
+  95     assert(_word_size &gt; 0 &amp;&amp; _word_size &lt; chunklevel::MAX_CHUNK_WORD_SIZE,
+  96            "Corrupt block: invalid size " SIZE_FORMAT " (at " PTR_FORMAT ").", _word_size, p2i(this));
+  97   }
+  98 
+  99 };
+ 100 
+ 101 // The prefix structure must be aligned to MetaWord size.
+ 102 STATIC_ASSERT((sizeof(Prefix) &amp; WordAlignmentMask) == 0);
+ 103 
+ 104 inline size_t prefix_size() {
+ 105   return sizeof(Prefix);
+ 106 }
+ 107 
+ 108 // Given a pointer to a memory area, establish the prefix at the start of that area and
+ 109 // return the starting pointer to the payload.
+ 110 inline MetaWord* establish_prefix(MetaWord* p_raw, size_t raw_word_size) {
+ 111   const Prefix* pp = new(p_raw)Prefix(raw_word_size);
+ 112   return pp-&gt;payload();
+ 113 }
+ 114 
+ 115 #endif
+ 116 
+ 117 } // namespace metaspace
+ 118 
+ 119 #endif // SHARE_MEMORY_METASPACE_MSALLOCATIONGUARD_HPP
+</pre></body></html>

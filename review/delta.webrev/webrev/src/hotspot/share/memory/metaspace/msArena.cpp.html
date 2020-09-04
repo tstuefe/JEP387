@@ -1,0 +1,599 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msArena.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "logging/log.hpp"
+  29 #include "logging/logStream.hpp"
+  30 #include "memory/metaspace/msAllocationGuard.hpp"
+  31 #include "memory/metaspace/msArena.hpp"
+  32 #include "memory/metaspace/msArenaGrowthPolicy.hpp"
+  33 #include "memory/metaspace/msChunkManager.hpp"
+  34 #include "memory/metaspace/msCommon.hpp"
+  35 #include "memory/metaspace/msFreeBlocks.hpp"
+  36 #include "memory/metaspace/msInternalStats.hpp"
+  37 #include "memory/metaspace/msMetachunk.hpp"
+  38 #include "memory/metaspace/msSettings.hpp"
+  39 #include "memory/metaspace/msStatistics.hpp"
+  40 #include "memory/metaspace/msVirtualSpaceList.hpp"
+  41 #include "runtime/atomic.hpp"
+  42 #include "runtime/init.hpp"
+  43 #include "services/memoryService.hpp"
+  44 #include "utilities/align.hpp"
+  45 #include "utilities/debug.hpp"
+  46 #include "utilities/globalDefinitions.hpp"
+  47 
+  48 namespace metaspace {
+  49 
+  50 #define LOGFMT         "Arena @" PTR_FORMAT " (%s)"
+  51 #define LOGFMT_ARGS    p2i(this), this-&gt;_name
+  52 
+  53 // Returns the level of the next chunk to be added, acc to growth policy.
+  54 chunklevel_t MetaspaceArena::next_chunk_level() const {
+  55   const int growth_step = _chunks.count();
+  56   return _growth_policy-&gt;get_level_at_step(growth_step);
+  57 }
+  58 
+  59 // Given a chunk, add its remaining free committed space to the free block list.
+  60 void MetaspaceArena::salvage_chunk(Metachunk* c) {
+  61 
+  62   if (Settings::handle_deallocations() == false) {
+  63     return;
+  64   }
+  65 
+  66   assert_lock_strong(lock());
+  67 
+  68   size_t remaining_words = c-&gt;free_below_committed_words();
+  69 
+  70   if (remaining_words &gt; FreeBlocks::MinWordSize) {
+  71 
+  72     UL2(trace, "salvaging chunk " METACHUNK_FULL_FORMAT ".", METACHUNK_FULL_FORMAT_ARGS(c));
+  73 
+  74     MetaWord* ptr = c-&gt;allocate(remaining_words);
+  75     assert(ptr != NULL, "Should have worked");
+  76     _total_used_words_counter-&gt;increment_by(remaining_words);
+  77 
+  78     add_allocation_to_fbl(ptr, remaining_words);
+  79 
+  80     // After this operation: the chunk should have no free committed space left.
+  81     assert(c-&gt;free_below_committed_words() == 0,
+  82            "Salvaging chunk failed (chunk " METACHUNK_FULL_FORMAT ").",
+  83            METACHUNK_FULL_FORMAT_ARGS(c));
+  84 
+  85   }
+  86 
+  87 }
+  88 
+  89 // Allocate a new chunk from the underlying chunk manager able to hold at least
+  90 // requested word size.
+  91 Metachunk* MetaspaceArena::allocate_new_chunk(size_t requested_word_size) {
+  92 
+  93   assert_lock_strong(lock());
+  94 
+  95   // Should this ever happen, we need to increase the maximum possible chunk size.
+  96   guarantee(requested_word_size &lt;= chunklevel::MAX_CHUNK_WORD_SIZE,
+  97             "Requested size too large (" SIZE_FORMAT ") - max allowed size per allocation is " SIZE_FORMAT ".",
+  98             requested_word_size, chunklevel::MAX_CHUNK_WORD_SIZE);
+  99 
+ 100   const int growth_step = _chunks.count();
+ 101   const chunklevel_t max_level = chunklevel::level_fitting_word_size(requested_word_size);
+ 102   const chunklevel_t preferred_level = MIN2(max_level, next_chunk_level());
+ 103 
+ 104   Metachunk* c = _chunk_manager-&gt;get_chunk(preferred_level, max_level, requested_word_size);
+ 105   if (c == NULL) {
+ 106     return NULL;
+ 107   }
+ 108 
+ 109   assert(c-&gt;is_in_use(), "Wrong chunk state.");
+ 110   assert(c-&gt;free_below_committed_words() &gt;= requested_word_size, "Chunk not committed");
+ 111 
+ 112   return c;
+ 113 
+ 114 }
+ 115 
+ 116 void MetaspaceArena::add_allocation_to_fbl(MetaWord* p, size_t word_size) {
+ 117   assert(Settings::handle_deallocations(), "Sanity");
+ 118   if (_fbl == NULL) {
+ 119     _fbl = new FreeBlocks(); // Create only on demand
+ 120   }
+ 121   _fbl-&gt;add_block(p, word_size);
+ 122 }
+ 123 
+ 124 MetaspaceArena::MetaspaceArena(ChunkManager* chunk_manager,
+ 125              const ArenaGrowthPolicy* growth_policy,
+ 126              Mutex* lock,
+ 127              SizeAtomicCounter* total_used_words_counter,
+ 128              const char* name)
+ 129 : _lock(lock),
+ 130   _chunk_manager(chunk_manager),
+ 131   _growth_policy(growth_policy),
+ 132   _chunks(),
+ 133   _fbl(NULL),
+ 134   _total_used_words_counter(total_used_words_counter),
+ 135   _name(name)
+ 136 {
+ 137   UL(debug, ": born.");
+ 138 
+ 139   // Update statistics
+ 140   InternalStats::inc_num_arena_births();
+ 141 }
+ 142 
+ 143 MetaspaceArena::~MetaspaceArena() {
+ 144 
+ 145   DEBUG_ONLY(verify();)
+ 146 
+ 147   MutexLocker fcl(lock(), Mutex::_no_safepoint_check_flag);
+ 148 
+ 149   MemRangeCounter return_counter;
+ 150 
+ 151   Metachunk* c = _chunks.first();
+ 152   Metachunk* c2 = NULL;
+ 153 
+ 154   while(c) {
+ 155     c2 = c-&gt;next();
+ 156     return_counter.add(c-&gt;used_words());
+ 157     DEBUG_ONLY(c-&gt;set_prev(NULL);)
+ 158     DEBUG_ONLY(c-&gt;set_next(NULL);)
+ 159     UL2(debug, "return chunk: " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
+ 160     _chunk_manager-&gt;return_chunk(c);
+ 161     // c may be invalid after return_chunk(c) was called. Don't access anymore.
+ 162     c = c2;
+ 163   }
+ 164 
+ 165   UL2(info, "returned %d chunks, total capacity " SIZE_FORMAT " words.",
+ 166       return_counter.count(), return_counter.total_size());
+ 167 
+ 168   _total_used_words_counter-&gt;decrement_by(return_counter.total_size());
+ 169 
+ 170   DEBUG_ONLY(chunk_manager()-&gt;verify();)
+ 171 
+ 172   delete _fbl;
+ 173 
+ 174   UL(debug, ": dies.");
+ 175 
+ 176   // Update statistics
+ 177   InternalStats::inc_num_arena_deaths();
+ 178 
+ 179 }
+ 180 
+ 181 // Attempt to enlarge the current chunk to make it large enough to hold at least
+ 182 //  requested_word_size additional words.
+ 183 //
+ 184 // On success, true is returned, false otherwise.
+ 185 bool MetaspaceArena::attempt_enlarge_current_chunk(size_t requested_word_size) {
+ 186 
+ 187   assert_lock_strong(lock());
+ 188 
+ 189   Metachunk* c = current_chunk();
+ 190   assert(c-&gt;free_words() &lt; requested_word_size, "Sanity");
+ 191 
+ 192   // Not if chunk enlargment is switched off...
+ 193   if (Settings::enlarge_chunks_in_place() == false) {
+ 194     return false;
+ 195   }
+ 196 
+ 197   // ... nor if we are already a root chunk ...
+ 198   if (c-&gt;is_root_chunk()) {
+ 199     return false;
+ 200   }
+ 201 
+ 202   // ... nor if the combined size of chunk content and new content would bring us above the size of a root chunk ...
+ 203   if ((c-&gt;used_words() + requested_word_size) &gt; metaspace::chunklevel::MAX_CHUNK_WORD_SIZE) {
+ 204     return false;
+ 205   }
+ 206 
+ 207   const chunklevel_t new_level =
+ 208       chunklevel::level_fitting_word_size(c-&gt;used_words() + requested_word_size);
+ 209   assert(new_level &lt; c-&gt;level(), "Sanity");
+ 210 
+ 211   // Atm we only enlarge by one level (so, doubling the chunk in size). So, if the requested enlargement
+ 212   // would require the chunk to more than double in size, we bail. But this covers about 99% of all cases,
+ 213   // so this is good enough.
+ 214   if (new_level &lt; c-&gt;level() - 1) {
+ 215     return false;
+ 216   }
+ 217 
+ 218   // This only works if chunk is the leader of its buddy pair (and also if buddy
+ 219   // is free and unsplit, but that we cannot check outside of metaspace lock).
+ 220   if (!c-&gt;is_leader()) {
+ 221     return false;
+ 222   }
+ 223 
+ 224   // If the size added to the chunk would be larger than allowed for the next growth step
+ 225   // dont enlarge.
+ 226   if (next_chunk_level() &gt; c-&gt;level()) {
+ 227     return false;
+ 228   }
+ 229 
+ 230   bool success = _chunk_manager-&gt;attempt_enlarge_chunk(c);
+ 231 
+ 232   assert(success == false || c-&gt;free_words() &gt;= requested_word_size, "Sanity");
+ 233 
+ 234   return success;
+ 235 
+ 236 }
+ 237 
+ 238 // Allocate memory from Metaspace.
+ 239 // 1) Attempt to allocate from the free block list.
+ 240 // 2) Attempt to allocate from the current chunk.
+ 241 // 3) Attempt to enlarge the current chunk in place if it is too small.
+ 242 // 4) Attempt to get a new chunk and allocate from that chunk.
+ 243 // At any point, if we hit a commit limit, we return NULL.
+ 244 MetaWord* MetaspaceArena::allocate(size_t requested_word_size) {
+ 245 
+ 246   MutexLocker cl(lock(), Mutex::_no_safepoint_check_flag);
+ 247 
+ 248   UL2(trace, "requested " SIZE_FORMAT " words.", requested_word_size);
+ 249 
+ 250   MetaWord* p = NULL;
+ 251 
+ 252   const size_t raw_word_size = get_raw_word_size_for_requested_word_size(requested_word_size);
+ 253 
+ 254   // 1) Attempt to allocate from the free blocks list
+ 255   if (Settings::handle_deallocations() &amp;&amp; _fbl != NULL &amp;&amp; !_fbl-&gt;is_empty()) {
+ 256     p = _fbl-&gt;remove_block(raw_word_size);
+ 257     if (p != NULL) {
+ 258       DEBUG_ONLY(InternalStats::inc_num_allocs_from_deallocated_blocks();)
+ 259       UL2(trace, "taken from fbl (now: %d, " SIZE_FORMAT ").",
+ 260           _fbl-&gt;count(), _fbl-&gt;total_size());
+ 261       // Note: Space in the freeblock dictionary counts as already used (see retire_current_chunk()) -
+ 262       // that means that we do not modify any counters and therefore can skip the epilog.
+ 263       return p;
+ 264     }
+ 265   }
+ 266 
+ 267   bool current_chunk_too_small = false;
+ 268   bool commit_failure = false;
+ 269 
+ 270   if (current_chunk() != NULL) {
+ 271 
+ 272     // 2) Attempt to satisfy the allocation from the current chunk.
+ 273 
+ 274     // If the current chunk is too small to hold the requested size, attempt to enlarge it.
+ 275     // If that fails, retire the chunk.
+ 276     if (current_chunk()-&gt;free_words() &lt; raw_word_size) {
+ 277       if (!attempt_enlarge_current_chunk(raw_word_size)) {
+ 278         current_chunk_too_small = true;
+ 279       } else {
+ 280         DEBUG_ONLY(InternalStats::inc_num_chunks_enlarged();)
+ 281         UL(debug, "enlarged chunk.");
+ 282       }
+ 283     }
+ 284 
+ 285     // Commit the chunk far enough to hold the requested word size. If that fails, we
+ 286     // hit a limit (either GC threshold or MaxMetaspaceSize). In that case retire the
+ 287     // chunk.
+ 288     if (!current_chunk_too_small) {
+ 289       if (!current_chunk()-&gt;ensure_committed_additional(raw_word_size)) {
+ 290         UL2(info, "commit failure (requested size: " SIZE_FORMAT ")", raw_word_size);
+ 291         commit_failure = true;
+ 292       }
+ 293     }
+ 294 
+ 295     // Allocate from the current chunk. This should work now.
+ 296     if (!current_chunk_too_small &amp;&amp; !commit_failure) {
+ 297       p = current_chunk()-&gt;allocate(raw_word_size);
+ 298       assert(p != NULL, "Allocation from chunk failed.");
+ 299     }
+ 300 
+ 301   }
+ 302 
+ 303   if (p == NULL) {
+ 304 
+ 305     // If we are here, we either had no current chunk to begin with or it was deemed insufficient.
+ 306     assert(current_chunk() == NULL ||
+ 307            current_chunk_too_small || commit_failure, "Sanity");
+ 308 
+ 309     Metachunk* new_chunk = allocate_new_chunk(raw_word_size);
+ 310 
+ 311     if (new_chunk != NULL) {
+ 312 
+ 313       UL2(debug, "allocated new chunk " METACHUNK_FORMAT " for requested word size " SIZE_FORMAT ".",
+ 314           METACHUNK_FORMAT_ARGS(new_chunk), requested_word_size);
+ 315 
+ 316       assert(new_chunk-&gt;free_below_committed_words() &gt;= raw_word_size, "Sanity");
+ 317 
+ 318       // We have a new chunk. Before making it the current chunk, retire the old one.
+ 319       if (current_chunk() != NULL) {
+ 320         salvage_chunk(current_chunk());
+ 321         DEBUG_ONLY(InternalStats::inc_num_chunks_retired();)
+ 322       }
+ 323 
+ 324       _chunks.add(new_chunk);
+ 325 
+ 326       // Now, allocate from that chunk. That should work.
+ 327       p = current_chunk()-&gt;allocate(raw_word_size);
+ 328       assert(p != NULL, "Allocation from chunk failed.");
+ 329 
+ 330     } else {
+ 331       UL2(info, "failed to allocate new chunk for requested word size " SIZE_FORMAT ".", requested_word_size);
+ 332     }
+ 333 
+ 334   }
+ 335 
+ 336 #ifdef ASSERT
+ 337   // When using allocation guards, establish a prefix.
+ 338   if (p != NULL &amp;&amp; Settings::use_allocation_guard()) {
+ 339     p = establish_prefix(p, raw_word_size);
+ 340   }
+ 341 #endif
+ 342 
+ 343   if (p == NULL) {
+ 344     InternalStats::inc_num_allocs_failed_limit();
+ 345   } else {
+ 346     DEBUG_ONLY(InternalStats::inc_num_allocs();)
+ 347     _total_used_words_counter-&gt;increment_by(raw_word_size);
+ 348   }
+ 349 
+ 350   SOMETIMES(verify_locked();)
+ 351 
+ 352   if (p == NULL) {
+ 353     UL(info, "allocation failed, returned NULL.");
+ 354   } else {
+ 355     UL2(trace, "after allocation: %u chunk(s), current:" METACHUNK_FULL_FORMAT, _chunks.count(), METACHUNK_FULL_FORMAT_ARGS(current_chunk()));
+ 356     UL2(trace, "returning " PTR_FORMAT ".", p2i(p));
+ 357   }
+ 358 
+ 359   return p;
+ 360 
+ 361 }
+ 362 
+ 363 // Prematurely returns a metaspace allocation to the _block_freelists
+ 364 // because it is not needed anymore (requires CLD lock to be active).
+ 365 void MetaspaceArena::deallocate_locked(MetaWord* p, size_t word_size) {
+ 366 
+ 367   if (Settings::handle_deallocations() == false) {
+ 368     return;
+ 369   }
+ 370 
+ 371   assert_lock_strong(lock());
+ 372 
+ 373   // At this point a current chunk must exist since we only deallocate if we did allocate before.
+ 374   assert(current_chunk() != NULL, "stray deallocation?");
+ 375 
+ 376   assert(is_valid_area(p, word_size),
+ 377          "Pointer range not part of this Arena and cannot be deallocated: (" PTR_FORMAT ".." PTR_FORMAT ").",
+ 378          p2i(p), p2i(p + word_size));
+ 379 
+ 380   UL2(trace, "deallocating " PTR_FORMAT ", word size: " SIZE_FORMAT ".",
+ 381       p2i(p), word_size);
+ 382 
+ 383   size_t raw_word_size = get_raw_word_size_for_requested_word_size(word_size);
+ 384   add_allocation_to_fbl(p, raw_word_size);
+ 385 
+ 386   DEBUG_ONLY(verify_locked();)
+ 387 
+ 388 }
+ 389 
+ 390 // Prematurely returns a metaspace allocation to the _block_freelists because it is not
+ 391 // needed anymore.
+ 392 void MetaspaceArena::deallocate(MetaWord* p, size_t word_size) {
+ 393   MutexLocker cl(lock(), Mutex::_no_safepoint_check_flag);
+ 394   deallocate_locked(p, word_size);
+ 395 }
+ 396 
+ 397 // Update statistics. This walks all in-use chunks.
+ 398 void MetaspaceArena::add_to_statistics(ArenaStats* out) const {
+ 399 
+ 400   MutexLocker cl(lock(), Mutex::_no_safepoint_check_flag);
+ 401 
+ 402   for (const Metachunk* c = _chunks.first(); c != NULL; c = c-&gt;next()) {
+ 403     InUseChunkStats&amp; ucs = out-&gt;_stats[c-&gt;level()];
+ 404     ucs._num++;
+ 405     ucs._word_size += c-&gt;word_size();
+ 406     ucs._committed_words += c-&gt;committed_words();
+ 407     ucs._used_words += c-&gt;used_words();
+ 408     // Note: for free and waste, we only count what's committed.
+ 409     if (c == current_chunk()) {
+ 410       ucs._free_words += c-&gt;free_below_committed_words();
+ 411     } else {
+ 412       ucs._waste_words += c-&gt;free_below_committed_words();
+ 413     }
+ 414   }
+ 415 
+ 416   if (_fbl != NULL) {
+ 417     out-&gt;_free_blocks_num += _fbl-&gt;count();
+ 418     out-&gt;_free_blocks_word_size += _fbl-&gt;total_size();
+ 419   }
+ 420 
+ 421   SOMETIMES(out-&gt;verify();)
+ 422 
+ 423 }
+ 424 
+ 425 // Convenience method to get the most important usage statistics.
+ 426 // For deeper analysis use add_to_statistics().
+ 427 void MetaspaceArena::usage_numbers(size_t* p_used_words, size_t* p_committed_words, size_t* p_capacity_words) const {
+ 428   MutexLocker cl(lock(), Mutex::_no_safepoint_check_flag);
+ 429   size_t used = 0, comm = 0, cap = 0;
+ 430   for (const Metachunk* c = _chunks.first(); c != NULL; c = c-&gt;next()) {
+ 431     used += c-&gt;used_words();
+ 432     comm += c-&gt;committed_words();
+ 433     cap += c-&gt;word_size();
+ 434   }
+ 435   if (p_used_words != NULL) {
+ 436     *p_used_words = used;
+ 437   }
+ 438   if (p_committed_words != NULL) {
+ 439     *p_committed_words = comm;
+ 440   }
+ 441   if (p_capacity_words != NULL) {
+ 442     *p_capacity_words = cap;
+ 443   }
+ 444 }
+ 445 
+ 446 #ifdef ASSERT
+ 447 
+ 448 void MetaspaceArena::verify_locked() const {
+ 449 
+ 450   assert_lock_strong(lock());
+ 451 
+ 452   assert(_growth_policy != NULL &amp;&amp; _chunk_manager != NULL, "Sanity");
+ 453 
+ 454   _chunks.verify();
+ 455 
+ 456   if (_fbl != NULL) {
+ 457     _fbl-&gt;verify();
+ 458   }
+ 459 
+ 460   // Verify guard zones of all allocations.
+ 461   SOMETIMES(
+ 462     if (Settings::use_allocation_guard()) {
+ 463       for (const Metachunk* c = _chunks.first(); c != NULL; c = c-&gt;next()) {
+ 464         const MetaWord* p = c-&gt;base();
+ 465         while (p &lt; c-&gt;top()) {
+ 466           const Prefix* pp = (const Prefix*)p;
+ 467           pp-&gt;check();
+ 468           p += pp-&gt;_word_size;
+ 469         }
+ 470       }
+ 471     }
+ 472   )
+ 473 
+ 474 }
+ 475 
+ 476 void MetaspaceArena::verify() const {
+ 477 
+ 478   MutexLocker cl(lock(), Mutex::_no_safepoint_check_flag);
+ 479   verify_locked();
+ 480 
+ 481 }
+ 482 
+ 483 // Returns true if the area indicated by pointer and size have actually been allocated
+ 484 // from this arena.
+ 485 bool MetaspaceArena::is_valid_area(MetaWord* p, size_t word_size) const {
+ 486   assert(p != NULL &amp;&amp; word_size &gt; 0, "Sanity");
+ 487   bool found = false;
+ 488   if (!found) {
+ 489     for (const Metachunk* c = _chunks.first(); c != NULL &amp;&amp; !found; c = c-&gt;next()) {
+ 490       assert(c-&gt;is_valid_committed_pointer(p) ==
+ 491              c-&gt;is_valid_committed_pointer(p + word_size - 1), "range intersects");
+ 492       found = c-&gt;is_valid_committed_pointer(p);
+ 493     }
+ 494   }
+ 495   return found;
+ 496 }
+ 497 
+ 498 #endif // ASSERT
+ 499 
+ 500 void MetaspaceArena::print_on(outputStream* st) const {
+ 501   MutexLocker fcl(_lock, Mutex::_no_safepoint_check_flag);
+ 502   print_on_locked(st);
+ 503 }
+ 504 
+ 505 void MetaspaceArena::print_on_locked(outputStream* st) const {
+ 506   assert_lock_strong(_lock);
+ 507   st-&gt;print_cr("sm %s: %d chunks, total word size: " SIZE_FORMAT ", committed word size: " SIZE_FORMAT, _name,
+ 508                _chunks.count(), _chunks.calc_word_size(), _chunks.calc_committed_word_size());
+ 509   _chunks.print_on(st);
+ 510   st-&gt;cr();
+ 511   st-&gt;print_cr("growth-policy " PTR_FORMAT ", lock " PTR_FORMAT ", cm " PTR_FORMAT ", fbl " PTR_FORMAT,
+ 512                 p2i(_growth_policy), p2i(_lock), p2i(_chunk_manager), p2i(_fbl));
+ 513 }
+ 514 
+ 515 } // namespace metaspace
+ 516 
+</pre></body></html>

@@ -1,0 +1,270 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_commitmask.cpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/gtest/metaspace/test_chunkheaderpool.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 1,8 ****</span>
+  /*
+<span class="changed">!  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<span class="newmarker">--- 1,8 ----</span>
+  /*
+<span class="changed">!  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2020 SAP SE. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<hr /><span class="oldmarker">*** 23,33 ****</span>
+   *
+   */
+  
+  #include "precompiled.hpp"
+  
+<span class="changed">! #include "metaspaceTestsCommon.hpp"</span>
+  
+  class ChunkHeaderPoolTest {
+  
+    static const size_t max_cap = 0x1000;
+  
+<span class="newmarker">--- 23,43 ----</span>
+   *
+   */
+  
+  #include "precompiled.hpp"
+  
+<span class="changed">! </span>
+<span class="changed">! #include "memory/metaspace/msChunkHeaderPool.hpp"</span>
+<span class="changed">! #include "memory/metaspace/msCounter.hpp"</span>
+<span class="changed">! #include "memory/metaspace/msMetachunk.hpp"</span>
+<span class="changed">! </span>
+<span class="changed">! //#define LOG_PLEASE</span>
+<span class="changed">! #include "metaspaceGtestCommon.hpp"</span>
+<span class="changed">! </span>
+<span class="changed">! using metaspace::ChunkHeaderPool;</span>
+<span class="changed">! using metaspace::Metachunk;</span>
+<span class="changed">! using metaspace::SizeCounter;</span>
+  
+  class ChunkHeaderPoolTest {
+  
+    static const size_t max_cap = 0x1000;
+  
+<hr /><span class="oldmarker">*** 49,59 ****</span>
+      _elems[index] = NULL;
+  
+      _num_allocated.decrement();
+      DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  
+<span class="changed">!     DEBUG_ONLY(_pool.verify(true);)</span>
+  
+    }
+  
+    void attempt_allocate_at(size_t index) {
+  
+<span class="newmarker">--- 59,69 ----</span>
+      _elems[index] = NULL;
+  
+      _num_allocated.decrement();
+      DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  
+<span class="changed">!     DEBUG_ONLY(_pool.verify();)</span>
+  
+    }
+  
+    void attempt_allocate_at(size_t index) {
+  
+<hr /><span class="oldmarker">*** 69,79 ****</span>
+      c-&gt;set_free();
+  
+      _num_allocated.increment();
+      DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  
+<span class="changed">!     DEBUG_ONLY(_pool.verify(true);)</span>
+    }
+  
+    void attempt_allocate_or_free_at(size_t index) {
+      if (_elems[index] == NULL) {
+        attempt_allocate_at(index);
+<span class="newmarker">--- 79,89 ----</span>
+      c-&gt;set_free();
+  
+      _num_allocated.increment();
+      DEBUG_ONLY(_num_allocated.check(_pool.used());)
+  
+<span class="changed">!     DEBUG_ONLY(_pool.verify();)</span>
+    }
+  
+    void attempt_allocate_or_free_at(size_t index) {
+      if (_elems[index] == NULL) {
+        attempt_allocate_at(index);
+<hr /><span class="oldmarker">*** 83,115 ****</span>
+    }
+  
+    // Randomly allocate from the pool and free. Slight preference for allocation.
+    void test_random_alloc_free(int num_iterations) {
+  
+<span class="changed">!     for (int iter = 0; iter &lt; num_iterations; iter ++) {</span>
+        size_t index = (size_t)os::random() % max_cap;
+        attempt_allocate_or_free_at(index);
+      }
+  
+<span class="changed">!     DEBUG_ONLY(_pool.verify(true);)</span>
+  
+    }
+  
+    static void test_once() {
+      ChunkHeaderPoolTest test;
+      test.test_random_alloc_free(100);
+    }
+  
+<span class="removed">- </span>
+  public:
+  
+    ChunkHeaderPoolTest() : _pool() {
+      memset(_elems, 0, sizeof(_elems));
+    }
+  
+    static void run_tests() {
+<span class="changed">!     for (int i = 0; i &lt; 1000; i ++) {</span>
+        test_once();
+      }
+    }
+  
+  };
+<span class="newmarker">--- 93,124 ----</span>
+    }
+  
+    // Randomly allocate from the pool and free. Slight preference for allocation.
+    void test_random_alloc_free(int num_iterations) {
+  
+<span class="changed">!     for (int iter = 0; iter &lt; num_iterations; iter++) {</span>
+        size_t index = (size_t)os::random() % max_cap;
+        attempt_allocate_or_free_at(index);
+      }
+  
+<span class="changed">!     DEBUG_ONLY(_pool.verify();)</span>
+  
+    }
+  
+    static void test_once() {
+      ChunkHeaderPoolTest test;
+      test.test_random_alloc_free(100);
+    }
+  
+  public:
+  
+    ChunkHeaderPoolTest() : _pool() {
+      memset(_elems, 0, sizeof(_elems));
+    }
+  
+    static void run_tests() {
+<span class="changed">!     for (int i = 0; i &lt; 1000; i++) {</span>
+        test_once();
+      }
+    }
+  
+  };
+<hr /><span class="oldmarker">*** 140,148 ****</span>
+    EXPECT_EQ(pool.used(), (int)0);
+    EXPECT_EQ(pool.freelist_size(), 1);
+  
+  }
+  
+<span class="removed">- </span>
+  TEST_VM(metaspace, chunk_header_pool) {
+    ChunkHeaderPoolTest::run_tests();
+  }
+<span class="newmarker">--- 149,156 ----</span>
+</pre>
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_commitmask.cpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

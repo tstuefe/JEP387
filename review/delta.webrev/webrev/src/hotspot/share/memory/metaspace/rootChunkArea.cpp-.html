@@ -1,0 +1,648 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/rootChunkArea.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 #include "logging/log.hpp"
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/chunkHeaderPool.hpp"
+  31 #include "memory/metaspace/chunkManager.hpp"
+  32 #include "memory/metaspace/freeChunkList.hpp"
+  33 #include "memory/metaspace/metachunk.hpp"
+  34 #include "memory/metaspace/metaspaceCommon.hpp"
+  35 #include "memory/metaspace/rootChunkArea.hpp"
+  36 #include "runtime/mutexLocker.hpp"
+  37 #include "utilities/debug.hpp"
+  38 #include "utilities/globalDefinitions.hpp"
+  39 
+  40 namespace metaspace {
+  41 
+  42 RootChunkArea::RootChunkArea(const MetaWord* base)
+  43   : _base(base), _first_chunk(NULL)
+  44 {}
+  45 
+  46 RootChunkArea::~RootChunkArea() {
+  47   // This is called when a VirtualSpaceNode is destructed (purged).
+  48   // All chunks should be free of course. In fact, there should only
+  49   // be one chunk, since all free chunks should have been merged.
+  50   if (_first_chunk != NULL) {
+  51     assert(_first_chunk-&gt;is_root_chunk() &amp;&amp; _first_chunk-&gt;is_free(),
+  52            "Cannot delete root chunk area if not all chunks are free.");
+  53     ChunkHeaderPool::pool()-&gt;return_chunk_header(_first_chunk);
+  54   }
+  55 }
+  56 
+  57 // Initialize: allocate a root node and a root chunk header; return the
+  58 // root chunk header. It will be partly initialized.
+  59 // Note: this just allocates a memory-less header; memory itself is allocated inside VirtualSpaceNode.
+  60 Metachunk* RootChunkArea::alloc_root_chunk_header(VirtualSpaceNode* node) {
+  61 
+  62   assert(_first_chunk == 0, "already have a root");
+  63 
+  64   Metachunk* c = ChunkHeaderPool::pool()-&gt;allocate_chunk_header();
+  65   c-&gt;initialize(node, const_cast&lt;MetaWord*&gt;(_base), chunklevel::ROOT_CHUNK_LEVEL);
+  66 
+  67   _first_chunk = c;
+  68 
+  69   return c;
+  70 
+  71 }
+  72 
+  73 // Given a chunk c, split it recursively until you get a chunk of the given target_level.
+  74 //
+  75 // The resulting target chunk resides at the same address as the original chunk.
+  76 // The resulting splinters are added to freelists.
+  77 //
+  78 // Returns pointer to the result chunk; the splitted-off chunks are added as
+  79 //  free chunks to the freelists.
+  80 void RootChunkArea::split(chunklevel_t target_level, Metachunk* c, FreeChunkListVector* freelists) {
+  81 
+  82   // Splitting a chunk once works like this:
+  83   //
+  84   // For a given chunk we want to split:
+  85   // - increase the chunk level (which halves its size)
+  86   // - (but leave base address as it is since it will be the leader of the newly
+  87   //    created chunk pair)
+  88   // - then create a new chunk header of the same level, set its memory range
+  89   //   to cover the second halfof the old chunk.
+  90   // - wire them up (prev_in_vs/next_in_vs)
+  91   // - return the follower chunk as "splinter chunk" in the splinters array.
+  92 
+  93   // Doing this multiple times will create a new free splinter chunk for every
+  94   // level we split:
+  95   //
+  96   // A  &lt;- original chunk
+  97   //
+  98   // B B  &lt;- split into two halves
+  99   //
+ 100   // C C B  &lt;- first half split again
+ 101   //
+ 102   // D D C B  &lt;- first half split again ...
+ 103   //
+ 104 
+ 105   // As an optimization, since we usually do not split once but multiple times,
+ 106   // to not do each split separately, since we would have to wire up prev_in_vs/next_in_vs
+ 107   // on every level just to tear it open in the next level when we reintroduce a new
+ 108   // half chunk splinter.
+ 109   // Instead, just split split split and delay building up the double linked list of the
+ 110   // new chunks at the end of all splits.
+ 111 
+ 112   DEBUG_ONLY(check_pointer(c-&gt;base());)
+ 113   DEBUG_ONLY(c-&gt;verify(false);)
+ 114   assert(c-&gt;is_free(), "Can only split free chunks.");
+ 115 
+ 116   DEBUG_ONLY(chunklevel::check_valid_level(target_level));
+ 117   assert(target_level &gt; c-&gt;level(), "Wrong target level");
+ 118 
+ 119   const chunklevel_t starting_level = c-&gt;level();
+ 120 
+ 121   while (c-&gt;level() &lt; target_level) {
+ 122 
+ 123     log_trace(metaspace)("Splitting chunk: " METACHUNK_FULL_FORMAT ".", METACHUNK_FULL_FORMAT_ARGS(c));
+ 124 
+ 125     c-&gt;inc_level();
+ 126     Metachunk* splinter_chunk = ChunkHeaderPool::pool()-&gt;allocate_chunk_header();
+ 127     splinter_chunk-&gt;initialize(c-&gt;vsnode(), c-&gt;end(), c-&gt;level());
+ 128 
+ 129     // Fix committed words info: If over the half of the original chunk was
+ 130     // committed, committed area spills over into the follower chunk.
+ 131     const size_t old_committed_words = c-&gt;committed_words();
+ 132     if (old_committed_words &gt; c-&gt;word_size()) {
+ 133       c-&gt;set_committed_words(c-&gt;word_size());
+ 134       splinter_chunk-&gt;set_committed_words(old_committed_words - c-&gt;word_size());
+ 135     } else {
+ 136       splinter_chunk-&gt;set_committed_words(0);
+ 137     }
+ 138 
+ 139     // Insert splinter chunk into vs list
+ 140     if (c-&gt;next_in_vs() != NULL) {
+ 141       c-&gt;next_in_vs()-&gt;set_prev_in_vs(splinter_chunk);
+ 142     }
+ 143     splinter_chunk-&gt;set_next_in_vs(c-&gt;next_in_vs());
+ 144     splinter_chunk-&gt;set_prev_in_vs(c);
+ 145     c-&gt;set_next_in_vs(splinter_chunk);
+ 146 
+ 147     log_trace(metaspace)(".. Result chunk: " METACHUNK_FULL_FORMAT ".", METACHUNK_FULL_FORMAT_ARGS(c));
+ 148     log_trace(metaspace)(".. Splinter chunk: " METACHUNK_FULL_FORMAT ".", METACHUNK_FULL_FORMAT_ARGS(splinter_chunk));
+ 149 
+ 150     // Add splinter to free lists
+ 151     freelists-&gt;add(splinter_chunk);
+ 152 
+ 153   }
+ 154 
+ 155   assert(c-&gt;level() == target_level, "Sanity");
+ 156 
+ 157   DEBUG_ONLY(verify(true);)
+ 158   DEBUG_ONLY(c-&gt;verify(true);)
+ 159 
+ 160 }
+ 161 
+ 162 
+ 163 // Given a chunk, attempt to merge it recursively with its neighboring chunks.
+ 164 //
+ 165 // If successful (merged at least once), returns address of
+ 166 // the merged chunk; NULL otherwise.
+ 167 //
+ 168 // The merged chunks are removed from the freelists.
+ 169 //
+ 170 // !!! Please note that if this method returns a non-NULL value, the
+ 171 // original chunk will be invalid and should not be accessed anymore! !!!
+ 172 Metachunk* RootChunkArea::merge(Metachunk* c, FreeChunkListVector* freelists) {
+ 173 
+ 174   // Note rules:
+ 175   //
+ 176   // - a chunk always has a buddy, unless it is a root chunk.
+ 177   // - In that buddy pair, a chunk is either leader or follower.
+ 178   // - a chunk's base address is always aligned at its size.
+ 179   // - if chunk is leader, its base address is also aligned to the size of the next
+ 180   //   lower level, at least. A follower chunk is not.
+ 181 
+ 182   // How we merge once:
+ 183   //
+ 184   // For a given chunk c, which has to be free and non-root, we do:
+ 185   // - find out if we are the leader or the follower chunk
+ 186   // - if we are leader, next_in_vs must be the follower; if we are follower,
+ 187   //   prev_in_vs must be the leader. Now we have the buddy chunk.
+ 188   // - However, if the buddy chunk itself is split (of a level higher than us)
+ 189   //   we cannot merge.
+ 190   // - we can only merge if the buddy is of the same level as we are and it is
+ 191   //   free.
+ 192   // - Then we merge by simply removing the follower chunk from the address range
+ 193   //   linked list (returning the now useless header to the pool) and decreasing
+ 194   //   the leader chunk level by one. That makes it double the size.
+ 195 
+ 196   // Example:
+ 197   // (lower case chunks are free, the * indicates the chunk we want to merge):
+ 198   //
+ 199   // ........................
+ 200   // d d*c   b       A           &lt;- we return the second (d*) chunk...
+ 201   //
+ 202   // c*  c   b       A           &lt;- we merge it with its predecessor and decrease its level...
+ 203   //
+ 204   // b*      b       A           &lt;- we merge it again, since its new neighbor was free too...
+ 205   //
+ 206   // a*              A           &lt;- we merge it again, since its new neighbor was free too...
+ 207   //
+ 208   // And we are done, since its new neighbor, (A), is not free. We would also be done
+ 209   // if the new neighbor itself is splintered.
+ 210 
+ 211   DEBUG_ONLY(check_pointer(c-&gt;base());)
+ 212   assert(!c-&gt;is_root_chunk(), "Cannot be merged further.");
+ 213   assert(c-&gt;is_free(), "Can only merge free chunks.");
+ 214 
+ 215   DEBUG_ONLY(c-&gt;verify(false);)
+ 216 
+ 217   log_trace(metaspace)("Attempting to merge chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
+ 218 
+ 219   const chunklevel_t starting_level = c-&gt;level();
+ 220 
+ 221   bool stop = false;
+ 222   Metachunk* result = NULL;
+ 223 
+ 224   do {
+ 225 
+ 226     // First find out if this chunk is the leader of its pair
+ 227     const bool is_leader = c-&gt;is_leader();
+ 228 
+ 229     // Note: this is either our buddy or a splinter of the buddy.
+ 230     Metachunk* const buddy = c-&gt;is_leader() ? c-&gt;next_in_vs() : c-&gt;prev_in_vs();
+ 231     DEBUG_ONLY(buddy-&gt;verify(true);)
+ 232 
+ 233     // A buddy chunk must be of the same or higher level (so, same size or smaller)
+ 234     // never be larger.
+ 235     assert(buddy-&gt;level() &gt;= c-&gt;level(), "Sanity");
+ 236 
+ 237     // Is this really my buddy (same level) or a splinter of it (higher level)?
+ 238     // Also, is it free?
+ 239     if (buddy-&gt;level() != c-&gt;level() || buddy-&gt;is_free() == false) {
+ 240 
+ 241       log_trace(metaspace)("cannot merge with chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(buddy));
+ 242 
+ 243       stop = true;
+ 244 
+ 245     } else {
+ 246 
+ 247       log_trace(metaspace)("will merge with chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(buddy));
+ 248 
+ 249       // We can merge with the buddy.
+ 250 
+ 251       // First, remove buddy from the chunk manager.
+ 252       assert(buddy-&gt;is_free(), "Sanity");
+ 253       freelists-&gt;remove(buddy);
+ 254 
+ 255       // Determine current leader and follower
+ 256       Metachunk* leader;
+ 257       Metachunk* follower;
+ 258       if (is_leader) {
+ 259         leader = c; follower = buddy;
+ 260       } else {
+ 261         leader = buddy; follower = c;
+ 262       }
+ 263 
+ 264       // Last checkpoint
+ 265       assert(leader-&gt;end() == follower-&gt;base() &amp;&amp;
+ 266              leader-&gt;level() == follower-&gt;level() &amp;&amp;
+ 267              leader-&gt;is_free() &amp;&amp; follower-&gt;is_free(), "Sanity");
+ 268 
+ 269       // The new merged chunk is as far committed as possible (if leader
+ 270       // chunk is fully committed, as far as the follower chunk).
+ 271       size_t merged_committed_words = leader-&gt;committed_words();
+ 272       if (merged_committed_words == leader-&gt;word_size()) {
+ 273         merged_committed_words += follower-&gt;committed_words();
+ 274       }
+ 275 
+ 276       // Leader survives, follower chunk is freed. Remove follower from vslist ..
+ 277       leader-&gt;set_next_in_vs(follower-&gt;next_in_vs());
+ 278       if (follower-&gt;next_in_vs() != NULL) {
+ 279         follower-&gt;next_in_vs()-&gt;set_prev_in_vs(leader);
+ 280       }
+ 281 
+ 282       // .. and return follower chunk header to pool for reuse.
+ 283       ChunkHeaderPool::pool()-&gt;return_chunk_header(follower);
+ 284 
+ 285       // Leader level gets decreased (leader chunk doubles in size) but
+ 286       // base address stays the same.
+ 287       leader-&gt;dec_level();
+ 288 
+ 289       // set commit boundary
+ 290       leader-&gt;set_committed_words(merged_committed_words);
+ 291 
+ 292       // If the leader is now of root chunk size, stop merging
+ 293       if (leader-&gt;is_root_chunk()) {
+ 294         stop = true;
+ 295       }
+ 296 
+ 297       result = c = leader;
+ 298 
+ 299       DEBUG_ONLY(leader-&gt;verify(true);)
+ 300 
+ 301     }
+ 302 
+ 303   } while (!stop);
+ 304 
+ 305 #ifdef ASSERT
+ 306   verify(true);
+ 307   if (result != NULL) {
+ 308     result-&gt;verify(true);
+ 309   }
+ 310 #endif // ASSERT
+ 311 
+ 312   return result;
+ 313 
+ 314 }
+ 315 
+ 316 // Given a chunk c, which must be "in use" and must not be a root chunk, attempt to
+ 317 // enlarge it in place by claiming its trailing buddy.
+ 318 //
+ 319 // This will only work if c is the leader of the buddy pair and the trailing buddy is free.
+ 320 //
+ 321 // If successful, the follower chunk will be removed from the freelists, the leader chunk c will
+ 322 // double in size (level decreased by one).
+ 323 //
+ 324 // On success, true is returned, false otherwise.
+ 325 bool RootChunkArea::attempt_enlarge_chunk(Metachunk* c, FreeChunkListVector* freelists) {
+ 326 
+ 327   DEBUG_ONLY(check_pointer(c-&gt;base());)
+ 328   assert(!c-&gt;is_root_chunk(), "Cannot be merged further.");
+ 329 
+ 330   // There is no real reason for this limitation other than it is not
+ 331   // needed on free chunks since they should be merged already:
+ 332   assert(c-&gt;is_in_use(), "Can only enlarge in use chunks.");
+ 333 
+ 334   DEBUG_ONLY(c-&gt;verify(false);)
+ 335 
+ 336   if (!c-&gt;is_leader()) {
+ 337     return false;
+ 338   }
+ 339 
+ 340   // We are the leader, so the buddy must follow us.
+ 341   Metachunk* const buddy = c-&gt;next_in_vs();
+ 342   DEBUG_ONLY(buddy-&gt;verify(true);)
+ 343 
+ 344   // Of course buddy cannot be larger than us.
+ 345   assert(buddy-&gt;level() &gt;= c-&gt;level(), "Sanity");
+ 346 
+ 347   // We cannot merge buddy in if it is not free...
+ 348   if (!buddy-&gt;is_free()) {
+ 349     return false;
+ 350   }
+ 351 
+ 352   // ... nor if it is splintered.
+ 353   if (buddy-&gt;level() != c-&gt;level()) {
+ 354     return false;
+ 355   }
+ 356 
+ 357   // Okay, lets enlarge c.
+ 358 
+ 359   log_trace(metaspace)("Enlarging chunk " METACHUNK_FULL_FORMAT " by merging in follower " METACHUNK_FULL_FORMAT ".",
+ 360                        METACHUNK_FULL_FORMAT_ARGS(c), METACHUNK_FULL_FORMAT_ARGS(buddy));
+ 361 
+ 362   // the enlarged c is as far committed as possible:
+ 363   size_t merged_committed_words = c-&gt;committed_words();
+ 364   if (merged_committed_words == c-&gt;word_size()) {
+ 365     merged_committed_words += buddy-&gt;committed_words();
+ 366   }
+ 367 
+ 368   // Remove buddy from vs list...
+ 369   Metachunk* successor = buddy-&gt;next_in_vs();
+ 370   if (successor != NULL) {
+ 371     successor-&gt;set_prev_in_vs(c);
+ 372   }
+ 373   c-&gt;set_next_in_vs(successor);
+ 374 
+ 375   // .. and from freelist ...
+ 376   freelists-&gt;remove(buddy);
+ 377 
+ 378   // .. and return its empty husk to the pool...
+ 379   ChunkHeaderPool::pool()-&gt;return_chunk_header(buddy);
+ 380 
+ 381   // Then decrease level of c.
+ 382   c-&gt;dec_level();
+ 383 
+ 384   // and correct committed words if needed.
+ 385   c-&gt;set_committed_words(merged_committed_words);
+ 386 
+ 387   log_debug(metaspace)("Enlarged chunk " METACHUNK_FULL_FORMAT ".", METACHUNK_FULL_FORMAT_ARGS(c));
+ 388 //  log_debug(metaspace)("Enlarged chunk " METACHUNK_FORMAT ".", METACHUNK_FORMAT_ARGS(c));
+ 389 
+ 390   DEBUG_ONLY(verify(true));
+ 391 
+ 392   return true;
+ 393 
+ 394 }
+ 395 
+ 396 // Returns true if this root chunk area is completely free:
+ 397 //  In that case, it should only contain one chunk (maximally merged, so a root chunk)
+ 398 //  and it should be free.
+ 399 bool RootChunkArea::is_free() const {
+ 400   return _first_chunk == NULL ||
+ 401       (_first_chunk-&gt;is_root_chunk() &amp;&amp; _first_chunk-&gt;is_free());
+ 402 }
+ 403 
+ 404 
+ 405 #ifdef ASSERT
+ 406 
+ 407 #define assrt_(cond, ...) \
+ 408   if (!(cond)) { \
+ 409     fdStream errst(2); \
+ 410     this-&gt;print_on(&amp;errst); \
+ 411     vmassert(cond, __VA_ARGS__); \
+ 412   }
+ 413 
+ 414 void RootChunkArea::verify(bool slow) const {
+ 415 
+ 416 
+ 417   assert_lock_strong(MetaspaceExpand_lock);
+ 418   assert_is_aligned(_base, chunklevel::MAX_CHUNK_BYTE_SIZE);
+ 419 
+ 420   // Iterate thru all chunks in this area. They must be ordered correctly,
+ 421   // being adjacent to each other, and cover the complete area
+ 422   int num_chunk = 0;
+ 423 
+ 424   if (_first_chunk != NULL) {
+ 425 
+ 426     assrt_(_first_chunk-&gt;prev_in_vs() == NULL, "Sanity");
+ 427 
+ 428     const Metachunk* c = _first_chunk;
+ 429     const MetaWord* expected_next_base = _base;
+ 430     const MetaWord* const area_end = _base + word_size();
+ 431 
+ 432     while (c != NULL) {
+ 433 
+ 434       assrt_(c-&gt;is_free() || c-&gt;is_in_use(),
+ 435           "Chunk No. %d " METACHUNK_FORMAT " - invalid state.",
+ 436           num_chunk, METACHUNK_FORMAT_ARGS(c));
+ 437 
+ 438       assrt_(c-&gt;base() == expected_next_base,
+ 439              "Chunk No. %d " METACHUNK_FORMAT " - unexpected base.",
+ 440              num_chunk, METACHUNK_FORMAT_ARGS(c));
+ 441 
+ 442       assrt_(c-&gt;base() &gt;= base() &amp;&amp; c-&gt;end() &lt;= end(),
+ 443              "chunk %d " METACHUNK_FORMAT " oob for this root area [" PTR_FORMAT ".." PTR_FORMAT ").",
+ 444              num_chunk, METACHUNK_FORMAT_ARGS(c), p2i(base()), p2i(end()));
+ 445 
+ 446       assrt_(is_aligned(c-&gt;base(), c-&gt;word_size()),
+ 447              "misaligned chunk %d " METACHUNK_FORMAT ".", num_chunk, METACHUNK_FORMAT_ARGS(c));
+ 448 
+ 449       c-&gt;verify_neighborhood();
+ 450       c-&gt;verify(slow);
+ 451 
+ 452       expected_next_base = c-&gt;end();
+ 453       num_chunk ++;
+ 454 
+ 455       c = c-&gt;next_in_vs();
+ 456 
+ 457     }
+ 458     assrt_(expected_next_base == _base + word_size(), "Sanity");
+ 459   }
+ 460 
+ 461 }
+ 462 
+ 463 void RootChunkArea::verify_area_is_ideally_merged() const {
+ 464 
+ 465   SOMETIMES(assert_lock_strong(MetaspaceExpand_lock);)
+ 466 
+ 467   int num_chunk = 0;
+ 468   for (const Metachunk* c = _first_chunk; c != NULL; c = c-&gt;next_in_vs()) {
+ 469     if (!c-&gt;is_root_chunk() &amp;&amp; c-&gt;is_free()) {
+ 470       // If a chunk is free, it must not have a buddy which is also free, because
+ 471       // those chunks should have been merged.
+ 472       // In other words, a buddy shall be either in-use or splintered
+ 473       // (which in turn would mean part of it are in use).
+ 474       Metachunk* const buddy = c-&gt;is_leader() ? c-&gt;next_in_vs() : c-&gt;prev_in_vs();
+ 475       assrt_(buddy-&gt;is_in_use() || buddy-&gt;level() &gt; c-&gt;level(),
+ 476              "Chunk No. %d " METACHUNK_FORMAT " : missed merge opportunity with neighbor " METACHUNK_FORMAT ".",
+ 477              num_chunk, METACHUNK_FORMAT_ARGS(c), METACHUNK_FORMAT_ARGS(buddy));
+ 478     }
+ 479     num_chunk ++;
+ 480   }
+ 481 }
+ 482 
+ 483 #endif
+ 484 
+ 485 void RootChunkArea::print_on(outputStream* st) const {
+ 486 
+ 487   st-&gt;print(PTR_FORMAT ": ", p2i(base()));
+ 488   if (_first_chunk != NULL) {
+ 489     const Metachunk* c = _first_chunk;
+ 490     //                                    01234567890123
+ 491     const char* letters_for_levels_cap = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+ 492     const char* letters_for_levels =     "abcdefghijklmnopqrstuvwxyz";
+ 493     while (c != NULL) {
+ 494       const chunklevel_t l = c-&gt;level();
+ 495       if (l &gt;= 0 &amp;&amp; (size_t)l &lt; strlen(letters_for_levels)) {
+ 496 //        c-&gt;print_on(st); st-&gt;cr();
+ 497         st-&gt;print("%c", c-&gt;is_free() ? letters_for_levels[c-&gt;level()] : letters_for_levels_cap[c-&gt;level()]);
+ 498       } else {
+ 499         // Obviously garbage, but lets not crash.
+ 500         st-&gt;print("?");
+ 501       }
+ 502       c = c-&gt;next_in_vs();
+ 503     }
+ 504   } else {
+ 505     st-&gt;print(" (no chunks)");
+ 506   }
+ 507   st-&gt;cr();
+ 508 
+ 509 }
+ 510 
+ 511 
+ 512 // Create an array of ChunkTree objects, all initialized to NULL, covering
+ 513 // a given memory range. Memory range must be a multiple of root chunk size.
+ 514 RootChunkAreaLUT::RootChunkAreaLUT(const MetaWord* base, size_t word_size)
+ 515   : _base(base),
+ 516     _num((int)(word_size / chunklevel::MAX_CHUNK_WORD_SIZE)),
+ 517     _arr(NULL)
+ 518 {
+ 519   assert_is_aligned(word_size, chunklevel::MAX_CHUNK_WORD_SIZE);
+ 520   _arr = NEW_C_HEAP_ARRAY(RootChunkArea, _num, mtClass);
+ 521   const MetaWord* this_base = _base;
+ 522   for (int i = 0; i &lt; _num; i ++) {
+ 523     RootChunkArea* rca = new(_arr + i) RootChunkArea(this_base);
+ 524     assert(rca == _arr + i, "Sanity");
+ 525     this_base += chunklevel::MAX_CHUNK_WORD_SIZE;
+ 526   }
+ 527 }
+ 528 
+ 529 RootChunkAreaLUT::~RootChunkAreaLUT() {
+ 530   for (int i = 0; i &lt; _num; i ++) {
+ 531     _arr[i].~RootChunkArea();
+ 532   }
+ 533   FREE_C_HEAP_ARRAY(RootChunkArea, _arr);
+ 534 }
+ 535 
+ 536 // Returns true if all areas in this area table are free (only contain free chunks).
+ 537 bool RootChunkAreaLUT::is_free() const {
+ 538   for (int i = 0; i &lt; _num; i ++) {
+ 539     if (!_arr[i].is_free()) {
+ 540       return false;
+ 541     }
+ 542   }
+ 543   return true;
+ 544 }
+ 545 
+ 546 #ifdef ASSERT
+ 547 
+ 548 void RootChunkAreaLUT::verify(bool slow) const {
+ 549   for (int i = 0; i &lt; _num; i ++) {
+ 550     check_pointer(_arr[i].base());
+ 551     _arr[i].verify(slow);
+ 552   }
+ 553 }
+ 554 
+ 555 #endif
+ 556 
+ 557 void RootChunkAreaLUT::print_on(outputStream* st) const {
+ 558   for (int i = 0; i &lt; _num; i ++) {
+ 559     st-&gt;print("%2d:", i);
+ 560     _arr[i].print_on(st);
+ 561   }
+ 562 }
+ 563 
+ 564 
+ 565 } // end: namespace metaspace
+</pre></body></html>

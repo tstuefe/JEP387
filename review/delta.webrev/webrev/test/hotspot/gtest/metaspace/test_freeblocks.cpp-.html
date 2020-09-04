@@ -1,0 +1,315 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old test/hotspot/gtest/metaspace/test_freeblocks.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+  28 //#define LOG_PLEASE
+  29 
+  30 #include "metaspaceTestsCommon.hpp"
+  31 
+  32 #define CHECK_CONTENT(fb, num_blocks_expected, word_size_expected) \
+  33 { \
+  34   if (word_size_expected &gt; 0) { \
+  35     EXPECT_FALSE(fb.is_empty()); \
+  36   } else { \
+  37     EXPECT_TRUE(fb.is_empty()); \
+  38   } \
+  39   EXPECT_EQ(fb.total_size(), (size_t)word_size_expected); \
+  40   EXPECT_EQ(fb.count(), (int)num_blocks_expected); \
+  41 }
+  42 
+  43 class FreeBlocksTest {
+  44 
+  45   FeederBuffer _fb;
+  46   FreeBlocks _freeblocks;
+  47 
+  48   // random generator for block feeding
+  49   RandSizeGenerator _rgen_feeding;
+  50 
+  51   // random generator for allocations (and, hence, deallocations)
+  52   RandSizeGenerator _rgen_allocations;
+  53 
+  54   SizeCounter _allocated_words;
+  55 
+  56   struct allocation_t {
+  57     allocation_t* next;
+  58     size_t word_size;
+  59     MetaWord* p;
+  60   };
+  61 
+  62   // Array of the same size as the pool max capacity; holds the allocated elements.
+  63   allocation_t* _allocations;
+  64 
+  65   int _num_allocs;
+  66   int _num_deallocs;
+  67   int _num_feeds;
+  68 
+  69   bool feed_some() {
+  70     size_t word_size = _rgen_feeding.get();
+  71     MetaWord* p = _fb.get(word_size);
+  72     if (p != NULL) {
+  73       _freeblocks.add_block(p, word_size);
+  74       return true;
+  75     }
+  76     return false;
+  77   }
+  78 
+  79   void deallocate_top() {
+  80 
+  81     allocation_t* a = _allocations;
+  82     if (a != NULL) {
+  83       _allocations = a-&gt;next;
+  84       check_marked_range(a-&gt;p, a-&gt;word_size);
+  85       _freeblocks.add_block(a-&gt;p, a-&gt;word_size);
+  86       delete a;
+  87       DEBUG_ONLY(_freeblocks.verify();)
+  88     }
+  89   }
+  90 
+  91   bool allocate() {
+  92 
+  93     size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.minimal_word_size);
+  94     MetaWord* p = _freeblocks.get_block(word_size);
+  95     if (p != NULL) {
+  96       _allocated_words.increment_by(word_size);
+  97       allocation_t* a = new allocation_t;
+  98       a-&gt;p = p; a-&gt;word_size = word_size;
+  99       a-&gt;next = _allocations;
+ 100       _allocations = a;
+ 101       DEBUG_ONLY(_freeblocks.verify();)
+ 102       mark_range(p, word_size);
+ 103       return true;
+ 104     }
+ 105     return false;
+ 106   }
+ 107 
+ 108   void test_all_marked_ranges() {
+ 109     for (allocation_t* a = _allocations; a != NULL; a = a-&gt;next) {
+ 110       check_marked_range(a-&gt;p, a-&gt;word_size);
+ 111     }
+ 112   }
+ 113 
+ 114   void test_loop() {
+ 115     // We loop and in each iteration execute one of three operations:
+ 116     // - allocation from lom
+ 117     // - deallocation to lom of a previously allocated block
+ 118     // - feeding a new larger block into the lom (mimicks chunk retiring)
+ 119     // When we have fed all large blocks into the lom (feedbuffer empty), we
+ 120     //  switch to draining the lom completely (only allocs)
+ 121     bool forcefeed = false;
+ 122     bool draining = false;
+ 123     bool stop = false;
+ 124     int iter = 100000; // safety stop
+ 125     while (!stop &amp;&amp; iter &gt; 0) {
+ 126       iter --;
+ 127       int surprise = (int)os::random() % 10;
+ 128       if (!draining &amp;&amp; (surprise &gt;= 7 || forcefeed)) {
+ 129         forcefeed = false;
+ 130         if (feed_some()) {
+ 131           _num_feeds ++;
+ 132         } else {
+ 133           // We fed all input memory into the LOM. Now lets proceed until the lom is drained.
+ 134           draining = true;
+ 135         }
+ 136       } else if (!draining &amp;&amp; surprise &lt; 1) {
+ 137         deallocate_top();
+ 138         _num_deallocs ++;
+ 139       } else {
+ 140         if (allocate()) {
+ 141           _num_allocs ++;
+ 142         } else {
+ 143           if (draining) {
+ 144             stop = _freeblocks.total_size() &lt; 512;
+ 145           } else {
+ 146             forcefeed = true;
+ 147           }
+ 148         }
+ 149       }
+ 150       if ((iter % 1000) == 0) {
+ 151         DEBUG_ONLY(_freeblocks.verify();)
+ 152         test_all_marked_ranges();
+ 153         LOG("a %d (" SIZE_FORMAT "), d %d, f %d", _num_allocs, _allocated_words.get(), _num_deallocs, _num_feeds);
+ 154 #ifdef LOG_PLEASE
+ 155         _freeblocks.print(tty, true);
+ 156         tty-&gt;cr();
+ 157 #endif
+ 158       }
+ 159     }
+ 160 
+ 161     // Drain
+ 162 
+ 163 
+ 164   }
+ 165 
+ 166 
+ 167 
+ 168 public:
+ 169 
+ 170   FreeBlocksTest(size_t avg_alloc_size) :
+ 171     _fb(512 * K), _freeblocks(),
+ 172     _rgen_feeding(128, 4096),
+ 173     _rgen_allocations(avg_alloc_size / 4, avg_alloc_size * 2, 0.01f, avg_alloc_size / 3, avg_alloc_size * 30),
+ 174     _allocations(NULL),
+ 175     _num_allocs(0), _num_deallocs(0), _num_feeds(0)
+ 176   {
+ 177     CHECK_CONTENT(_freeblocks, 0, 0);
+ 178     // some initial feeding
+ 179     _freeblocks.add_block(_fb.get(1024), 1024);
+ 180     CHECK_CONTENT(_freeblocks, 1, 1024);
+ 181   }
+ 182 
+ 183 
+ 184   static void test_small_allocations() {
+ 185     FreeBlocksTest test(10);
+ 186     test.test_loop();
+ 187   }
+ 188 
+ 189   static void test_medium_allocations() {
+ 190     FreeBlocksTest test(30);
+ 191     test.test_loop();
+ 192   }
+ 193 
+ 194   static void test_large_allocations() {
+ 195     FreeBlocksTest test(150);
+ 196     test.test_loop();
+ 197   }
+ 198 
+ 199 
+ 200 };
+ 201 
+ 202 
+ 203 TEST_VM(metaspace, freeblocks_basics) {
+ 204 
+ 205   FreeBlocks lom;
+ 206   MetaWord tmp[1024];
+ 207   CHECK_CONTENT(lom, 0, 0);
+ 208 
+ 209   lom.add_block(tmp, 1024);
+ 210   DEBUG_ONLY(lom.verify();)
+ 211   ASSERT_FALSE(lom.is_empty());
+ 212   CHECK_CONTENT(lom, 1, 1024);
+ 213 
+ 214   MetaWord* p = lom.get_block(1024);
+ 215   EXPECT_EQ(p, tmp);
+ 216   DEBUG_ONLY(lom.verify();)
+ 217   CHECK_CONTENT(lom, 0, 0);
+ 218 
+ 219 }
+ 220 
+ 221 TEST_VM(metaspace, freeblocks_small) {
+ 222   FreeBlocksTest::test_small_allocations();
+ 223 }
+ 224 
+ 225 TEST_VM(metaspace, freeblocks_medium) {
+ 226   FreeBlocksTest::test_medium_allocations();
+ 227 }
+ 228 
+ 229 TEST_VM(metaspace, freeblocks_large) {
+ 230   FreeBlocksTest::test_large_allocations();
+ 231 }
+ 232 
+</pre></body></html>

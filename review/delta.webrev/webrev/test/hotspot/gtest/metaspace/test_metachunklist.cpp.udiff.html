@@ -1,0 +1,237 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Udiff test/hotspot/gtest/metaspace/test_metachunklist.cpp</title>
+
+<style type="text/css" media="screen">
+span.new {
+    color: blue;
+    font-weight: normal;
+}
+</style>
+
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_metachunk.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp.udiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/gtest/metaspace/test_metachunklist.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+        <pre>
+</pre><hr /><pre>
+<span class="newmarker">@@ -1,8 +1,8 @@</span>
+ /*
+<span class="removed">- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="removed">- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.</span>
+<span class="new">+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="new">+ * Copyright (c) 2020 SAP SE. All rights reserved.</span>
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+  * under the terms of the GNU General Public License version 2 only, as
+  * published by the Free Software Foundation.
+</pre><hr /><pre>
+<span class="newmarker">@@ -23,27 +23,36 @@</span>
+  *
+  */
+ 
+ #include "precompiled.hpp"
+ 
+<span class="new">+#include "memory/metaspace/msCounter.hpp"</span>
+<span class="new">+#include "memory/metaspace/msFreeChunkList.hpp"</span>
+<span class="new">+#include "memory/metaspace/msMetachunkList.hpp"</span>
+<span class="new">+</span>
+ //#define LOG_PLEASE
+<span class="removed">-#include "metaspace/metaspaceTestsCommon.hpp"</span>
+<span class="removed">-#include "metaspace/metaspaceTestContexts.hpp"</span>
+<span class="removed">-#include "metaspace/metaspace_rangehelpers.hpp"</span>
+<span class="new">+#include "metaspaceGtestCommon.hpp"</span>
+<span class="new">+#include "metaspaceGtestContexts.hpp"</span>
+<span class="new">+#include "metaspaceGtestRangeHelpers.hpp"</span>
+<span class="new">+</span>
+<span class="new">+using metaspace::MemRangeCounter;</span>
+<span class="new">+using metaspace::MetachunkList;</span>
+<span class="new">+using metaspace::FreeChunkListVector;</span>
+<span class="new">+</span>
+ 
+ TEST_VM(metaspace, metachunklist) {
+ 
+<span class="removed">-  ChunkTestsContext helper;</span>
+<span class="new">+  ChunkGtestContext context;</span>
+ 
+   MetachunkList lst;
+ 
+   Metachunk* chunks[10];
+   size_t total_size = 0;
+ 
+<span class="removed">-  for (int i = 0; i &lt; 10; i ++) {</span>
+<span class="new">+  for (int i = 0; i &lt; 10; i++) {</span>
+     Metachunk* c = NULL;
+<span class="removed">-    helper.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());</span>
+<span class="new">+    context.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());</span>
+     chunks[i] = c;
+     total_size += c-&gt;committed_words();
+ 
+     lst.add(c);
+     EXPECT_EQ(lst.first(), c);
+</pre><hr /><pre>
+<span class="newmarker">@@ -56,44 +65,43 @@</span>
+     EXPECT_EQ(lst.count(), i + 1);
+     EXPECT_EQ(lst.calc_committed_word_size(), total_size);
+ 
+   }
+ 
+<span class="removed">-  for (int i = 0; i &lt; 10; i ++) {</span>
+<span class="new">+  for (int i = 0; i &lt; 10; i++) {</span>
+     DEBUG_ONLY(EXPECT_TRUE(lst.contains(chunks[i]));)
+   }
+ 
+<span class="removed">-  for (int i = 0; i &lt; 10; i ++) {</span>
+<span class="new">+  for (int i = 0; i &lt; 10; i++) {</span>
+     Metachunk* c = lst.remove_first();
+     DEBUG_ONLY(EXPECT_FALSE(lst.contains(c));)
+<span class="removed">-    helper.return_chunk(c);</span>
+<span class="new">+    context.return_chunk(c);</span>
+   }
+ 
+   EXPECT_EQ(lst.count(), 0);
+   EXPECT_EQ(lst.calc_committed_word_size(), (size_t)0);
+ 
+ }
+ 
+<span class="removed">-</span>
+ TEST_VM(metaspace, freechunklist) {
+ 
+<span class="removed">-  ChunkTestsContext helper;</span>
+<span class="new">+  ChunkGtestContext context;</span>
+ 
+   FreeChunkListVector lst;
+ 
+   MemRangeCounter cnt;
+   MemRangeCounter committed_cnt;
+ 
+   // Add random chunks to list and check the counter apis (word_size, commited_word_size, num_chunks)
+   // Make every other chunk randomly uncommitted, and later we check that committed chunks are sorted in at the front
+   // of the lists.
+<span class="removed">-  for (int i = 0; i &lt; 100; i ++) {</span>
+<span class="new">+  for (int i = 0; i &lt; 100; i++) {</span>
+     Metachunk* c = NULL;
+<span class="removed">-    helper.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());</span>
+<span class="new">+    context.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());</span>
+     bool uncommitted_chunk = i % 3;
+     if (uncommitted_chunk) {
+<span class="removed">-      helper.uncommit_chunk_with_test(c);</span>
+<span class="new">+      context.uncommit_chunk_with_test(c);</span>
+       c-&gt;set_in_use();
+     }
+ 
+     lst.add(c);
+ 
+</pre><hr /><pre>
+<span class="newmarker">@@ -106,11 +114,11 @@</span>
+     EXPECT_EQ(lst.word_size(), cnt.total_size());
+     EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+   }
+ 
+   // Drain each list separately
+<span class="removed">-  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl ++) {</span>
+<span class="new">+  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl++) {</span>
+     Metachunk* c = lst.remove_first(lvl);
+     bool found_uncommitted = false;
+     while (c != NULL) {
+ 
+       LOG("&lt;-" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
+</pre><hr /><pre>
+<span class="newmarker">@@ -127,11 +135,11 @@</span>
+ 
+       EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
+       EXPECT_EQ(lst.word_size(), cnt.total_size());
+       EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+ 
+<span class="removed">-      helper.return_chunk(c);</span>
+<span class="new">+      context.return_chunk(c);</span>
+ 
+       c = lst.remove_first(lvl);
+     }
+   }
+ 
+</pre>
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_metachunk.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_metaspaceUtils.cpp.udiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

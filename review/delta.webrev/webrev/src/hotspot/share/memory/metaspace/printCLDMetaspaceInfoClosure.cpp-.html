@@ -1,0 +1,256 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/printCLDMetaspaceInfoClosure.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 #include "classfile/classLoaderData.inline.hpp"
+  28 #include "classfile/javaClasses.hpp"
+  29 #include "memory/metaspace.hpp"
+  30 #include "memory/metaspace/printCLDMetaspaceInfoClosure.hpp"
+  31 #include "memory/metaspace/printMetaspaceInfoKlassClosure.hpp"
+  32 #include "memory/metaspace/metaspaceCommon.hpp"
+  33 #include "memory/resourceArea.hpp"
+  34 #include "runtime/safepoint.hpp"
+  35 #include "utilities/globalDefinitions.hpp"
+  36 #include "utilities/ostream.hpp"
+  37 
+  38 
+  39 namespace metaspace {
+  40 
+  41 PrintCLDMetaspaceInfoClosure::PrintCLDMetaspaceInfoClosure(outputStream* out, size_t scale, bool do_print,
+  42     bool do_print_classes, bool break_down_by_chunktype)
+  43 : _out(out), _scale(scale), _do_print(do_print), _do_print_classes(do_print_classes)
+  44 , _break_down_by_chunktype(break_down_by_chunktype)
+  45 , _num_loaders(0), _num_loaders_without_metaspace(0), _num_loaders_unloading(0)
+  46 ,  _num_classes(0), _num_classes_shared(0)
+  47 {
+  48   memset(_num_loaders_by_spacetype, 0, sizeof(_num_loaders_by_spacetype));
+  49   memset(_num_classes_by_spacetype, 0, sizeof(_num_classes_by_spacetype));
+  50   memset(_num_classes_shared_by_spacetype, 0, sizeof(_num_classes_shared_by_spacetype));
+  51 }
+  52 
+  53 // A closure just to count classes
+  54 class CountKlassClosure : public KlassClosure {
+  55 public:
+  56 
+  57   uintx _num_classes;
+  58   uintx _num_classes_shared;
+  59 
+  60   CountKlassClosure() : _num_classes(0), _num_classes_shared(0) {}
+  61   void do_klass(Klass* k) {
+  62     _num_classes ++;
+  63     if (k-&gt;is_shared()) {
+  64       _num_classes_shared ++;
+  65     }
+  66   }
+  67 
+  68 }; // end: PrintKlassInfoClosure
+  69 
+  70 void PrintCLDMetaspaceInfoClosure::do_cld(ClassLoaderData* cld) {
+  71 
+  72   assert(SafepointSynchronize::is_at_safepoint(), "Must be at a safepoint");
+  73 
+  74   if (cld-&gt;is_unloading()) {
+  75     _num_loaders_unloading ++;
+  76     return;
+  77   }
+  78 
+  79   ClassLoaderMetaspace* msp = cld-&gt;metaspace_or_null();
+  80   if (msp == NULL) {
+  81     _num_loaders_without_metaspace ++;
+  82     return;
+  83   }
+  84 
+  85   // Collect statistics for this class loader metaspace
+  86   clms_stats_t this_cld_stat;
+  87   msp-&gt;add_to_statistics(&amp;this_cld_stat);
+  88 
+  89   // And add it to the running totals
+  90   _stats_total.add(this_cld_stat);
+  91   _num_loaders ++;
+  92   _stats_by_spacetype[msp-&gt;space_type()].add(this_cld_stat);
+  93   _num_loaders_by_spacetype[msp-&gt;space_type()] ++;
+  94 
+  95   // Count classes loaded by this CLD.
+  96   CountKlassClosure ckc;
+  97   cld-&gt;classes_do(&amp;ckc);
+  98   // accumulate.
+  99   _num_classes += ckc._num_classes;
+ 100   _num_classes_by_spacetype[msp-&gt;space_type()] += ckc._num_classes;
+ 101   _num_classes_shared += ckc._num_classes_shared;
+ 102   _num_classes_shared_by_spacetype[msp-&gt;space_type()] += ckc._num_classes_shared;
+ 103 
+ 104   // Optionally, print
+ 105   if (_do_print) {
+ 106 
+ 107     _out-&gt;print(UINTX_FORMAT_W(4) ": ", _num_loaders);
+ 108 
+ 109     // Print "CLD for [&lt;loader name&gt;,] instance of &lt;loader class name&gt;"
+ 110     // or    "CLD for &lt;hidden or anonymous class&gt;, loaded by [&lt;loader name&gt;,] instance of &lt;loader class name&gt;"
+ 111 
+ 112     ResourceMark rm;
+ 113     const char* name = NULL;
+ 114     const char* class_name = NULL;
+ 115 
+ 116     // Note: this should also work if unloading:
+ 117     Klass* k = cld-&gt;class_loader_klass();
+ 118     if (k != NULL) {
+ 119       class_name = k-&gt;external_name();
+ 120       Symbol* s = cld-&gt;name();
+ 121       if (s != NULL) {
+ 122         name = s-&gt;as_C_string();
+ 123       }
+ 124     } else {
+ 125       name = "&lt;bootstrap&gt;";
+ 126     }
+ 127 
+ 128     // Print
+ 129     _out-&gt;print("CLD " PTR_FORMAT, p2i(cld));
+ 130     if (cld-&gt;is_unloading()) {
+ 131       _out-&gt;print(" (unloading)");
+ 132     }
+ 133     _out-&gt;print(":");
+ 134     if (cld-&gt;has_class_mirror_holder()) {
+ 135       _out-&gt;print(" &lt;hidden or anonymous class&gt;, loaded by");
+ 136     }
+ 137     if (name != NULL) {
+ 138       _out-&gt;print(" \"%s\"", name);
+ 139     }
+ 140     if (class_name != NULL) {
+ 141       _out-&gt;print(" instance of %s", class_name);
+ 142     }
+ 143 
+ 144     if (_do_print_classes) {
+ 145       // Print a detailed description of all loaded classes.
+ 146       streamIndentor sti(_out, 6);
+ 147       _out-&gt;cr_indent();
+ 148       _out-&gt;print("Loaded classes");
+ 149       if (ckc._num_classes_shared &gt; 0) {
+ 150         _out-&gt;print("('s' = shared)");
+ 151       }
+ 152       _out-&gt;print(":");
+ 153       PrintMetaspaceInfoKlassClosure pkic(_out, true);
+ 154       cld-&gt;classes_do(&amp;pkic);
+ 155       _out-&gt;cr_indent();
+ 156       _out-&gt;print("-total-: ");
+ 157       print_number_of_classes(_out, ckc._num_classes, ckc._num_classes_shared);
+ 158     } else {
+ 159       // Just print a summary about how many classes have been loaded.
+ 160       _out-&gt;print(", ");
+ 161       print_number_of_classes(_out, ckc._num_classes, ckc._num_classes_shared);
+ 162     }
+ 163 
+ 164     // Print statistics
+ 165     this_cld_stat.print_on(_out, _scale, _break_down_by_chunktype);
+ 166     _out-&gt;cr();
+ 167 
+ 168   }
+ 169 
+ 170 }
+ 171 
+ 172 } // namespace metaspace
+ 173 
+</pre></body></html>

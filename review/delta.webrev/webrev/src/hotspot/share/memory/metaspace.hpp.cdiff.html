@@ -1,0 +1,187 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff src/hotspot/share/memory/metaspace.hpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/memory/metaspace.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace.hpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 39,49 ****</span>
+  class outputStream;
+  
+  namespace metaspace {
+    class MetaspaceArena;
+    class MetaspaceSizesSnapshot;
+<span class="changed">!   struct clms_stats_t;</span>
+  }
+  
+  ////////////////// Metaspace ///////////////////////
+  
+  // Namespace for important central static functions
+<span class="newmarker">--- 39,49 ----</span>
+  class outputStream;
+  
+  namespace metaspace {
+    class MetaspaceArena;
+    class MetaspaceSizesSnapshot;
+<span class="changed">!   struct ClmsStats;</span>
+  }
+  
+  ////////////////// Metaspace ///////////////////////
+  
+  // Namespace for important central static functions
+<hr /><span class="oldmarker">*** 135,151 ****</span>
+<span class="newmarker">--- 135,157 ----</span>
+    static void purge();
+  
+    static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
+                                     MetaspaceObj::Type type, Metaspace::MetadataType mdtype, TRAPS);
+  
+<span class="new">+   static const char* metadata_type_name(Metaspace::MetadataType mdtype);</span>
+<span class="new">+ </span>
+    static void print_compressed_class_space(outputStream* st) NOT_LP64({});
+  
+    // Return TRUE only if UseCompressedClassPointers is True.
+    static bool using_class_space() {
+      return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
+    }
+  
+<span class="new">+   static bool is_class_space_allocation(MetadataType mdType) {</span>
+<span class="new">+     return mdType == ClassType &amp;&amp; using_class_space();</span>
+<span class="new">+   }</span>
+<span class="new">+ </span>
+    static bool initialized();
+  
+  };
+  
+  // ClassLoaderMetaspace is an inbetween-object between a CLD and its MetaspaceArena(s).
+<hr /><span class="oldmarker">*** 211,221 ****</span>
+    // Prematurely returns a metaspace allocation to the _block_freelists
+    // because it is not needed anymore.
+    void deallocate(MetaWord* ptr, size_t word_size, bool is_class);
+  
+    // Update statistics. This walks all in-use chunks.
+<span class="changed">!   void add_to_statistics(metaspace::clms_stats_t* out) const;</span>
+  
+    DEBUG_ONLY(void verify() const;)
+  
+    // This only exists for JFR and jcmd VM.classloader_stats. We may want to
+    //  change this. Capacity as a stat is of questionable use since it may
+<span class="newmarker">--- 217,227 ----</span>
+    // Prematurely returns a metaspace allocation to the _block_freelists
+    // because it is not needed anymore.
+    void deallocate(MetaWord* ptr, size_t word_size, bool is_class);
+  
+    // Update statistics. This walks all in-use chunks.
+<span class="changed">!   void add_to_statistics(metaspace::ClmsStats* out) const;</span>
+  
+    DEBUG_ONLY(void verify() const;)
+  
+    // This only exists for JFR and jcmd VM.classloader_stats. We may want to
+    //  change this. Capacity as a stat is of questionable use since it may
+<hr /><span class="oldmarker">*** 334,343 ****</span>
+    // convenient, use print_basic_report() instead.
+    static void print_report(outputStream* out, size_t scale = 0);
+  
+    static void print_on(outputStream * out);
+  
+<span class="changed">!   DEBUG_ONLY(static void verify(bool slow);)</span>
+  
+  };
+  
+  #endif // SHARE_MEMORY_METASPACE_HPP
+<span class="newmarker">--- 340,349 ----</span>
+    // convenient, use print_basic_report() instead.
+    static void print_report(outputStream* out, size_t scale = 0);
+  
+    static void print_on(outputStream * out);
+  
+<span class="changed">!   DEBUG_ONLY(static void verify();)</span>
+  
+  };
+  
+  #endif // SHARE_MEMORY_METASPACE_HPP
+</pre>
+<center><a href='../../../../src/hotspot/share/memory/metaspace.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace/metaspaceSizesSnapshot.cpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

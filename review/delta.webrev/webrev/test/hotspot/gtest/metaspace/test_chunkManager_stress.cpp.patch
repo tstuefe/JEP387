@@ -1,0 +1,149 @@
+--- old/test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp	2020-09-04 13:57:22.841168608 +0200
++++ new/test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp	2020-09-04 13:57:22.477166233 +0200
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -25,18 +25,25 @@
+ 
+ #include "precompiled.hpp"
+ 
++#include "memory/metaspace/msChunkManager.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "memory/metaspace/msVirtualSpaceList.hpp"
++
+ //#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
++#include "metaspaceGtestSparseArray.hpp"
+ 
+-#include "metaspace/metaspace_sparsearray.hpp"
+-#include "metaspace/metaspaceTestsCommon.hpp"
+-#include "metaspace/metaspaceTestContexts.hpp"
+ 
++using metaspace::ChunkManager;
++using metaspace::Settings;
+ 
+ class ChunkManagerRandomChunkAllocTest {
+ 
+   static const size_t max_footprint_words = 8 * M;
+ 
+-  ChunkTestsContext _helper;
++  ChunkGtestContext _context;
+ 
+   // All allocated live chunks
+   typedef SparseArray<Metachunk*> SparseArrayOfChunks;
+@@ -59,7 +66,7 @@
+ 
+   // Return true if, after an allocation error happened, a reserve error seems likely.
+   bool could_be_reserve_error() {
+-    return _helper.vslist().is_full();
++    return _context.vslist().is_full();
+   }
+ 
+   // Return true if, after an allocation error happened, a commit error seems likely.
+@@ -84,10 +91,10 @@
+     // (c) can be, by design, imprecise (too low).
+     //
+     // Here, I check (b) and trust it to be correct. We also call vslist::verify().
+-    DEBUG_ONLY(_helper.verify();)
++    DEBUG_ONLY(_context.verify();)
+ 
+     const size_t commit_add = align_up(additional_word_size, Settings::commit_granule_words());
+-    if (_helper.commit_limit() <= (commit_add + _helper.vslist().committed_words())) {
++    if (_context.commit_limit() <= (commit_add + _context.vslist().committed_words())) {
+       return true;
+     }
+ 
+@@ -104,7 +111,6 @@
+     return MIN2(SizeRange(sz).random_value(), sz);
+   }
+ 
+-
+   //// Chunk allocation ////
+ 
+   // Given an slot index, allocate a random chunk and set it into that slot. Slot must be empty.
+@@ -119,7 +125,7 @@
+     const size_t min_committed = random_committed_words(max_level, _commit_factor);
+ 
+     Metachunk* c = NULL;
+-    _helper.alloc_chunk(&c, r.lowest(), r.highest(), min_committed);
++    _context.alloc_chunk(&c, r.lowest(), r.highest(), min_committed);
+     if (c == NULL) {
+       EXPECT_TRUE(could_be_reserve_error() ||
+                   could_be_commit_error(min_committed));
+@@ -163,7 +169,7 @@
+   void return_chunk_at(int slot) {
+     Metachunk* c = _chunks.at(slot);
+     LOG("Returning chunk at %d: " METACHUNK_FORMAT ".", slot, METACHUNK_FORMAT_ARGS(c));
+-    _helper.return_chunk(c);
++    _context.return_chunk(c);
+     _chunks.set_at(slot, NULL);
+   }
+ 
+@@ -196,7 +202,7 @@
+ 
+     IntRange rand(100);
+ 
+-    for (int j = 0; j < 1000; j ++) {
++    for (int j = 0; j < 1000; j++) {
+ 
+       bool force_alloc = false;
+       bool force_free = true;
+@@ -222,12 +228,11 @@
+ 
+   }
+ 
+-
+ public:
+ 
+   // A test with no limits
+   ChunkManagerRandomChunkAllocTest(ChunkLevelRange r, float commit_factor)
+-    : _helper(),
++    : _context(),
+       _chunks(max_num_live_chunks(r, commit_factor)),
+       _chunklevel_range(r),
+       _commit_factor(commit_factor)
+@@ -236,7 +241,7 @@
+   // A test with no reserve limit but commit limit
+   ChunkManagerRandomChunkAllocTest(size_t commit_limit,
+                                    ChunkLevelRange r, float commit_factor)
+-    : _helper(commit_limit),
++    : _context(commit_limit),
+       _chunks(max_num_live_chunks(r, commit_factor)),
+       _chunklevel_range(r),
+       _commit_factor(commit_factor)
+@@ -251,10 +256,9 @@
+   // _commit_factor(commit_factor)
+   // {}
+ 
+-
+   void do_tests() {
+     const int num_runs = 5;
+-    for (int n = 0; n < num_runs; n ++) {
++    for (int n = 0; n < num_runs; n++) {
+       one_test();
+     }
+   }
+@@ -263,8 +267,8 @@
+ 
+ #define DEFINE_TEST(name, range, commit_factor) \
+ TEST_VM(metaspace, chunkmanager_random_alloc_##name) { \
+-	ChunkManagerRandomChunkAllocTest test(range, commit_factor); \
+-	test.do_tests(); \
++  ChunkManagerRandomChunkAllocTest test(range, commit_factor); \
++  test.do_tests(); \
+ }
+ 
+ DEFINE_TEST(test_nolimit_1, ChunkLevelRanges::small_chunks(), 0.0f)
+@@ -290,4 +294,3 @@
+ DEFINE_TEST_2(test_with_limit_5, ChunkLevelRanges::all_chunks(), 0.5f)
+ DEFINE_TEST_2(test_with_limit_6, ChunkLevelRanges::all_chunks(), 1.0f)
+ 
+-

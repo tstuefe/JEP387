@@ -1,0 +1,184 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff test/hotspot/jtreg/runtime/Metaspace/elastic </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT1.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../src/hotspot/share/memory/metaspace/msAllocationGuard.hpp.sdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT2.java</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  57  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocationMT2
+  58  *
+  59  */
+  60 
+  61 /*
+  62  * @test id=ndebug
+  63  * @library /test/lib
+  64  * @modules java.base/jdk.internal.misc
+  65  *          java.management
+  66  * @build sun.hotspot.WhiteBox
+  67  * @key randomness
+  68  * @requires (vm.debug == false)
+  69  *
+  70  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  71  *
+  72  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI                                        TestMetaspaceAllocationMT2
+  73  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT2
+  74  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT2
+  75  */
+  76 
+<span class="removed">  77 </span>
+  78 public class TestMetaspaceAllocationMT2 {
+  79 
+  80     public static void main(String[] args) throws Exception {
+  81 
+  82         final long testAllocationCeiling = 1024 * 1024 * 6; // 8m words = 64M on 64bit
+  83         final int numThreads = 4;
+  84         final int seconds = 10;
+  85 
+  86         for (int i = 0; i &lt; 3; i ++) {
+  87 
+  88             long commitLimit = (i == 1) ? 1024 * 256 : 0;
+  89 
+  90             // Note: reserve limit must be a multiple of Metaspace::reserve_alignment_words()
+  91             //  (512 K)
+  92             long reserveLimit = (i == 2) ? 1024 * 512 : 0;
+  93 
+  94             System.out.println("#### Test: ");
+  95             System.out.println("#### testAllocationCeiling: " + testAllocationCeiling);
+  96             System.out.println("#### numThreads: " + numThreads);
+  97             System.out.println("#### seconds: " + seconds);
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  57  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:VerifyMetaspaceInterval=10  -XX:+MetaspaceGuardAllocations        TestMetaspaceAllocationMT2
+  58  *
+  59  */
+  60 
+  61 /*
+  62  * @test id=ndebug
+  63  * @library /test/lib
+  64  * @modules java.base/jdk.internal.misc
+  65  *          java.management
+  66  * @build sun.hotspot.WhiteBox
+  67  * @key randomness
+  68  * @requires (vm.debug == false)
+  69  *
+  70  * @run driver ClassFileInstaller sun.hotspot.WhiteBox
+  71  *
+  72  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI                                        TestMetaspaceAllocationMT2
+  73  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=none       TestMetaspaceAllocationMT2
+  74  * @run main/othervm/timeout=400 -Xbootclasspath/a:. -XX:+UnlockDiagnosticVMOptions -XX:+WhiteBoxAPI  -XX:MetaspaceReclaimPolicy=aggressive TestMetaspaceAllocationMT2
+  75  */
+  76 
+
+  77 public class TestMetaspaceAllocationMT2 {
+  78 
+  79     public static void main(String[] args) throws Exception {
+  80 
+  81         final long testAllocationCeiling = 1024 * 1024 * 6; // 8m words = 64M on 64bit
+  82         final int numThreads = 4;
+  83         final int seconds = 10;
+  84 
+  85         for (int i = 0; i &lt; 3; i ++) {
+  86 
+  87             long commitLimit = (i == 1) ? 1024 * 256 : 0;
+  88 
+  89             // Note: reserve limit must be a multiple of Metaspace::reserve_alignment_words()
+  90             //  (512 K)
+  91             long reserveLimit = (i == 2) ? 1024 * 512 : 0;
+  92 
+  93             System.out.println("#### Test: ");
+  94             System.out.println("#### testAllocationCeiling: " + testAllocationCeiling);
+  95             System.out.println("#### numThreads: " + numThreads);
+  96             System.out.println("#### seconds: " + seconds);
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/TestMetaspaceAllocationMT1.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../src/hotspot/share/memory/metaspace/msAllocationGuard.hpp.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

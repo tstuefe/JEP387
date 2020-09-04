@@ -1,0 +1,555 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Udiff test/hotspot/gtest/metaspace/test_blocktree.cpp</title>
+
+<style type="text/css" media="screen">
+span.new {
+    color: blue;
+    font-weight: normal;
+}
+</style>
+
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_binlist.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp.udiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/gtest/metaspace/test_blocktree.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+        <pre>
+</pre><hr /><pre>
+<span class="newmarker">@@ -1,8 +1,8 @@</span>
+ /*
+<span class="removed">- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="removed">- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.</span>
+<span class="new">+ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="new">+ * Copyright (c) 2020 SAP SE. All rights reserved.</span>
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+  * under the terms of the GNU General Public License version 2 only, as
+  * published by the Free Software Foundation.
+</pre><hr /><pre>
+<span class="newmarker">@@ -23,14 +23,29 @@</span>
+  *
+  */
+ 
+ #include "precompiled.hpp"
+ 
+<span class="removed">-//#define LOG_PLEASE</span>
+<span class="removed">-</span>
+<span class="removed">-#include "metaspaceTestsCommon.hpp"</span>
+<span class="removed">-</span>
+<span class="new">+#include "memory/metaspace/msBlockTree.hpp"</span>
+<span class="new">+#include "memory/metaspace/msCounter.hpp"</span>
+<span class="new">+#include "memory/resourceArea.hpp"</span>
+<span class="new">+</span>
+<span class="new">+// #define LOG_PLEASE</span>
+<span class="new">+#include "metaspaceGtestCommon.hpp"</span>
+<span class="new">+</span>
+<span class="new">+using metaspace::BlockTree;</span>
+<span class="new">+using metaspace::MemRangeCounter;</span>
+<span class="new">+</span>
+<span class="new">+// Small helper. Given a 0-terminated array of sizes, a feeder buffer and a tree,</span>
+<span class="new">+//  add blocks of these sizes to the tree in the order they appear in the array.</span>
+<span class="new">+static void create_nodes(const size_t sizes[], FeederBuffer&amp; fb, BlockTree&amp; bt) {</span>
+<span class="new">+  for (int i = 0; sizes[i] &gt; 0; i ++) {</span>
+<span class="new">+    size_t s = sizes[i];</span>
+<span class="new">+    MetaWord* p = fb.get(s);</span>
+<span class="new">+    bt.add_block(p, s);</span>
+<span class="new">+  }</span>
+<span class="new">+}</span>
+ 
+ #define CHECK_BT_CONTENT(bt, expected_num, expected_size) { \
+   EXPECT_EQ(bt.count(), (unsigned)expected_num); \
+   EXPECT_EQ(bt.total_size(), (size_t)expected_size); \
+   if (expected_num == 0) { \
+</pre><hr /><pre>
+<span class="newmarker">@@ -47,126 +62,167 @@</span>
+ 
+   size_t real_size = 0;
+   MetaWord* p = NULL;
+   MetaWord arr[10000];
+ 
+<span class="removed">-  const size_t minws = BlockTree::minimal_word_size;</span>
+<span class="removed">-  const size_t maxws = 4096;</span>
+<span class="new">+  ASSERT_LE(BlockTree::MinWordSize, (size_t)6); // Sanity check. Adjust if Node is changed.</span>
+ 
+<span class="removed">-  // get_block from empty tree should yield nothing</span>
+<span class="removed">-  p = bt.get_block(minws, &amp;real_size);</span>
+<span class="removed">-  EXPECT_EQ(p, (MetaWord*)NULL);</span>
+<span class="removed">-  EXPECT_EQ(real_size, (size_t)0);</span>
+<span class="new">+  const size_t minws = BlockTree::MinWordSize;</span>
+<span class="new">+</span>
+<span class="new">+  // remove_block from empty tree should yield nothing</span>
+<span class="new">+  p = bt.remove_block(minws, &amp;real_size);</span>
+<span class="new">+  EXPECT_NULL(p);</span>
+<span class="new">+  EXPECT_0(real_size);</span>
+   CHECK_BT_CONTENT(bt, 0, 0);
+ 
+   // Add some blocks and retrieve them right away.
+   size_t sizes[] = {
+<span class="removed">-      minws + 10,</span>
+<span class="removed">-      maxws - 10,</span>
+       minws, // smallest possible
+<span class="removed">-      maxws - 1, // largest possible</span>
+<span class="new">+      minws + 10,</span>
+<span class="new">+      1024,</span>
+<span class="new">+      4711,</span>
+       0
+   };
+ 
+<span class="removed">-  for (int i = 0; sizes[i] &gt; 0; i ++) {</span>
+<span class="new">+  for (int i = 0; sizes[i] &gt; 0; i++) {</span>
+     bt.add_block(arr, sizes[i]);
+     CHECK_BT_CONTENT(bt, 1, sizes[i]);
+ 
+     DEBUG_ONLY(bt.verify();)
+ 
+<span class="removed">-    MetaWord* p = bt.get_block(sizes[i], &amp;real_size);</span>
+<span class="new">+    MetaWord* p = bt.remove_block(sizes[i], &amp;real_size);</span>
+     EXPECT_EQ(p, arr);
+     EXPECT_EQ(real_size, (size_t)sizes[i]);
+     CHECK_BT_CONTENT(bt, 0, 0);
+   }
+ 
+ }
+ 
+<span class="removed">-TEST_VM(metaspace, BlockTree_closest_fit) {</span>
+<span class="new">+// Helper for test_find_nearest_fit_with_tree.</span>
+<span class="new">+// Out of an array of sizes return the closest upper match to a requested size.</span>
+<span class="new">+// Returns SIZE_MAX if none found.</span>
+<span class="new">+static size_t helper_find_nearest_fit(const size_t sizes[], size_t request_size) {</span>
+<span class="new">+  size_t best = SIZE_MAX;</span>
+<span class="new">+  for (int i = 0; sizes[i] &gt; 0; i++) {</span>
+<span class="new">+    if (sizes[i] &gt;= request_size &amp;&amp; sizes[i] &lt; best) {</span>
+<span class="new">+      best = sizes[i];</span>
+<span class="new">+    }</span>
+<span class="new">+  }</span>
+<span class="new">+  return best;</span>
+<span class="new">+}</span>
+<span class="new">+</span>
+<span class="new">+// Given a sequence of (0-terminated) sizes, add blocks of those sizes to the tree in the order given. Then, ask</span>
+<span class="new">+// for a request size and check that it is the expected result.</span>
+<span class="new">+static void test_find_nearest_fit_with_tree(const size_t sizes[], size_t request_size) {</span>
+ 
+<span class="removed">-  // Test the fact that getting blocks should always return the closest fit</span>
+   BlockTree bt;
+<span class="removed">-  FeederBuffer fb(10000);</span>
+<span class="new">+  FeederBuffer fb(4 * K);</span>
+ 
+<span class="removed">-  const size_t minws = BlockTree::minimal_word_size;</span>
+<span class="removed">-  const size_t maxws = 256;</span>
+<span class="new">+  create_nodes(sizes, fb, bt);</span>
+ 
+<span class="removed">-  size_t sizes[] = {</span>
+<span class="removed">-      minws + 9,</span>
+<span class="removed">-      minws + 3,</span>
+<span class="removed">-      minws + 9,</span>
+<span class="removed">-      minws,</span>
+<span class="removed">-      minws + 8,</span>
+<span class="removed">-      maxws - 2,</span>
+<span class="removed">-      minws,</span>
+<span class="removed">-      maxws - 1,</span>
+<span class="removed">-      0</span>
+<span class="removed">-  };</span>
+<span class="new">+  DEBUG_ONLY(bt.verify();)</span>
+ 
+<span class="removed">-  size_t size_added = 0;</span>
+<span class="removed">-  int num_added = 0;</span>
+<span class="new">+  size_t expected_size = helper_find_nearest_fit(sizes, request_size);</span>
+<span class="new">+  size_t real_size = 0;</span>
+<span class="new">+  MetaWord* p = bt.remove_block(request_size, &amp;real_size);</span>
+ 
+<span class="removed">-  for (int i = 0; sizes[i] &gt; 0; i ++) {</span>
+<span class="removed">-    const size_t s = sizes[i];</span>
+<span class="removed">-    MetaWord* p = fb.get(s);</span>
+<span class="removed">-    bt.add_block(p, s);</span>
+<span class="removed">-    num_added ++; size_added += s;</span>
+<span class="removed">-    CHECK_BT_CONTENT(bt, num_added, size_added);</span>
+<span class="new">+  if (expected_size != SIZE_MAX) {</span>
+<span class="new">+    EXPECT_NOT_NULL(p);</span>
+<span class="new">+    EXPECT_EQ(real_size, expected_size);</span>
+<span class="new">+  } else {</span>
+<span class="new">+    EXPECT_NULL(p);</span>
+<span class="new">+    EXPECT_0(real_size);</span>
+   }
+ 
+<span class="removed">-  DEBUG_ONLY(bt.verify();)</span>
+<span class="new">+  LOG(SIZE_FORMAT ": " SIZE_FORMAT ".", request_size, real_size);</span>
+ 
+<span class="removed">-  size_t last_size = 0;</span>
+<span class="removed">-  while (bt.is_empty() == false) {</span>
+<span class="removed">-    size_t real_size = 0;</span>
+<span class="removed">-    MetaWord* p = bt.get_block(minws, &amp;real_size);</span>
+<span class="removed">-    EXPECT_TRUE(fb.is_valid_range(p, real_size));</span>
+<span class="new">+}</span>
+ 
+<span class="removed">-    EXPECT_GE(real_size, last_size);</span>
+<span class="removed">-    last_size = real_size;</span>
+<span class="new">+TEST_VM(metaspace, BlockTree_find_nearest_fit) {</span>
+ 
+<span class="removed">-    num_added --;</span>
+<span class="removed">-    size_added -= real_size;</span>
+<span class="removed">-    CHECK_BT_CONTENT(bt, num_added, size_added);</span>
+<span class="removed">-  }</span>
+<span class="new">+  // Test tree for test_find_nearest_fit looks like this</span>
+<span class="new">+  //                30</span>
+<span class="new">+  //               /  \</span>
+<span class="new">+  //              /    \</span>
+<span class="new">+  //             /      \</span>
+<span class="new">+  //            17       50</span>
+<span class="new">+  //           /  \     /  \</span>
+<span class="new">+  //          /    \   /    \</span>
+<span class="new">+  //         10    28 32     51</span>
+<span class="new">+  //                    \</span>
+<span class="new">+  //                     35</span>
+<span class="new">+</span>
+<span class="new">+  static const size_t sizes[] = {</span>
+<span class="new">+    30, 17, 10, 28,</span>
+<span class="new">+    50, 32, 51, 35,</span>
+<span class="new">+    0 // stop</span>
+<span class="new">+  };</span>
+ 
+<span class="removed">-  CHECK_BT_CONTENT(bt, 0, 0);</span>
+<span class="new">+  BlockTree bt;</span>
+<span class="new">+  FeederBuffer fb(4 * K);</span>
+ 
+<span class="removed">-}</span>
+<span class="new">+  create_nodes(sizes, fb, bt);</span>
+ 
+<span class="new">+  for (int i = BlockTree::MinWordSize; i &lt;= 60; i ++) {</span>
+<span class="new">+    test_find_nearest_fit_with_tree(sizes, i);</span>
+<span class="new">+  }</span>
+<span class="new">+</span>
+<span class="new">+}</span>
+ 
+<span class="new">+// Test repeated adding and removing of blocks of the same size, which</span>
+<span class="new">+// should exercise the list-part of the tree.</span>
+ TEST_VM(metaspace, BlockTree_basic_siblings)
+ {
+   BlockTree bt;
+<span class="new">+  FeederBuffer fb(4 * K);</span>
+<span class="new">+</span>
+   CHECK_BT_CONTENT(bt, 0, 0);
+ 
+<span class="removed">-  const size_t minws = BlockTree::minimal_word_size;</span>
+<span class="removed">-  const size_t maxws = 256;</span>
+<span class="removed">-  const size_t test_size = minws + 17;</span>
+<span class="new">+  const size_t test_size = BlockTree::MinWordSize;</span>
+   const int num = 10;
+ 
+<span class="removed">-  MetaWord* arr = NEW_C_HEAP_ARRAY(MetaWord, num * test_size, mtInternal);</span>
+<span class="removed">-</span>
+<span class="removed">-  for (int i = 0; i &lt; num; i ++) {</span>
+<span class="removed">-    bt.add_block(arr + (i * test_size), test_size);</span>
+<span class="new">+  for (int i = 0; i &lt; num; i++) {</span>
+<span class="new">+    bt.add_block(fb.get(test_size), test_size);</span>
+     CHECK_BT_CONTENT(bt, i + 1, (i + 1) * test_size);
+   }
+ 
+   DEBUG_ONLY(bt.verify();)
+ 
+   for (int i = num; i &gt; 0; i --) {
+     size_t real_size = 4711;
+<span class="removed">-    MetaWord* p = bt.get_block(test_size, &amp;real_size);</span>
+<span class="removed">-    EXPECT_LT(p, arr + num * test_size);</span>
+<span class="removed">-    EXPECT_GE(p, arr);</span>
+<span class="new">+    MetaWord* p = bt.remove_block(test_size, &amp;real_size);</span>
+<span class="new">+    EXPECT_TRUE(fb.is_valid_pointer(p));</span>
+     EXPECT_EQ(real_size, (size_t)test_size);
+     CHECK_BT_CONTENT(bt, i - 1, (i - 1) * test_size);
+   }
+ 
+<span class="removed">-  FREE_C_HEAP_ARRAY(MetaWord, arr);</span>
+ }
+ 
+<span class="new">+#ifdef ASSERT</span>
+<span class="new">+TEST_VM(metaspace, BlockTree_print_test) {</span>
+<span class="new">+</span>
+<span class="new">+  static const size_t sizes[] = {</span>
+<span class="new">+    30, 17, 10, 28,</span>
+<span class="new">+    50, 32, 51, 35,</span>
+<span class="new">+    0 // stop</span>
+<span class="new">+  };</span>
+<span class="new">+</span>
+<span class="new">+  BlockTree bt;</span>
+<span class="new">+  FeederBuffer fb(4 * K);</span>
+<span class="new">+</span>
+<span class="new">+  create_nodes(sizes, fb, bt);</span>
+<span class="new">+</span>
+<span class="new">+  ResourceMark rm;</span>
+<span class="new">+</span>
+<span class="new">+  stringStream ss;</span>
+<span class="new">+  bt.print_tree(&amp;ss);</span>
+<span class="new">+</span>
+<span class="new">+  LOG("%s", ss.as_string());</span>
+<span class="new">+</span>
+<span class="new">+}</span>
+<span class="new">+#endif</span>
+<span class="new">+</span>
+ class BlockTreeTest {
+ 
+   FeederBuffer _fb;
+ 
+   BlockTree _bt[2];
+</pre><hr /><pre>
+<span class="newmarker">@@ -193,13 +249,13 @@</span>
+     scatter = 1,
+     left_right = 2,
+     right_left = 3
+   };
+ 
+<span class="new">+  // Feed the whole feeder buffer to the trees, according to feeding_pattern.</span>
+   void feed_all(feeding_pattern_t feeding_pattern) {
+ 
+<span class="removed">-    // Feed the whole feaderbuffer space to the trees.</span>
+     MetaWord* p = NULL;
+     unsigned added = 0;
+ 
+     // If we feed in small graining, we cap the number of blocks to limit test duration.
+     const unsigned max_blocks = 2000;
+</pre><hr /><pre>
+<span class="newmarker">@@ -211,54 +267,53 @@</span>
+       case scatter:
+         // fill completely random
+         s =_rgen.get();
+         break;
+       case left_right:
+<span class="removed">-        // fill in ascending order to annoy trees.</span>
+<span class="new">+        // fill in ascending order to provoke a misformed tree.</span>
+         s = MIN2(_rgen.get(), old_feeding_size);
+         old_feeding_size = s;
+         break;
+       case right_left:
+         // same, but descending.
+         s = MAX2(_rgen.get(), old_feeding_size);
+         old_feeding_size = s;
+         break;
+       }
+ 
+<span class="new">+      // Get a block from the feeder buffer; feed it alternatingly to either tree.</span>
+       p = _fb.get(s);
+       if (p != NULL) {
+         int which = added % 2;
+<span class="removed">-        added ++;</span>
+<span class="new">+        added++;</span>
+         _bt[which].add_block(p, s);
+         _cnt[which].add(s);
+         CHECK_COUNTERS
+       }
+<span class="removed">-      DEBUG_ONLY(verify_trees();)</span>
+<span class="removed">-      CHECK_COUNTERS;</span>
+     } while (p != NULL &amp;&amp; added &lt; max_blocks);
+ 
+<span class="removed">-    // Trees should be populated in a balanced way, and not empty</span>
+<span class="removed">-    EXPECT_TRUE( _bt[0].count() == _bt[1].count() ||</span>
+<span class="removed">-                (_bt[0].count() == _bt[1].count() + 1 &amp;&amp; _bt[0].count() &gt; 0));</span>
+<span class="new">+    DEBUG_ONLY(verify_trees();)</span>
+<span class="new">+</span>
+<span class="new">+    // Trees should contain the same number of nodes (+-1)</span>
+<span class="new">+    EXPECT_TRUE(_bt[0].count() == _bt[1].count() ||</span>
+<span class="new">+                _bt[0].count() == _bt[1].count() + 1);</span>
+ 
+   }
+ 
+   void ping_pong_loop(int iterations) {
+ 
+     // We loop and in each iteration randomly retrieve a block from one tree and add it to another.
+<span class="removed">-    for (int i = 0; i &lt; iterations; i ++) {</span>
+<span class="new">+    for (int i = 0; i &lt; iterations; i++) {</span>
+       int taker = 0;
+       int giver = 1;
+       if ((os::random() % 10) &gt; 5) {
+         giver = 0; taker = 1;
+       }
+       size_t s =_rgen.get();
+       size_t real_size = 0;
+<span class="removed">-      MetaWord* p = _bt[giver].get_block(s, &amp;real_size);</span>
+<span class="removed">-      if (p == NULL) {</span>
+<span class="removed">-        // Todo: check that bt really has no larger block than this.</span>
+<span class="removed">-      } else {</span>
+<span class="new">+      MetaWord* p = _bt[giver].remove_block(s, &amp;real_size);</span>
+<span class="new">+      if (p != NULL) {</span>
+         ASSERT_TRUE(_fb.is_valid_range(p, real_size));
+         ASSERT_GE(real_size, s);
+         _bt[taker].add_block(p, real_size);
+         _cnt[giver].sub(real_size);
+         _cnt[taker].add(real_size);
+</pre><hr /><pre>
+<span class="newmarker">@@ -274,32 +329,29 @@</span>
+   }
+ 
+   // Drain the trees. While draining, observe the order of the drained items.
+   void drain_all() {
+ 
+<span class="removed">-    for (int which = 0; which &lt; 2; which ++) {</span>
+<span class="new">+    for (int which = 0; which &lt; 2; which++) {</span>
+       BlockTree* bt = _bt + which;
+       size_t last_size = 0;
+       while(!bt-&gt;is_empty()) {
+ 
+         // We only query for the minimal size. Actually returned size should be
+<span class="removed">-        // monotonously growing since get_block should always return the closest fit.</span>
+<span class="new">+        // monotonously growing since remove_block should always return the closest fit.</span>
+         size_t real_size = 4711;
+<span class="removed">-        MetaWord* p = bt-&gt;get_block(BlockTree::minimal_word_size, &amp;real_size);</span>
+<span class="new">+        MetaWord* p = bt-&gt;remove_block(BlockTree::MinWordSize, &amp;real_size);</span>
+         ASSERT_TRUE(_fb.is_valid_range(p, real_size));
+ 
+         ASSERT_GE(real_size, last_size);
+         last_size = real_size;
+ 
+         _cnt[which].sub(real_size);
+         CHECK_COUNTERS;
+ 
+<span class="removed">-#ifdef ASSERT</span>
+<span class="removed">-        if (true) {//i % 1000 == 0) {</span>
+<span class="removed">-          bt-&gt;verify();</span>
+<span class="removed">-        }</span>
+<span class="removed">-#endif</span>
+<span class="new">+        DEBUG_ONLY(bt-&gt;verify();)</span>
+<span class="new">+</span>
+       }
+     }
+ 
+   }
+ 
+</pre><hr /><pre>
+<span class="newmarker">@@ -311,22 +363,21 @@</span>
+ 
+     LOG("Blocks in circulation: bt1=%d:" SIZE_FORMAT ", bt2=%d:" SIZE_FORMAT ".",
+         _bt[0].count(), _bt[0].total_size(),
+         _bt[1].count(), _bt[1].total_size());
+ 
+<span class="removed">-    ping_pong_loop(2000);</span>
+<span class="new">+    ping_pong_loop(5000);</span>
+ 
+     LOG("After Pingpong: bt1=%d:" SIZE_FORMAT ", bt2=%d:" SIZE_FORMAT ".",
+         _bt[0].count(), _bt[0].total_size(),
+         _bt[1].count(), _bt[1].total_size());
+ 
+     drain_all();
+ 
+     CHECK_COUNTERS_ARE_0
+   }
+ 
+<span class="removed">-</span>
+ public:
+ 
+   BlockTreeTest(size_t min_word_size, size_t max_word_size) :
+     _fb(2 * M),
+     _bt(),
+</pre><hr /><pre>
+<span class="newmarker">@@ -334,11 +385,10 @@</span>
+   {
+     CHECK_COUNTERS;
+     DEBUG_ONLY(verify_trees();)
+   }
+ 
+<span class="removed">-</span>
+   void test_scatter()      { test(scatter); }
+   void test_right_left()   { test(right_left); }
+   void test_left_right()   { test(left_right); }
+ 
+ };
+</pre><hr /><pre>
+<span class="newmarker">@@ -352,13 +402,10 @@</span>
+ #define DO_TEST_ALL_PATTERNS(name, min, max) \
+   DO_TEST(name, scatter, min, max) \
+   DO_TEST(name, right_left, min, max) \
+   DO_TEST(name, left_right, min, max)
+ 
+<span class="removed">-</span>
+<span class="removed">-DO_TEST_ALL_PATTERNS(wide, BlockTree::minimal_word_size, 128 * K);</span>
+<span class="removed">-DO_TEST_ALL_PATTERNS(narrow, BlockTree::minimal_word_size, 16)</span>
+<span class="removed">-DO_TEST_ALL_PATTERNS(129, BlockTree::minimal_word_size, 129)</span>
+<span class="removed">-DO_TEST_ALL_PATTERNS(4K, BlockTree::minimal_word_size, 4*K)</span>
+<span class="removed">-</span>
+<span class="removed">-</span>
+<span class="new">+DO_TEST_ALL_PATTERNS(wide, BlockTree::MinWordSize, 128 * K);</span>
+<span class="new">+DO_TEST_ALL_PATTERNS(narrow, BlockTree::MinWordSize, 16)</span>
+<span class="new">+DO_TEST_ALL_PATTERNS(129, BlockTree::MinWordSize, 129)</span>
+<span class="new">+DO_TEST_ALL_PATTERNS(4K, BlockTree::MinWordSize, 4*K)</span>
+ 
+</pre>
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_binlist.cpp.udiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_chunkManager_stress.cpp.udiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

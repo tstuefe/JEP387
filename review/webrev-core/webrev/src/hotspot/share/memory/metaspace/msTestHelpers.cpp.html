@@ -143,56 +143,60 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   61   : _name(name), _reserve_limit(reserve_limit), _commit_limit(commit_limit),
   62     _context(NULL),
   63     _commit_limiter(commit_limit == 0 ? max_uintx : commit_limit), // commit_limit == 0 -&gt; no limit
-  64     _used_words_counter()
-  65 {
-  66   assert(is_aligned(reserve_limit, Metaspace::reserve_alignment_words()), "reserve_limit (" SIZE_FORMAT ") "
-  67                     "not aligned to metaspace reserve alignment (" SIZE_FORMAT ")",
-  68                     reserve_limit, Metaspace::reserve_alignment_words());
-  69   if (reserve_limit &gt; 0) {
-  70     // have reserve limit -&gt; non-expandable context
-  71     ReservedSpace rs(reserve_limit * BytesPerWord, Metaspace::reserve_alignment(), false);
-  72     _context = MetaspaceContext::create_nonexpandable_context(name, rs, &amp;_commit_limiter);
-  73   } else {
-  74     // no reserve limit -&gt; expandable vslist
-  75     _context = MetaspaceContext::create_expandable_context(name, &amp;_commit_limiter);
-  76   }
-  77 
-  78 }
-  79 
-  80 MetaspaceTestContext::~MetaspaceTestContext() {
-  81   DEBUG_ONLY(verify();)
-  82   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
-  83   delete _context;
-  84 }
-  85 
-  86 // Create an arena, feeding off this area.
-  87 MetaspaceTestArena* MetaspaceTestContext::create_arena(Metaspace::MetaspaceType type) {
-  88   const ArenaGrowthPolicy* growth_policy = ArenaGrowthPolicy::policy_for_space_type(type, false);
-  89   Mutex* lock = new Mutex(Monitor::native, "MetaspaceTestArea-lock", false, Monitor::_safepoint_check_never);
-  90   MetaspaceArena* arena = NULL;
-  91   {
-  92     MutexLocker ml(lock,  Mutex::_no_safepoint_check_flag);
-  93     arena = new MetaspaceArena(_context-&gt;cm(), growth_policy, lock, &amp;_used_words_counter, _name);
-  94   }
-  95   return new MetaspaceTestArena(lock, arena);
-  96 }
-  97 
-  98 void MetaspaceTestContext::purge_area() {
-  99   _context-&gt;cm()-&gt;purge();
+  64     _used_words_counter(),
+  65     _rs()
+  66 {
+  67   assert(is_aligned(reserve_limit, Metaspace::reserve_alignment_words()), "reserve_limit (" SIZE_FORMAT ") "
+  68                     "not aligned to metaspace reserve alignment (" SIZE_FORMAT ")",
+  69                     reserve_limit, Metaspace::reserve_alignment_words());
+  70   if (reserve_limit &gt; 0) {
+  71     // have reserve limit -&gt; non-expandable context
+  72     _rs = ReservedSpace(reserve_limit * BytesPerWord, Metaspace::reserve_alignment(), false);
+  73     _context = MetaspaceContext::create_nonexpandable_context(name, _rs, &amp;_commit_limiter);
+  74   } else {
+  75     // no reserve limit -&gt; expandable vslist
+  76     _context = MetaspaceContext::create_expandable_context(name, &amp;_commit_limiter);
+  77   }
+  78 
+  79 }
+  80 
+  81 MetaspaceTestContext::~MetaspaceTestContext() {
+  82   DEBUG_ONLY(verify();)
+  83   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+  84   delete _context;
+  85   if (_rs.is_reserved()) {
+  86     _rs.release();
+  87   }
+  88 }
+  89 
+  90 // Create an arena, feeding off this area.
+  91 MetaspaceTestArena* MetaspaceTestContext::create_arena(Metaspace::MetaspaceType type) {
+  92   const ArenaGrowthPolicy* growth_policy = ArenaGrowthPolicy::policy_for_space_type(type, false);
+  93   Mutex* lock = new Mutex(Monitor::native, "MetaspaceTestArea-lock", false, Monitor::_safepoint_check_never);
+  94   MetaspaceArena* arena = NULL;
+  95   {
+  96     MutexLocker ml(lock,  Mutex::_no_safepoint_check_flag);
+  97     arena = new MetaspaceArena(_context-&gt;cm(), growth_policy, lock, &amp;_used_words_counter, _name);
+  98   }
+  99   return new MetaspaceTestArena(lock, arena);
  100 }
  101 
- 102 #ifdef ASSERT
- 103 void MetaspaceTestContext::verify() const {
- 104   if (_context != NULL) {
- 105     _context-&gt;verify();
- 106   }
- 107 }
- 108 #endif
- 109 
- 110 void MetaspaceTestContext::print_on(outputStream* st) const {
- 111   _context-&gt;print_on(st);
- 112 }
+ 102 void MetaspaceTestContext::purge_area() {
+ 103   _context-&gt;cm()-&gt;purge();
+ 104 }
+ 105 
+ 106 #ifdef ASSERT
+ 107 void MetaspaceTestContext::verify() const {
+ 108   if (_context != NULL) {
+ 109     _context-&gt;verify();
+ 110   }
+ 111 }
+ 112 #endif
  113 
- 114 } // namespace metaspace
- 115 
+ 114 void MetaspaceTestContext::print_on(outputStream* st) const {
+ 115   _context-&gt;print_on(st);
+ 116 }
+ 117 
+ 118 } // namespace metaspace
+ 119 
 </pre></body></html>

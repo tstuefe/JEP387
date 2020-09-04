@@ -1,0 +1,413 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre><hr></hr>
+<pre>
+   1 
+   2 import sun.hotspot.WhiteBox;
+   3 
+   4 import java.util.ArrayList;
+   5 import java.util.HashSet;
+   6 import java.util.List;
+   7 
+   8 public class MetaspaceTestContext {
+   9 
+  10     long context;
+  11 
+  12     final long commitLimit;
+  13     final long reserveLimit;
+  14 
+  15     int numArenasCreated;
+  16     int numArenasDestroyed;
+  17 
+  18     HashSet&lt;MetaspaceTestArena&gt; arenaList = new HashSet&lt;&gt;();
+  19 
+  20     long allocatedWords;
+  21     long numAllocated;
+  22     long deallocatedWords;
+  23     long numDeallocated;
+  24     long allocationFailures;
+  25 
+<a name="1" id="anc1"></a>
+  26     public MetaspaceTestContext(long commitLimit, long reserveLimit) {
+  27         this.commitLimit = commitLimit;
+  28         this.reserveLimit = reserveLimit;
+  29         WhiteBox wb = WhiteBox.getWhiteBox();
+  30         context = wb.createMetaspaceTestContext(commitLimit, reserveLimit);
+  31         if (context == 0) {
+  32             throw new RuntimeException("Failed to create context");
+  33         }
+  34     }
+  35 
+  36     // no limits
+  37     public MetaspaceTestContext() {
+  38         this(0, 0);
+  39     }
+  40 
+  41     public void destroy() {
+  42         if (context != 0) {
+  43             WhiteBox wb = WhiteBox.getWhiteBox();
+  44             wb.destroyMetaspaceTestContext(context);
+  45             context = 0;
+  46         }
+  47     }
+  48 
+  49     public void purge() {
+  50         if (context != 0) {
+  51             WhiteBox wb = WhiteBox.getWhiteBox();
+  52             wb.purgeMetaspaceTestContext(context);
+  53         }
+  54     }
+  55 
+  56     public MetaspaceTestArena createArena(boolean is_micro, long ceiling) {
+  57         MetaspaceTestArena arena = null;
+  58         if (context != 0) {
+  59             WhiteBox wb = WhiteBox.getWhiteBox();
+  60             long arena0 = wb.createArenaInTestContext(context, is_micro);
+  61             if (arena0 == 0) {
+  62                 throw new RuntimeException("Failed to create arena");
+  63             }
+  64             numArenasCreated++;
+  65             arena = new MetaspaceTestArena(arena0, ceiling);
+  66             arenaList.add(arena);
+  67         }
+  68         return arena;
+  69     }
+  70 
+  71     public void destroyArena(MetaspaceTestArena a) {
+  72         if (context != 0) {
+  73             if (a.isLive()) {
+  74                 WhiteBox wb = WhiteBox.getWhiteBox();
+  75                 wb.destroyMetaspaceTestArena(a.arena);
+  76                 numArenasDestroyed++;
+  77             }
+  78             arenaList.remove(a);
+  79         }
+  80     }
+  81 
+  82     public long committedWords() {
+  83         long l = 0;
+  84         if (context != 0) {
+  85             WhiteBox wb = WhiteBox.getWhiteBox();
+  86             l = wb.getTotalCommittedWordsInMetaspaceTestContext(context);
+  87         }
+  88         return l;
+  89     }
+  90 
+  91     public long usedWords() {
+  92         long l = 0;
+  93         if (context != 0) {
+  94             WhiteBox wb = WhiteBox.getWhiteBox();
+  95             l = wb.getTotalUsedWordsInMetaspaceTestContext(context);
+  96         }
+  97         return l;
+  98     }
+  99 
+ 100     public int numLiveArenas() {
+ 101         return arenaList.size();
+ 102     }
+ 103 
+ 104     public void updateTotals() {
+ 105         allocatedWords = deallocatedWords = numAllocated = numDeallocated = 0;
+ 106         for (MetaspaceTestArena a : arenaList) {
+ 107             allocatedWords += a.allocatedWords;
+ 108             deallocatedWords += a.deallocatedWords;
+ 109             numAllocated += a.numAllocated;
+ 110             numDeallocated += a.numDeallocated;
+ 111             allocationFailures += a.numAllocationFailures;
+ 112         }
+ 113     }
+ 114 
+ 115     public void printToTTY() {
+ 116         if (context != 0) {
+ 117             WhiteBox wb = WhiteBox.getWhiteBox();
+ 118             wb.printMetaspaceTestContext(context);
+ 119         }
+ 120     }
+ 121 
+ 122     /**
+ 123      * Given usage and some context information for current live arenas, do a heuristic about whether the
+ 124      * Usage seems right for this case.
+ 125      */
+ 126     public void checkStatistics() {
+<a name="2" id="anc2"></a>
+ 127 
+ 128         // Note:
+ 129         // Estimating Used and Committed is fuzzy, and we only have limited information here
+ 130         // (we know the current state, but not the history, which determines fragmentation and
+ 131         //  freelist occupancy).
+ 132         //
+ 133         // We do not want test which constantly generate false positives, so these checks are
+ 134         // somewhat loose and only meant to check for clear outliers, e.g. leaks.
+ 135 
+ 136         ///// used /////
+ 137 
+ 138         updateTotals();
+ 139 
+ 140         long usageMeasured = usedWords();
+ 141         long committedMeasured = committedWords();
+ 142 
+ 143         if (usageMeasured &gt; committedMeasured) {
+ 144             throw new RuntimeException("Weirdness.");
+ 145         }
+ 146 
+ 147         if (deallocatedWords &gt; allocatedWords) {
+ 148             throw new RuntimeException("Weirdness.");
+ 149         }
+ 150 
+ 151         // If no arenas are alive, usage should be zero and committed too (in reclaiming mode)
+ 152         if (numLiveArenas() == 0) {
+ 153             if (usageMeasured &gt; 0) {
+ 154                 throw new RuntimeException("Usage &gt; 0, expected 0");
+ 155             }
+ 156             if (Settings.settings().doesReclaim()) {
+ 157                 if (committedMeasured &gt; 0) {
+ 158                     throw new RuntimeException("Committed &gt; 0, expected 0");
+ 159                 }
+ 160             }
+ 161         }
+ 162 
+ 163         long expectedMinUsage = allocatedWords - deallocatedWords;
+ 164 
+ 165         if (usageMeasured &lt; expectedMinUsage) {
+ 166             throw new RuntimeException("Usage too low: " + usageMeasured + " expected at least " + expectedMinUsage);
+ 167         }
+ 168 
+ 169         long expectedMaxUsage = allocatedWords;
+ 170 
+ 171         // This is necessary a bit fuzzy, since Metaspace usage consists of:
+ 172         // - whatever we allocated
+ 173         // - deallocated blocks in fbl
+ 174         // - remains of retired chunks in fbl
+ 175         // - overhead per allocation (padding for alignment, possibly allocation guards)
+ 176 
+ 177         // Overhead per allocation (see metaspaceArena.cpp, get_raw_allocation_word_size() )
+ 178         // Any allocation is 3 words least
+ 179         expectedMaxUsage += (numAllocated * 3);
+ 180         if (Settings.settings().usesAllocationGuards) {
+ 181             // Guards need space.
+ 182             expectedMaxUsage += (numAllocated * 2);
+ 183             // Also, they disable the fbl, so deallocated still counts as used.
+ 184             expectedMaxUsage += deallocatedWords;
+ 185         }
+ 186 
+ 187         // Lets add a overhead per arena. Each arena carries a free block list containing
+ 188         // deallocated/retired blocks. We do not know how much. In general, the free block list should not
+ 189         // accumulate a lot of memory but be drained in the course of allocating memory from the arena.
+ 190         long overheadPerArena = 1024 * 1024 * numLiveArenas();
+ 191         expectedMaxUsage += overheadPerArena;
+ 192 
+ 193         if (expectedMaxUsage &lt; usageMeasured) {
+ 194             throw new RuntimeException("Usage seems high: " + usageMeasured + " expected at most " + expectedMaxUsage);
+ 195         }
+ 196 
+ 197         ///// Committed //////
+ 198 
+ 199         if (committedMeasured &lt; expectedMinUsage) {
+ 200             throw new RuntimeException("Usage too low: " + usageMeasured + " expected at least " + expectedMinUsage);
+ 201         }
+ 202 
+ 203         // Max committed:
+ 204         // This is difficult to estimate, so just a rough guess.
+ 205         //
+ 206         // Committed space depends on:
+ 207         // 1) Usage (how much we allocated + overhead per allocation + free block list content)
+ 208         // 2) free space in used chunks
+ 209         // 3) committed chunks in freelist.
+ 210         //
+ 211         // Having only live usage numbers without history, (2) and (3) can only be roughly estimated. Since these
+ 212         // are stress tests,
+ 213         //
+ 214         long expectedMaxCommitted = usageMeasured;
+ 215         expectedMaxCommitted += Settings.rootChunkWordSize;
+ 216         if (Settings.settings().doesReclaim()) {
+ 217             expectedMaxCommitted *= 10.0;
+ 218         } else {
+ 219             expectedMaxCommitted *= 100.0;
+ 220         }
+ 221 
+ 222         if (committedMeasured &gt; expectedMaxCommitted) {
+ 223             throw new RuntimeException("Committed seems high: " + committedMeasured + " expected at most " + expectedMaxCommitted);
+ 224         }
+ 225 
+ 226     }
+ 227 
+ 228     @java.lang.Override
+ 229     public java.lang.String toString() {
+ 230         return "MetaspaceTestContext{" +
+ 231                 "context=" + context +
+ 232                 ", commitLimit=" + commitLimit +
+ 233                 ", reserveLimit=" + reserveLimit +
+ 234                 ", numArenasCreated=" + numArenasCreated +
+ 235                 ", numArenasDestroyed=" + numArenasDestroyed +
+ 236                 ", numLiveArenas=" + numLiveArenas() +
+ 237                 ", allocatedWords=" + allocatedWords +
+ 238                 ", numAllocated=" + numAllocated +
+ 239                 ", deallocatedWords=" + deallocatedWords +
+ 240                 ", numDeallocated=" + numDeallocated +
+ 241                 ", allocationFailures=" + allocationFailures +
+ 242                 '}';
+ 243     }
+ 244 }
+<a name="3" id="anc3"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="3" type="hidden" /></form></body></html>

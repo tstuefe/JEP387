@@ -1,0 +1,153 @@
+--- old/test/hotspot/gtest/metaspace/test_commitmask.cpp	2020-09-04 13:57:24.837181649 +0200
++++ new/test/hotspot/gtest/metaspace/test_commitmask.cpp	2020-09-04 13:57:24.521179583 +0200
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -24,10 +24,18 @@
+  */
+ 
+ #include "precompiled.hpp"
++
++#include "memory/metaspace/msCommitMask.hpp"
++#include "memory/metaspace/msSettings.hpp"
+ #include "runtime/os.hpp"
++#include "utilities/align.hpp"
++#include "utilities/debug.hpp"
++
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
+ 
+-#include "metaspaceTestsCommon.hpp"
+-#include "metaspace/metaspace_rangehelpers.hpp"
++using metaspace::CommitMask;
++using metaspace::Settings;
+ 
+ static int get_random(int limit) { return os::random() % limit; }
+ 
+@@ -40,7 +48,7 @@
+   void verify_mask() {
+     // Note: we omit the touch test since we operate on fictional
+     // memory
+-    DEBUG_ONLY(_mask.verify(false);)
++    DEBUG_ONLY(_mask.verify();)
+   }
+ 
+   // Return a random sub range within [_base.._base + word_size),
+@@ -85,7 +93,7 @@
+     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+               _word_size);
+ 
+-    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
+       ASSERT_TRUE(_mask.is_committed_address(p));
+     }
+ 
+@@ -111,7 +119,7 @@
+               _word_size - sr_word_size);
+     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+               _word_size - sr_word_size);
+-    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
+       if (p >= sr_base && p < sr_base + sr_word_size) {
+         ASSERT_FALSE(_mask.is_committed_address(p));
+       } else {
+@@ -130,7 +138,7 @@
+               _word_size);
+     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+               _word_size);
+-    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
+       ASSERT_TRUE(_mask.is_committed_address(p));
+     }
+ 
+@@ -163,7 +171,7 @@
+ 
+     ASSERT_EQ(_mask.get_committed_size_in_range(sr_base, sr_word_size),
+               (size_t)0);
+-    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
+       ASSERT_FALSE(_mask.is_committed_address(p));
+     }
+ 
+@@ -182,7 +190,7 @@
+         sr_word_size);
+     ASSERT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+         sr_word_size);
+-    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
+       if (p >= sr_base && p < sr_base + sr_word_size) {
+         ASSERT_TRUE(_mask.is_committed_address(p));
+       } else {
+@@ -201,13 +209,12 @@
+         (size_t)0);
+     EXPECT_EQ(_mask.get_committed_size_in_range(_base, _word_size),
+         (size_t)0);
+-    for (const MetaWord* p = _base; p < _base + _word_size; p ++) {
++    for (const MetaWord* p = _base; p < _base + _word_size; p++) {
+       ASSERT_FALSE(_mask.is_committed_address(p));
+     }
+ 
+   }
+ 
+-
+   void test3() {
+ 
+     // arbitrary ranges are set and cleared and compared with the test map
+@@ -215,7 +222,7 @@
+ 
+     _mask.clear_large();
+ 
+-    for (int run = 0; run < 100; run ++) {
++    for (int run = 0; run < 100; run++) {
+ 
+       // A random range
+       SizeRange r = SizeRange(_word_size).random_aligned_subrange(Settings::commit_granule_words());
+@@ -237,7 +244,6 @@
+ 
+   }
+ 
+-
+ public:
+ 
+   CommitMaskTest(const MetaWord* base, size_t size)
+@@ -248,12 +254,11 @@
+     LOG("mask range: " PTR_FORMAT "-" PTR_FORMAT
+          " (" SIZE_FORMAT " words).",
+          p2i(_base), p2i(_base + _word_size), _word_size);
+-    for (int i = 0; i < 5; i ++) {
++    for (int i = 0; i < 5; i++) {
+       test1(); test2(); test3();
+     }
+   }
+ 
+-
+ };
+ 
+ TEST_VM(metaspace, commit_mask_basics) {
+@@ -273,7 +278,7 @@
+   mask3.mark_range_as_committed(base + (Settings::commit_granule_words() * 42), Settings::commit_granule_words());
+ 
+   ASSERT_EQ(mask3.at(0), 1);
+-  for (int i = 1; i < 42; i ++) {
++  for (int i = 1; i < 42; i++) {
+     ASSERT_EQ(mask3.at(i), 0);
+   }
+   ASSERT_EQ(mask3.at(42), 1);
+@@ -326,10 +331,9 @@
+ 
+ }
+ 
+-
+ TEST_VM(metaspace, commit_mask_random) {
+ 
+-  for (int i = 0; i < 5; i ++) {
++  for (int i = 0; i < 5; i++) {
+ 
+     // make up a range out of thin air
+     const MetaWord* const base =

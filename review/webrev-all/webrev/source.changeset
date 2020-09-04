@@ -1,9 +1,9 @@
 # HG changeset patch
 # User stuefe
-# Date 1599131981 -7200
-#      Thu Sep 03 13:19:41 2020 +0200
-# Node ID 39627440b03260c7a901949c5f6a48db185f78d9
-# Parent  c9455b1ee48d1e9492112d56f2244694e3524463
+# Date 1599221152 -7200
+#      Fri Sep 04 14:05:52 2020 +0200
+# Node ID ff7b5121763d945b63083f93a53cd28355e47dee
+# Parent  5aeebd3bb33a59cf53cd1c04cb419d98fdfc5cf7
 imported patch jep387-all.patch
 
 diff --git a/src/hotspot/share/classfile/classLoaderData.cpp b/src/hotspot/share/classfile/classLoaderData.cpp
@@ -338,7 +338,7 @@ diff --git a/src/hotspot/share/jvmci/jvmciCompilerToVM.hpp b/src/hotspot/share/j
  #define SHARE_JVMCI_JVMCICOMPILERTOVM_HPP
  
  #include "gc/shared/cardTable.hpp"
-+//#include "gc/shared/collectedHeap.hpp"
++#include "gc/shared/collectedHeap.hpp"
  #include "jvmci/jvmciExceptions.hpp"
  #include "runtime/javaCalls.hpp"
  #include "runtime/signature.hpp"
@@ -8248,7 +8248,7 @@ diff --git a/src/hotspot/share/memory/metaspace/msBlockTree.cpp b/src/hotspot/sh
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/msBlockTree.cpp
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,205 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8277,6 +8277,7 @@ new file mode 100644
 +#include "precompiled.hpp"
 +
 +#include "memory/metaspace/msBlockTree.hpp"
++#include "memory/resourceArea.hpp"
 +#include "utilities/debug.hpp"
 +#include "utilities/globalDefinitions.hpp"
 +#include "utilities/growableArray.hpp"
@@ -8307,6 +8308,16 @@ new file mode 100644
 +  } while(0)
 +
 +
++
++// walkinfo keeps a node plus the size corridor it and its children
++//  are supposed to be in.
++struct BlockTree::walkinfo {
++  BlockTree::Node* n;
++  int depth;
++  size_t lim1; // (
++  size_t lim2; // )
++};
++
 +void BlockTree::verify() const {
 +
 +  // Traverse the tree and test that all nodes are in the correct order.
@@ -8315,15 +8326,6 @@ new file mode 100644
 +  int longest_edge = 0;
 +
 +  if (_root != NULL) {
-+
-+    // walkinfo keeps a node plus the size corridor it and its children
-+    //  are supposed to be in.
-+    struct walkinfo {
-+      Node* n;
-+      size_t lim1; // (
-+      size_t lim2; // )
-+      int depth;
-+    };
 +
 +    ResourceMark rm;
 +
@@ -8408,23 +8410,11 @@ new file mode 100644
 +#undef assrt
 +#undef assrt0
 +
-+void BlockTree::print_node(outputStream* st, Node* n, int lvl) {
-+  for (int i = 0; i < lvl; i++) {
-+    st->print("---");
-+  }
-+  st->print_cr("<" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n->_word_size);
-+}
-+
 +void BlockTree::print_tree(outputStream* st) const {
 +
 +  if (_root != NULL) {
 +
 +    ResourceMark rm;
-+
-+    struct walkinfo {
-+      Node* n;
-+      int depth;
-+    };
 +
 +    GrowableArray<walkinfo> stack;
 +
@@ -8435,16 +8425,22 @@ new file mode 100644
 +    stack.push(info);
 +    while (stack.length() > 0) {
 +      info = stack.pop();
-+      print_node(st, info.n, info.depth);
-+      if (info.n->_right != NULL) {
++      const Node* n = info.n;
++      // Print node.
++      for (int i = 0; i < info.depth; i++) {
++         st->print("---");
++      }
++      st->print_cr("<" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n->_word_size);
++      // Handle children.
++      if (n->_right != NULL) {
 +        walkinfo info2;
-+        info2.n = info.n->_right;
++        info2.n = n->_right;
 +        info2.depth = info.depth + 1;
 +        stack.push(info2);
 +      }
-+      if (info.n->_left != NULL) {
++      if (n->_left != NULL) {
 +        walkinfo info2;
-+        info2.n = info.n->_left;
++        info2.n = n->_left;
 +        info2.depth = info.depth + 1;
 +        stack.push(info2);
 +      }
@@ -8462,7 +8458,7 @@ diff --git a/src/hotspot/share/memory/metaspace/msBlockTree.hpp b/src/hotspot/sh
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/msBlockTree.hpp
-@@ -0,0 +1,406 @@
+@@ -0,0 +1,407 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -8561,6 +8557,9 @@ new file mode 100644
 +    {}
 +
 +  };
++
++  // Needed for verify() and print_tree()
++  struct walkinfo;
 +
 +public:
 +
@@ -8800,8 +8799,6 @@ new file mode 100644
 +#ifdef ASSERT
 +  void zap_range(MetaWord* p, size_t word_size);
 +#endif // ASSERT
-+
-+  static void print_node(outputStream* st, Node* n, int lvl);
 +
 +public:
 +
@@ -15752,7 +15749,7 @@ diff --git a/src/hotspot/share/memory/metaspace/msTestHelpers.cpp b/src/hotspot/
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/msTestHelpers.cpp
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,119 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -15816,15 +15813,16 @@ new file mode 100644
 +  : _name(name), _reserve_limit(reserve_limit), _commit_limit(commit_limit),
 +    _context(NULL),
 +    _commit_limiter(commit_limit == 0 ? max_uintx : commit_limit), // commit_limit == 0 -> no limit
-+    _used_words_counter()
++    _used_words_counter(),
++    _rs()
 +{
 +  assert(is_aligned(reserve_limit, Metaspace::reserve_alignment_words()), "reserve_limit (" SIZE_FORMAT ") "
 +                    "not aligned to metaspace reserve alignment (" SIZE_FORMAT ")",
 +                    reserve_limit, Metaspace::reserve_alignment_words());
 +  if (reserve_limit > 0) {
 +    // have reserve limit -> non-expandable context
-+    ReservedSpace rs(reserve_limit * BytesPerWord, Metaspace::reserve_alignment(), false);
-+    _context = MetaspaceContext::create_nonexpandable_context(name, rs, &_commit_limiter);
++    _rs = ReservedSpace(reserve_limit * BytesPerWord, Metaspace::reserve_alignment(), false);
++    _context = MetaspaceContext::create_nonexpandable_context(name, _rs, &_commit_limiter);
 +  } else {
 +    // no reserve limit -> expandable vslist
 +    _context = MetaspaceContext::create_expandable_context(name, &_commit_limiter);
@@ -15836,6 +15834,9 @@ new file mode 100644
 +  DEBUG_ONLY(verify();)
 +  MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
 +  delete _context;
++  if (_rs.is_reserved()) {
++    _rs.release();
++  }
 +}
 +
 +// Create an arena, feeding off this area.
@@ -15872,7 +15873,7 @@ diff --git a/src/hotspot/share/memory/metaspace/msTestHelpers.hpp b/src/hotspot/
 new file mode 100644
 --- /dev/null
 +++ b/src/hotspot/share/memory/metaspace/msTestHelpers.hpp
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,120 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -15951,6 +15952,10 @@ new file mode 100644
 +  MetaspaceContext* _context;
 +  CommitLimiter _commit_limiter;
 +  SizeAtomicCounter _used_words_counter;
++
++  // For non-expandable contexts we keep track of the space
++  // and delete it at destruction time.
++  ReservedSpace _rs;
 +
 +public:
 +
@@ -20607,7 +20612,7 @@ diff --git a/src/hotspot/share/prims/whitebox.cpp b/src/hotspot/share/prims/whit
 diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/globals.hpp
 --- a/src/hotspot/share/runtime/globals.hpp
 +++ b/src/hotspot/share/runtime/globals.hpp
-@@ -907,7 +907,6 @@
+@@ -913,7 +913,6 @@
            NOT_LP64(2200*K) LP64_ONLY(4*M),                                  \
            "(Deprecated) Initial size of the boot class loader data metaspace") \
            range(30*K, max_uintx/BytesPerWord)                               \
@@ -20615,7 +20620,7 @@ diff --git a/src/hotspot/share/runtime/globals.hpp b/src/hotspot/share/runtime/g
                                                                              \
    product(bool, PrintHeapAtSIGBREAK, true,                                  \
            "Print heap layout in response to SIGBREAK")                      \
-@@ -1558,6 +1557,18 @@
+@@ -1564,6 +1563,18 @@
            "class pointers are used")                                        \
            range(1*M, 3*G)                                                   \
                                                                              \
@@ -22853,7 +22858,7 @@ diff --git a/test/hotspot/gtest/metaspace/test_blocktree.cpp b/test/hotspot/gtes
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_blocktree.cpp
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,411 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -22883,8 +22888,9 @@ new file mode 100644
 +
 +#include "memory/metaspace/msBlockTree.hpp"
 +#include "memory/metaspace/msCounter.hpp"
++#include "memory/resourceArea.hpp"
 +
-+#define LOG_PLEASE
++// #define LOG_PLEASE
 +#include "metaspaceGtestCommon.hpp"
 +
 +using metaspace::BlockTree;
@@ -25149,7 +25155,7 @@ diff --git a/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp b/test/hotspot
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,113 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -25220,6 +25226,8 @@ new file mode 100644
 +
 +TEST_VM(metaspace, chunklevel_utils)   {
 +
++  // These tests seem to be really basic, but it is amazing what one can
++  // break accidentally...
 +  LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
 +  LOG(SIZE_FORMAT, MIN_CHUNK_BYTE_SIZE);
 +  LOG(SIZE_FORMAT, MIN_CHUNK_WORD_SIZE);
@@ -25255,9 +25263,9 @@ new file mode 100644
 +  EXPECT_EQ(level_fitting_word_size((MAX_CHUNK_WORD_SIZE / 2) + 1), ROOT_CHUNK_LEVEL);
 +  EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE / 2), ROOT_CHUNK_LEVEL + 1);
 +
-+  EXPECT_EQ(level_fitting_word_size(8 * K), CHUNK_LEVEL_64K);
-+  EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
-+  EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
++  EXPECT_EQ(level_fitting_word_size(8 * K), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K));
++  EXPECT_EQ(level_fitting_word_size(8 * K + 13), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K) - 1);
++  EXPECT_EQ(level_fitting_word_size(8 * K - 13), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K));
 +
 +}
 +
@@ -25265,7 +25273,7 @@ diff --git a/test/hotspot/gtest/metaspace/test_metaspacearena.cpp b/test/hotspot
 new file mode 100644
 --- /dev/null
 +++ b/test/hotspot/gtest/metaspace/test_metaspacearena.cpp
-@@ -0,0 +1,737 @@
+@@ -0,0 +1,742 @@
 +/*
 + * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
 + * Copyright (c) 2020 SAP SE. All rights reserved.
@@ -25318,6 +25326,11 @@ new file mode 100644
 +using metaspace::SizeAtomicCounter;
 +using metaspace::Settings;
 +using metaspace::ArenaStats;
++
++// See metaspaceArena.cpp : needed for predicting commit sizes.
++namespace metaspace {
++  extern size_t get_raw_word_size_for_requested_word_size(size_t net_word_size);
++}
 +
 +class MetaspaceArenaTestHelper {
 +
@@ -25545,7 +25558,7 @@ new file mode 100644
 +         metaspace::InternalStats::num_chunks_enlarged() == n1) {
 +    size_t s = IntRange(32, 128).random_value();
 +    helper.allocate_from_arena_with_tests_expect_success(s);
-+    allocated += s;
++    allocated += metaspace::get_raw_word_size_for_requested_word_size(s);
 +  }
 +
 +  EXPECT_GT(metaspace::InternalStats::num_chunks_enlarged(), n1);
@@ -25602,7 +25615,7 @@ new file mode 100644
 +  while (allocated <= MAX_CHUNK_WORD_SIZE) {
 +    size_t s = IntRange(32, 128).random_value();
 +    helper.allocate_from_arena_with_tests_expect_success(s);
-+    allocated += s;
++    allocated += metaspace::get_raw_word_size_for_requested_word_size(s);
 +    if (allocated <= MAX_CHUNK_WORD_SIZE) {
 +      // Chunk should have been enlarged in place
 +      ASSERT_EQ(1, helper.get_number_of_chunks());
@@ -25859,7 +25872,7 @@ new file mode 100644
 +    }
 +
 +    smhelper.allocate_from_arena_with_tests_expect_success(alloc_words);
-+    words_allocated += alloc_words;
++    words_allocated += metaspace::get_raw_word_size_for_requested_word_size(alloc_words);
 +    num_allocated++;
 +
 +    size_t used2 = 0, committed2 = 0, capacity2 = 0;

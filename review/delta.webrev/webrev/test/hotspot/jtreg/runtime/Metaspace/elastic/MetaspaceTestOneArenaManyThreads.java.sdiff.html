@@ -1,0 +1,184 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff test/hotspot/jtreg/runtime/Metaspace/elastic </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestContext.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestWithThreads.java.sdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestOneArenaManyThreads.java</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 import java.util.concurrent.CyclicBarrier;
+  27 
+  28 import static java.lang.System.currentTimeMillis;
+  29 
+  30 public class MetaspaceTestOneArenaManyThreads extends MetaspaceTestWithThreads {
+  31 
+  32     // Several threads allocate from a single arena.
+  33     // This mimicks several threads loading classes via the same class loader.
+  34 
+<span class="removed">  35 </span>
+  36     public MetaspaceTestOneArenaManyThreads(MetaspaceTestContext context, long testAllocationCeiling, int numThreads, int seconds) {
+  37         super(context, testAllocationCeiling, numThreads, seconds);
+  38     }
+  39 
+  40     public void runTest() throws Exception {
+  41 
+  42         long t_start = currentTimeMillis();
+  43         long t_stop = t_start + (seconds * 1000);
+  44 
+  45         // We create a single arena, and n threads which will allocate from that single arena.
+  46 
+  47         MetaspaceTestArena arena = context.createArena(RandomHelper.fiftyfifty(), testAllocationCeiling);
+  48         CyclicBarrier gate = new CyclicBarrier(numThreads + 1);
+  49 
+  50         for (int i = 0; i &lt; numThreads; i ++) {
+  51             RandomAllocator allocator = new RandomAllocator(arena);
+  52             RandomAllocatorThread thread = new RandomAllocatorThread(gate, allocator, i);
+  53             threads[i] = thread;
+  54             thread.start();
+  55         }
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 import java.util.concurrent.CyclicBarrier;
+  27 
+  28 import static java.lang.System.currentTimeMillis;
+  29 
+  30 public class MetaspaceTestOneArenaManyThreads extends MetaspaceTestWithThreads {
+  31 
+  32     // Several threads allocate from a single arena.
+  33     // This mimicks several threads loading classes via the same class loader.
+  34 
+
+  35     public MetaspaceTestOneArenaManyThreads(MetaspaceTestContext context, long testAllocationCeiling, int numThreads, int seconds) {
+  36         super(context, testAllocationCeiling, numThreads, seconds);
+  37     }
+  38 
+  39     public void runTest() throws Exception {
+  40 
+  41         long t_start = currentTimeMillis();
+  42         long t_stop = t_start + (seconds * 1000);
+  43 
+  44         // We create a single arena, and n threads which will allocate from that single arena.
+  45 
+  46         MetaspaceTestArena arena = context.createArena(RandomHelper.fiftyfifty(), testAllocationCeiling);
+  47         CyclicBarrier gate = new CyclicBarrier(numThreads + 1);
+  48 
+  49         for (int i = 0; i &lt; numThreads; i ++) {
+  50             RandomAllocator allocator = new RandomAllocator(arena);
+  51             RandomAllocatorThread thread = new RandomAllocatorThread(gate, allocator, i);
+  52             threads[i] = thread;
+  53             thread.start();
+  54         }
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestContext.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestWithThreads.java.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

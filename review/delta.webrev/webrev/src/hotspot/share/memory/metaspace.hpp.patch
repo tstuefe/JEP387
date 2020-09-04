@@ -1,0 +1,49 @@
+--- old/src/hotspot/share/memory/metaspace.hpp	2020-09-04 13:57:07.629070242 +0200
++++ new/src/hotspot/share/memory/metaspace.hpp	2020-09-04 13:57:07.249067809 +0200
+@@ -41,7 +41,7 @@
+ namespace metaspace {
+   class MetaspaceArena;
+   class MetaspaceSizesSnapshot;
+-  struct clms_stats_t;
++  struct ClmsStats;
+ }
+ 
+ ////////////////// Metaspace ///////////////////////
+@@ -137,6 +137,8 @@
+   static void report_metadata_oome(ClassLoaderData* loader_data, size_t word_size,
+                                    MetaspaceObj::Type type, Metaspace::MetadataType mdtype, TRAPS);
+ 
++  static const char* metadata_type_name(Metaspace::MetadataType mdtype);
++
+   static void print_compressed_class_space(outputStream* st) NOT_LP64({});
+ 
+   // Return TRUE only if UseCompressedClassPointers is True.
+@@ -144,6 +146,10 @@
+     return NOT_LP64(false) LP64_ONLY(UseCompressedClassPointers);
+   }
+ 
++  static bool is_class_space_allocation(MetadataType mdType) {
++    return mdType == ClassType && using_class_space();
++  }
++
+   static bool initialized();
+ 
+ };
+@@ -213,7 +219,7 @@
+   void deallocate(MetaWord* ptr, size_t word_size, bool is_class);
+ 
+   // Update statistics. This walks all in-use chunks.
+-  void add_to_statistics(metaspace::clms_stats_t* out) const;
++  void add_to_statistics(metaspace::ClmsStats* out) const;
+ 
+   DEBUG_ONLY(void verify() const;)
+ 
+@@ -336,7 +342,7 @@
+ 
+   static void print_on(outputStream * out);
+ 
+-  DEBUG_ONLY(static void verify(bool slow);)
++  DEBUG_ONLY(static void verify();)
+ 
+ };
+ 

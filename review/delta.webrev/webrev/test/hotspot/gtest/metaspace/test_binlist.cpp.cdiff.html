@@ -1,0 +1,428 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff test/hotspot/gtest/metaspace/test_binlist.cpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_arenagrowthpolicy.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_blocktree.cpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/gtest/metaspace/test_binlist.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 1,8 ****</span>
+  /*
+<span class="changed">!  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<span class="newmarker">--- 1,8 ----</span>
+  /*
+<span class="changed">!  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">!  * Copyright (c) 2020 SAP SE. All rights reserved.</span>
+   * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   *
+   * This code is free software; you can redistribute it and/or modify it
+   * under the terms of the GNU General Public License version 2 only, as
+   * published by the Free Software Foundation.
+<hr /><span class="oldmarker">*** 23,36 ****</span>
+   *
+   */
+  
+  #include "precompiled.hpp"
+  
+<span class="changed">! //#define LOG_PLEASE</span>
+  
+<span class="changed">! #include "metaspaceTestsCommon.hpp"</span>
+  
+  
+  #define CHECK_BL_CONTENT(bl, expected_num, expected_size) { \
+    EXPECT_EQ(bl.count(), (unsigned)expected_num); \
+    EXPECT_EQ(bl.total_size(), (size_t)expected_size); \
+    if (expected_num == 0) { \
+<span class="newmarker">--- 23,41 ----</span>
+   *
+   */
+  
+  #include "precompiled.hpp"
+  
+<span class="changed">! #include "memory/metaspace/msBinList.hpp"</span>
+<span class="changed">! #include "memory/metaspace/msCounter.hpp"</span>
+  
+<span class="changed">! //#define LOG_PLEASE</span>
+<span class="changed">! #include "metaspaceGtestCommon.hpp"</span>
+  
+<span class="new">+ using metaspace::BinList32;</span>
+<span class="new">+ using metaspace::BinListImpl;</span>
+<span class="new">+ using metaspace::MemRangeCounter;</span>
+  
+  #define CHECK_BL_CONTENT(bl, expected_num, expected_size) { \
+    EXPECT_EQ(bl.count(), (unsigned)expected_num); \
+    EXPECT_EQ(bl.total_size(), (size_t)expected_size); \
+    if (expected_num == 0) { \
+<hr /><span class="oldmarker">*** 38,48 ****</span>
+    } else { \
+      EXPECT_FALSE(bl.is_empty()); \
+    } \
+  }
+  
+<span class="removed">- </span>
+  template &lt;class BINLISTTYPE&gt;
+  struct BinListBasicTest {
+  
+    static const size_t minws;
+    static const size_t maxws;
+<span class="newmarker">--- 43,52 ----</span>
+<hr /><span class="oldmarker">*** 57,78 ****</span>
+  
+      size_t innocous_size = minws + ((maxws - minws) / 2);
+  
+      // Try to get a block from an empty list.
+      size_t real_size = 4711;
+<span class="changed">!     MetaWord* p = bl.get_block(innocous_size, &amp;real_size);</span>
+      EXPECT_EQ(p, (MetaWord*)NULL);
+      EXPECT_EQ((size_t)0, real_size);
+  
+      // Add a block...
+      bl.add_block(arr, innocous_size);
+      CHECK_BL_CONTENT(bl, 1, innocous_size);
+      DEBUG_ONLY(bl.verify();)
+  
+      // And retrieve it.
+      real_size = 4711;
+<span class="changed">!     p = bl.get_block(innocous_size, &amp;real_size);</span>
+      EXPECT_EQ(p, arr);
+      EXPECT_EQ((size_t)innocous_size, real_size);
+      CHECK_BL_CONTENT(bl, 0, 0);
+      DEBUG_ONLY(bl.verify();)
+  
+<span class="newmarker">--- 61,82 ----</span>
+  
+      size_t innocous_size = minws + ((maxws - minws) / 2);
+  
+      // Try to get a block from an empty list.
+      size_t real_size = 4711;
+<span class="changed">!     MetaWord* p = bl.remove_block(innocous_size, &amp;real_size);</span>
+      EXPECT_EQ(p, (MetaWord*)NULL);
+      EXPECT_EQ((size_t)0, real_size);
+  
+      // Add a block...
+      bl.add_block(arr, innocous_size);
+      CHECK_BL_CONTENT(bl, 1, innocous_size);
+      DEBUG_ONLY(bl.verify();)
+  
+      // And retrieve it.
+      real_size = 4711;
+<span class="changed">!     p = bl.remove_block(innocous_size, &amp;real_size);</span>
+      EXPECT_EQ(p, arr);
+      EXPECT_EQ((size_t)innocous_size, real_size);
+      CHECK_BL_CONTENT(bl, 0, 0);
+      DEBUG_ONLY(bl.verify();)
+  
+<hr /><span class="oldmarker">*** 84,102 ****</span>
+  
+      CHECK_BL_CONTENT(bl, 0, 0);
+  
+      MetaWord arr[1000];
+  
+<span class="changed">!     for (size_t s1 = minws; s1 &lt; maxws; s1 ++) {</span>
+<span class="changed">!       for (size_t s2 = minws; s2 &lt; maxws; s2 ++) {</span>
+  
+          bl.add_block(arr, s1);
+          CHECK_BL_CONTENT(bl, 1, s1);
+          DEBUG_ONLY(bl.verify();)
+  
+          size_t real_size = 4711;
+<span class="changed">!         MetaWord* p = bl.get_block(s2, &amp;real_size);</span>
+          if (s1 &gt;= s2) {
+            EXPECT_EQ(p, arr);
+            EXPECT_EQ((size_t)s1, real_size);
+            CHECK_BL_CONTENT(bl, 0, 0);
+            DEBUG_ONLY(bl.verify();)
+<span class="newmarker">--- 88,106 ----</span>
+  
+      CHECK_BL_CONTENT(bl, 0, 0);
+  
+      MetaWord arr[1000];
+  
+<span class="changed">!     for (size_t s1 = minws; s1 &lt;= maxws; s1++) {</span>
+<span class="changed">!       for (size_t s2 = minws; s2 &lt;= maxws; s2++) {</span>
+  
+          bl.add_block(arr, s1);
+          CHECK_BL_CONTENT(bl, 1, s1);
+          DEBUG_ONLY(bl.verify();)
+  
+          size_t real_size = 4711;
+<span class="changed">!         MetaWord* p = bl.remove_block(s2, &amp;real_size);</span>
+          if (s1 &gt;= s2) {
+            EXPECT_EQ(p, arr);
+            EXPECT_EQ((size_t)s1, real_size);
+            CHECK_BL_CONTENT(bl, 0, 0);
+            DEBUG_ONLY(bl.verify();)
+<hr /><span class="oldmarker">*** 104,114 ****</span>
+            EXPECT_EQ(p, (MetaWord*)NULL);
+            EXPECT_EQ((size_t)0, real_size);
+            CHECK_BL_CONTENT(bl, 1, s1);
+            DEBUG_ONLY(bl.verify();)
+            // drain bl
+<span class="changed">!           p = bl.get_block(minws, &amp;real_size);</span>
+            EXPECT_EQ(p, arr);
+            EXPECT_EQ((size_t)s1, real_size);
+            CHECK_BL_CONTENT(bl, 0, 0);
+          }
+        }
+<span class="newmarker">--- 108,118 ----</span>
+            EXPECT_EQ(p, (MetaWord*)NULL);
+            EXPECT_EQ((size_t)0, real_size);
+            CHECK_BL_CONTENT(bl, 1, s1);
+            DEBUG_ONLY(bl.verify();)
+            // drain bl
+<span class="changed">!           p = bl.remove_block(minws, &amp;real_size);</span>
+            EXPECT_EQ(p, arr);
+            EXPECT_EQ((size_t)s1, real_size);
+            CHECK_BL_CONTENT(bl, 0, 0);
+          }
+        }
+<hr /><span class="oldmarker">*** 125,135 ****</span>
+    ASSERT_EQ(cnt[1].count(), bl[1].count()); \
+    ASSERT_EQ(cnt[0].total_size(), bl[0].total_size()); \
+    ASSERT_EQ(cnt[1].total_size(), bl[1].total_size());
+  
+      FeederBuffer fb(1024);
+<span class="changed">!     RandSizeGenerator rgen(minws, maxws);</span>
+  
+      // feed all
+      int which = 0;
+      for (;;) {
+        size_t s = rgen.get();
+<span class="newmarker">--- 129,139 ----</span>
+    ASSERT_EQ(cnt[1].count(), bl[1].count()); \
+    ASSERT_EQ(cnt[0].total_size(), bl[0].total_size()); \
+    ASSERT_EQ(cnt[1].total_size(), bl[1].total_size());
+  
+      FeederBuffer fb(1024);
+<span class="changed">!     RandSizeGenerator rgen(minws, maxws + 1);</span>
+  
+      // feed all
+      int which = 0;
+      for (;;) {
+        size_t s = rgen.get();
+<hr /><span class="oldmarker">*** 146,162 ****</span>
+      CHECK_COUNTERS;
+      DEBUG_ONLY(bl[0].verify();)
+      DEBUG_ONLY(bl[1].verify();)
+  
+      // play pingpong
+<span class="changed">!     for (int iter = 0; iter &lt; 1000; iter ++) {</span>
+        size_t s = rgen.get();
+        int taker = iter % 2;
+        int giver = taker == 0 ? 1 : 0;
+  
+        size_t real_size = 4711;
+<span class="changed">!       MetaWord* p = bl[giver].get_block(s, &amp;real_size);</span>
+        if (p != NULL) {
+  
+          ASSERT_TRUE(fb.is_valid_range(p, real_size));
+          ASSERT_GE(real_size, s);
+          cnt[giver].sub(real_size);
+<span class="newmarker">--- 150,166 ----</span>
+      CHECK_COUNTERS;
+      DEBUG_ONLY(bl[0].verify();)
+      DEBUG_ONLY(bl[1].verify();)
+  
+      // play pingpong
+<span class="changed">!     for (int iter = 0; iter &lt; 1000; iter++) {</span>
+        size_t s = rgen.get();
+        int taker = iter % 2;
+        int giver = taker == 0 ? 1 : 0;
+  
+        size_t real_size = 4711;
+<span class="changed">!       MetaWord* p = bl[giver].remove_block(s, &amp;real_size);</span>
+        if (p != NULL) {
+  
+          ASSERT_TRUE(fb.is_valid_range(p, real_size));
+          ASSERT_GE(real_size, s);
+          cnt[giver].sub(real_size);
+<hr /><span class="oldmarker">*** 175,190 ****</span>
+      CHECK_COUNTERS;
+      DEBUG_ONLY(bl[0].verify();)
+      DEBUG_ONLY(bl[1].verify();)
+  
+      // drain both lists.
+<span class="changed">!     for (int which = 0; which &lt; 2; which ++) {</span>
+        size_t last_size = 0;
+        while (bl[which].is_empty() == false) {
+  
+          size_t real_size = 4711;
+<span class="changed">!         MetaWord* p = bl[which].get_block(minws, &amp;real_size);</span>
+  
+          ASSERT_NE(p, (MetaWord*) NULL);
+          ASSERT_GE(real_size, minws);
+          ASSERT_TRUE(fb.is_valid_range(p, real_size));
+  
+<span class="newmarker">--- 179,194 ----</span>
+      CHECK_COUNTERS;
+      DEBUG_ONLY(bl[0].verify();)
+      DEBUG_ONLY(bl[1].verify();)
+  
+      // drain both lists.
+<span class="changed">!     for (int which = 0; which &lt; 2; which++) {</span>
+        size_t last_size = 0;
+        while (bl[which].is_empty() == false) {
+  
+          size_t real_size = 4711;
+<span class="changed">!         MetaWord* p = bl[which].remove_block(minws, &amp;real_size);</span>
+  
+          ASSERT_NE(p, (MetaWord*) NULL);
+          ASSERT_GE(real_size, minws);
+          ASSERT_TRUE(fb.is_valid_range(p, real_size));
+  
+<hr /><span class="oldmarker">*** 198,232 ****</span>
+  
+          CHECK_COUNTERS;
+        }
+      }
+  
+<span class="removed">- </span>
+    }
+  };
+  
+<span class="changed">! template &lt;typename BINLISTTYPE&gt; const size_t BinListBasicTest&lt;BINLISTTYPE&gt;::minws = BINLISTTYPE::minimal_word_size;</span>
+<span class="changed">! template &lt;typename BINLISTTYPE&gt; const size_t BinListBasicTest&lt;BINLISTTYPE&gt;::maxws = BINLISTTYPE::maximal_word_size;</span>
+<span class="changed">! </span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_8)   { BinListBasicTest&lt;metaspace::BinList8&gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_16)  { BinListBasicTest&lt;metaspace::BinList16&gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_32)  { BinListBasicTest&lt;metaspace::BinList32&gt;::basic_test(); }</span>
+<span class="changed">! //TEST_VM(metaspace, BinList_basic_64)  { BinListBasicTest&lt;metaspace::BinList64&gt;::basic_test(); }</span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_1331)   { BinListBasicTest&lt; metaspace::BinListImpl&lt;13, 31&gt; &gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_131)   { BinListBasicTest&lt; metaspace::BinListImpl&lt;13, 1&gt; &gt;::basic_test(); }</span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_8)   { BinListBasicTest&lt;metaspace::BinList8&gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_16)  { BinListBasicTest&lt;metaspace::BinList16&gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_32)  { BinListBasicTest&lt;metaspace::BinList32&gt;::basic_test_2(); }</span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_1331)   { BinListBasicTest&lt; metaspace::BinListImpl&lt;13, 31&gt; &gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_131)   { BinListBasicTest&lt; metaspace::BinListImpl&lt;13, 1&gt; &gt;::basic_test_2(); }</span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_8)   { BinListBasicTest&lt;metaspace::BinList8&gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_16)  { BinListBasicTest&lt;metaspace::BinList16&gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_32)  { BinListBasicTest&lt;metaspace::BinList32&gt;::random_test(); }</span>
+  
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_1331)   { BinListBasicTest&lt; metaspace::BinListImpl&lt;13, 31&gt; &gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest&lt; metaspace::BinListImpl&lt;13, 1&gt; &gt;::random_test(); }</span>
+  
+<span class="newmarker">--- 202,230 ----</span>
+  
+          CHECK_COUNTERS;
+        }
+      }
+  
+    }
+  };
+  
+<span class="changed">! template &lt;typename BINLISTTYPE&gt; const size_t BinListBasicTest&lt;BINLISTTYPE&gt;::minws = BINLISTTYPE::MinWordSize;</span>
+<span class="changed">! template &lt;typename BINLISTTYPE&gt; const size_t BinListBasicTest&lt;BINLISTTYPE&gt;::maxws = BINLISTTYPE::MaxWordSize;</span>
+  
+<span class="changed">! TEST_VM(metaspace, BinList_basic_8)     { BinListBasicTest&lt; BinListImpl&lt;2, 8&gt; &gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_16)    { BinListBasicTest&lt; BinListImpl&lt;2, 16&gt; &gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_32)    { BinListBasicTest&lt;BinList32&gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_1331)  { BinListBasicTest&lt; BinListImpl&lt;13, 31&gt; &gt;::basic_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic_131)   { BinListBasicTest&lt; BinListImpl&lt;13, 1&gt; &gt;::basic_test(); }</span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_8)     { BinListBasicTest&lt; BinListImpl&lt;2, 8&gt; &gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_16)    { BinListBasicTest&lt; BinListImpl&lt;2, 16&gt; &gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_32)    { BinListBasicTest&lt;BinList32 &gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_1331)  { BinListBasicTest&lt; BinListImpl&lt;13, 31&gt; &gt;::basic_test_2(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_basic2_131)   { BinListBasicTest&lt; BinListImpl&lt;13, 1&gt; &gt;::basic_test_2(); }</span>
+<span class="changed">! </span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_8)     { BinListBasicTest&lt; BinListImpl&lt;2, 8&gt; &gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_16)    { BinListBasicTest&lt; BinListImpl&lt;2, 16&gt; &gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_32)    { BinListBasicTest&lt;BinList32&gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_1331)  { BinListBasicTest&lt; BinListImpl&lt;13, 31&gt; &gt;::random_test(); }</span>
+<span class="changed">! TEST_VM(metaspace, BinList_random_test_131)   { BinListBasicTest&lt; BinListImpl&lt;13, 1&gt; &gt;::random_test(); }</span>
+  
+</pre>
+<center><a href='../../../../test/hotspot/gtest/metaspace/test_arenagrowthpolicy.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../test/hotspot/gtest/metaspace/test_blocktree.cpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

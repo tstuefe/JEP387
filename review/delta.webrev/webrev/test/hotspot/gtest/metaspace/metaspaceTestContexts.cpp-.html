@@ -1,0 +1,256 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old test/hotspot/gtest/metaspace/metaspaceTestContexts.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 
+  27 #include "precompiled.hpp"
+  28 #include "metaspace/metaspaceTestsCommon.hpp"
+  29 #include "metaspace/metaspaceTestContexts.hpp"
+  30 
+  31 using namespace metaspace::chunklevel;
+  32 
+  33 
+  34 void ChunkTestsContext::checked_alloc_chunk_0(Metachunk** p_return_value, chunklevel_t preferred_level, chunklevel_t max_level,
+  35                                                       size_t min_committed_size) {
+  36 
+  37   *p_return_value = NULL;
+  38 
+  39   Metachunk* c = cm().get_chunk(preferred_level, max_level, min_committed_size);
+  40 
+  41   if (c != NULL) {
+  42 
+  43     ASSERT_LE(c-&gt;level(), max_level);
+  44     ASSERT_GE(c-&gt;level(), preferred_level);
+  45     ASSERT_GE(c-&gt;committed_words(), min_committed_size);
+  46     ASSERT_EQ(c-&gt;committed_words(), c-&gt;free_below_committed_words());
+  47     ASSERT_EQ(c-&gt;used_words(), (size_t)0);
+  48     ASSERT_TRUE(c-&gt;is_in_use());
+  49     ASSERT_FALSE(c-&gt;is_free());
+  50     ASSERT_FALSE(c-&gt;is_dead());
+  51     ASSERT_NULL(c-&gt;next());
+  52     ASSERT_NULL(c-&gt;prev());
+  53     if (c-&gt;level() == HIGHEST_CHUNK_LEVEL) {
+  54       ASSERT_TRUE(c-&gt;is_leaf_chunk());
+  55     } else {
+  56       ASSERT_FALSE(c-&gt;is_leaf_chunk());
+  57     }
+  58     if (c-&gt;level() == LOWEST_CHUNK_LEVEL) {
+  59       ASSERT_TRUE(c-&gt;is_root_chunk());
+  60     } else {
+  61       ASSERT_FALSE(c-&gt;is_root_chunk());
+  62     }
+  63     if (_num_chunks_allocated == 0) { // First chunk? We can make more assumptions
+  64       ASSERT_EQ(c-&gt;level(), preferred_level);
+  65       // Needs lock EXPECT_NULL(c-&gt;next_in_vs());
+  66       // Needs lock EXPECT_NULL(c-&gt;prev_in_vs());
+  67       ASSERT_TRUE(c-&gt;is_root_chunk() || c-&gt;is_leader());
+  68     }
+  69     _num_chunks_allocated ++;
+  70 
+  71   }
+  72 
+  73   *p_return_value = c;
+  74 
+  75 }
+  76 
+  77 // Test pattern established when allocating from the chunk with allocate_from_chunk_with_tests().
+  78 void ChunkTestsContext::test_pattern(Metachunk* c, size_t word_size) {
+  79   check_range_for_pattern(c-&gt;base(), word_size, (uintx)c);
+  80 }
+  81 
+  82 void ChunkTestsContext::return_chunk(Metachunk* c) {
+  83   test_pattern(c);
+  84   c-&gt;set_in_use(); // Forestall assert in cm
+  85   cm().return_chunk(c);
+  86 }
+  87 
+  88  void ChunkTestsContext::allocate_from_chunk(MetaWord** p_return_value, Metachunk* c, size_t word_size) {
+  89 
+  90   size_t used_before = c-&gt;used_words();
+  91   size_t free_before = c-&gt;free_words();
+  92   size_t free_below_committed_before = c-&gt;free_below_committed_words();
+  93   const MetaWord* top_before = c-&gt;top();
+  94 
+  95   MetaWord* p = c-&gt;allocate(word_size);
+  96   EXPECT_NOT_NULL(p);
+  97   EXPECT_EQ(c-&gt;used_words(), used_before + word_size);
+  98   EXPECT_EQ(c-&gt;free_words(), free_before - word_size);
+  99   EXPECT_EQ(c-&gt;free_below_committed_words(), free_below_committed_before - word_size);
+ 100   EXPECT_EQ(c-&gt;top(), top_before + word_size);
+ 101 
+ 102   // Old content should be preserved
+ 103   test_pattern(c, used_before);
+ 104 
+ 105   // Fill newly allocated range too
+ 106   fill_range_with_pattern(p, word_size, (uintx)c);
+ 107 
+ 108   *p_return_value = p;
+ 109 }
+ 110 
+ 111 void ChunkTestsContext::commit_chunk_with_test(Metachunk* c, size_t additional_size) {
+ 112 
+ 113   size_t used_before = c-&gt;used_words();
+ 114   size_t free_before = c-&gt;free_words();
+ 115   const MetaWord* top_before = c-&gt;top();
+ 116 
+ 117   c-&gt;set_in_use();
+ 118   bool b = c-&gt;ensure_committed_additional(additional_size);
+ 119   EXPECT_TRUE(b);
+ 120 
+ 121   // We should have enough committed size now
+ 122   EXPECT_GE(c-&gt;free_below_committed_words(), additional_size);
+ 123 
+ 124   // used, free, top should be unchanged.
+ 125   EXPECT_EQ(c-&gt;used_words(), used_before);
+ 126   EXPECT_EQ(c-&gt;free_words(), free_before);
+ 127   EXPECT_EQ(c-&gt;top(), top_before);
+ 128 
+ 129   test_pattern(c, used_before);
+ 130 
+ 131 }
+ 132 
+ 133 void ChunkTestsContext::commit_chunk_expect_failure(Metachunk* c, size_t additional_size) {
+ 134 
+ 135   size_t used_before = c-&gt;used_words();
+ 136   size_t free_before = c-&gt;free_words();
+ 137   size_t free_below_committed_before = c-&gt;free_below_committed_words();
+ 138   const MetaWord* top_before = c-&gt;top();
+ 139 
+ 140   c-&gt;set_in_use();
+ 141   bool b = c-&gt;ensure_committed_additional(additional_size);
+ 142   EXPECT_FALSE(b);
+ 143 
+ 144   // Nothing should have changed
+ 145   EXPECT_EQ(c-&gt;used_words(), used_before);
+ 146   EXPECT_EQ(c-&gt;free_words(), free_before);
+ 147   EXPECT_EQ(c-&gt;free_below_committed_words(), free_below_committed_before);
+ 148   EXPECT_EQ(c-&gt;top(), top_before);
+ 149 
+ 150   test_pattern(c, used_before);
+ 151 
+ 152 }
+ 153 
+ 154 void ChunkTestsContext::uncommit_chunk_with_test(Metachunk* c) {
+ 155   if (c-&gt;word_size() &gt;= Settings::commit_granule_words()) {
+ 156     c-&gt;set_free();  // Forestall assert in uncommit
+ 157     c-&gt;reset_used_words();
+ 158     c-&gt;uncommit();
+ 159 
+ 160     EXPECT_EQ(c-&gt;free_below_committed_words(), (size_t)0);
+ 161     EXPECT_EQ(c-&gt;used_words(), (size_t)0);
+ 162     EXPECT_EQ(c-&gt;free_words(), c-&gt;word_size());
+ 163     EXPECT_EQ(c-&gt;top(), c-&gt;base());
+ 164     EXPECT_TRUE(c-&gt;is_fully_uncommitted());
+ 165   }
+ 166 }
+ 167 
+ 168 
+ 169 
+ 170 /////// SparseArray&lt;T&gt; ////////////////
+ 171 
+ 172 
+ 173 
+</pre></body></html>

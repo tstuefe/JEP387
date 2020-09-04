@@ -150,45 +150,47 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   68 
   69 TEST_VM(metaspace, chunklevel_utils)   {
   70 
-  71   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
-  72   LOG(SIZE_FORMAT, MIN_CHUNK_BYTE_SIZE);
-  73   LOG(SIZE_FORMAT, MIN_CHUNK_WORD_SIZE);
-  74   LOG(SIZE_FORMAT, MAX_CHUNK_WORD_SIZE);
-  75   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
-  76   LOG("%u", (unsigned)ROOT_CHUNK_LEVEL);
-  77   LOG("%u", (unsigned)HIGHEST_CHUNK_LEVEL);
-  78   LOG("%u", (unsigned)LOWEST_CHUNK_LEVEL);
-  79 
-  80   static const chunklevel_t INVALID_CHUNK_LEVEL    = (chunklevel_t) -1;
+  71   // These tests seem to be really basic, but it is amazing what one can
+  72   // break accidentally...
+  73   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
+  74   LOG(SIZE_FORMAT, MIN_CHUNK_BYTE_SIZE);
+  75   LOG(SIZE_FORMAT, MIN_CHUNK_WORD_SIZE);
+  76   LOG(SIZE_FORMAT, MAX_CHUNK_WORD_SIZE);
+  77   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
+  78   LOG("%u", (unsigned)ROOT_CHUNK_LEVEL);
+  79   LOG("%u", (unsigned)HIGHEST_CHUNK_LEVEL);
+  80   LOG("%u", (unsigned)LOWEST_CHUNK_LEVEL);
   81 
-  82   EXPECT_TRUE(is_power_of_2(MAX_CHUNK_WORD_SIZE));
-  83   EXPECT_TRUE(is_power_of_2(MIN_CHUNK_WORD_SIZE));
-  84 
-  85   EXPECT_TRUE(is_valid_level(LOWEST_CHUNK_LEVEL));
-  86   EXPECT_TRUE(is_valid_level(HIGHEST_CHUNK_LEVEL));
-  87   EXPECT_FALSE(is_valid_level(HIGHEST_CHUNK_LEVEL + 1));
-  88   EXPECT_FALSE(is_valid_level(LOWEST_CHUNK_LEVEL - 1));
-  89 
-  90   EXPECT_EQ(word_size_for_level(ROOT_CHUNK_LEVEL), MAX_CHUNK_WORD_SIZE);
-  91   EXPECT_EQ(word_size_for_level(HIGHEST_CHUNK_LEVEL), MIN_CHUNK_WORD_SIZE);
-  92 
-  93   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_4K), (4 * K) / BytesPerWord);
-  94   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_64K), (64 * K) / BytesPerWord);
-  95 
-  96   EXPECT_EQ(level_fitting_word_size(0), HIGHEST_CHUNK_LEVEL);
-  97   EXPECT_EQ(level_fitting_word_size(1), HIGHEST_CHUNK_LEVEL);
-  98   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE), HIGHEST_CHUNK_LEVEL);
-  99   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE + 1), HIGHEST_CHUNK_LEVEL - 1);
- 100 
- 101   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE), ROOT_CHUNK_LEVEL);
- 102   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE - 1), ROOT_CHUNK_LEVEL);
- 103   EXPECT_EQ(level_fitting_word_size((MAX_CHUNK_WORD_SIZE / 2) + 1), ROOT_CHUNK_LEVEL);
- 104   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE / 2), ROOT_CHUNK_LEVEL + 1);
- 105 
- 106   EXPECT_EQ(level_fitting_word_size(8 * K), CHUNK_LEVEL_64K);
- 107   EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
- 108   EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
- 109 
- 110 }
+  82   static const chunklevel_t INVALID_CHUNK_LEVEL    = (chunklevel_t) -1;
+  83 
+  84   EXPECT_TRUE(is_power_of_2(MAX_CHUNK_WORD_SIZE));
+  85   EXPECT_TRUE(is_power_of_2(MIN_CHUNK_WORD_SIZE));
+  86 
+  87   EXPECT_TRUE(is_valid_level(LOWEST_CHUNK_LEVEL));
+  88   EXPECT_TRUE(is_valid_level(HIGHEST_CHUNK_LEVEL));
+  89   EXPECT_FALSE(is_valid_level(HIGHEST_CHUNK_LEVEL + 1));
+  90   EXPECT_FALSE(is_valid_level(LOWEST_CHUNK_LEVEL - 1));
+  91 
+  92   EXPECT_EQ(word_size_for_level(ROOT_CHUNK_LEVEL), MAX_CHUNK_WORD_SIZE);
+  93   EXPECT_EQ(word_size_for_level(HIGHEST_CHUNK_LEVEL), MIN_CHUNK_WORD_SIZE);
+  94 
+  95   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_4K), (4 * K) / BytesPerWord);
+  96   EXPECT_EQ(word_size_for_level(CHUNK_LEVEL_64K), (64 * K) / BytesPerWord);
+  97 
+  98   EXPECT_EQ(level_fitting_word_size(0), HIGHEST_CHUNK_LEVEL);
+  99   EXPECT_EQ(level_fitting_word_size(1), HIGHEST_CHUNK_LEVEL);
+ 100   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE), HIGHEST_CHUNK_LEVEL);
+ 101   EXPECT_EQ(level_fitting_word_size(MIN_CHUNK_WORD_SIZE + 1), HIGHEST_CHUNK_LEVEL - 1);
+ 102 
+ 103   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE), ROOT_CHUNK_LEVEL);
+ 104   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE - 1), ROOT_CHUNK_LEVEL);
+ 105   EXPECT_EQ(level_fitting_word_size((MAX_CHUNK_WORD_SIZE / 2) + 1), ROOT_CHUNK_LEVEL);
+ 106   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE / 2), ROOT_CHUNK_LEVEL + 1);
+ 107 
+ 108   EXPECT_EQ(level_fitting_word_size(8 * K), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K));
+ 109   EXPECT_EQ(level_fitting_word_size(8 * K + 13), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K) - 1);
+ 110   EXPECT_EQ(level_fitting_word_size(8 * K - 13), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K));
  111 
+ 112 }
+ 113 
 </pre></body></html>

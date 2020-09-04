@@ -1,0 +1,531 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/blocktree.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_BLOCKTREE_HPP
+  27 #define SHARE_MEMORY_METASPACE_BLOCKTREE_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/counter.hpp"
+  31 #include "utilities/debug.hpp"
+  32 #include "utilities/globalDefinitions.hpp"
+  33 
+  34 namespace metaspace {
+  35 
+  36 
+  37 // BlockTree is a rather simple binary search tree. It is used to
+  38 //  manage small to medium free memory blocks (see class FreeBlocks).
+  39 //
+  40 // There is no separation between payload (managed blocks) and nodes: the
+  41 //  memory blocks themselves are the nodes, with the block size being the key.
+  42 //
+  43 // We store node pointer information in these blocks when storing them. That
+  44 //  imposes a minimum size to the managed memory blocks.
+  45 //  See MetaspaceArene::get_raw_allocation_word_size().
+  46 //
+  47 // We want to manage many memory blocks of the same size, but we want
+  48 //  to prevent the tree from blowing up and degenerating into a list. Therefore
+  49 //  there is only one node for each unique block size; subsequent blocks of the
+  50 //  same size are stacked below that first node:
+  51 //
+  52 //                   +-----+
+  53 //                   | 100 |
+  54 //                   +-----+
+  55 //                  /       \
+  56 //           +-----+
+  57 //           | 80  |
+  58 //           +-----+
+  59 //          /   |   \
+  60 //         / +-----+ \
+  61 //  +-----+  | 80  |  +-----+
+  62 //  | 70  |  +-----+  | 85  |
+  63 //  +-----+     |     +-----+
+  64 //           +-----+
+  65 //           | 80  |
+  66 //           +-----+
+  67 //
+  68 //
+  69 // Todo: This tree is unbalanced. It would be a good fit for a red-black tree.
+  70 //  In order to make this a red-black tree, we need an algorithm which can deal
+  71 //  with nodes which are their own payload (most red-black tree implementations
+  72 //  swap payloads of their nodes at some point, see e.g. j.u.TreeSet).
+  73 // A good example is the Linux kernel rbtree, which is a clean, easy-to-read
+  74 //  implementation.
+  75 
+  76 class BlockTree: public CHeapObj&lt;mtMetaspace&gt; {
+  77 
+  78 
+  79   struct node_t {
+  80 
+  81     // Normal tree node stuff...
+  82     node_t* parent;
+  83     node_t* left;
+  84     node_t* right;
+  85 
+  86     // blocks with the same size are put in a list with this node as head.
+  87     node_t* next;
+  88 
+  89     // word size of node. Note that size cannot be larger than max metaspace size,
+  90     // so this could be very well a 32bit value (in case we ever make this a balancing
+  91     // tree and need additional space for weighting information).
+  92     size_t size;
+  93 
+  94   };
+  95 
+  96 public:
+  97 
+  98   // Largest node size, (bit arbitrarily) capped at 4M since we know this to
+  99   // be the max possible metaspace allocation size. TODO. Do this better.
+ 100   const static size_t maximal_word_size = 4 * M;
+ 101 
+ 102   // We need nodes to be at least large enough to hold a node_t
+ 103   const static size_t minimal_word_size =
+ 104       (sizeof(node_t) + sizeof(MetaWord) - 1) / sizeof(MetaWord);
+ 105 
+ 106 private:
+ 107 
+ 108   node_t* _root;
+ 109 
+ 110   // As a performance optimization, we keep the size of the largest node.
+ 111   size_t _largest_size_added;
+ 112 
+ 113   MemRangeCounter _counter;
+ 114 
+ 115   // given a node n, add it to the list starting at head
+ 116   static void add_to_list(node_t* n, node_t* head) {
+ 117     assert(head-&gt;size == n-&gt;size, "sanity");
+ 118     n-&gt;next = head-&gt;next;
+ 119     head-&gt;next = n;
+ 120     DEBUG_ONLY(n-&gt;left = n-&gt;right = n-&gt;parent = NULL;)
+ 121   }
+ 122 
+ 123   // given a node list starting at head, remove one node from it and return it.
+ 124   // List must contain at least one other node.
+ 125   static node_t* remove_from_list(node_t* head) {
+ 126     assert(head-&gt;next != NULL, "sanity");
+ 127     node_t* n = head-&gt;next;
+ 128     if (n != NULL) {
+ 129       head-&gt;next = n-&gt;next;
+ 130     }
+ 131     return n;
+ 132   }
+ 133 
+ 134   // Given a node n and a node p, wire up n as left child of p.
+ 135   static void set_left_child(node_t* p, node_t* c) {
+ 136     p-&gt;left = c;
+ 137     if (c != NULL) {
+ 138       assert(c-&gt;size &lt; p-&gt;size, "sanity");
+ 139       c-&gt;parent = p;
+ 140     }
+ 141   }
+ 142 
+ 143   // Given a node n and a node p, wire up n as right child of p.
+ 144   static void set_right_child(node_t* p, node_t* c) {
+ 145     p-&gt;right = c;
+ 146     if (c != NULL) {
+ 147       assert(c-&gt;size &gt; p-&gt;size, "sanity");
+ 148       c-&gt;parent = p;
+ 149     }
+ 150   }
+ 151 
+ 152   // Given a node n, return its predecessor in the tree
+ 153   // (node with the next-smaller size).
+ 154   static node_t* predecessor(node_t* n) {
+ 155     node_t* pred = NULL;
+ 156     if (n-&gt;left != NULL) {
+ 157       pred = n-&gt;left;
+ 158       while (pred-&gt;right != NULL) {
+ 159         pred = pred-&gt;right;
+ 160       }
+ 161     } else {
+ 162       pred = n-&gt;parent;
+ 163       node_t* n2 = n;
+ 164       while (pred != NULL &amp;&amp; n2 == pred-&gt;left) {
+ 165         n2 = pred;
+ 166         pred = pred-&gt;parent;
+ 167       }
+ 168     }
+ 169     return pred;
+ 170   }
+ 171 
+ 172   // Given a node n, return its predecessor in the tree
+ 173   // (node with the next-smaller size).
+ 174   static node_t* successor(node_t* n) {
+ 175     node_t* succ = NULL;
+ 176     if (n-&gt;right != NULL) {
+ 177       // If there is a right child, search the left-most
+ 178       // child of that child.
+ 179       succ = n-&gt;right;
+ 180       while (succ-&gt;left != NULL) {
+ 181         succ = succ-&gt;left;
+ 182       }
+ 183     } else {
+ 184       succ = n-&gt;parent;
+ 185       node_t* n2 = n;
+ 186       // As long as I am the right child of my parent, search upward
+ 187       while (succ != NULL &amp;&amp; n2 == succ-&gt;right) {
+ 188         n2 = succ;
+ 189         succ = succ-&gt;parent;
+ 190       }
+ 191     }
+ 192     return succ;
+ 193   }
+ 194 
+ 195   // Given a node, replace it with a replacement node as a child for its parent.
+ 196   // If the node is root and has no parent, sets it as root.
+ 197   void replace_node_in_parent(node_t* child, node_t* replace) {
+ 198     node_t* parent = child-&gt;parent;
+ 199     if (parent != NULL) {
+ 200       if (parent-&gt;left == child) { // I am a left child
+ 201         set_left_child(parent, replace);
+ 202       } else {
+ 203         set_right_child(parent, replace);
+ 204       }
+ 205     } else {
+ 206       assert(child == _root, "must be root");
+ 207       _root = replace;
+ 208       if (replace != NULL) {
+ 209         replace-&gt;parent = NULL;
+ 210       }
+ 211     }
+ 212     return;
+ 213   }
+ 214 
+ 215   // Given a node n and a node forebear, insert n under forebear
+ 216   void insert(node_t* forebear, node_t* n) {
+ 217     if (n-&gt;size == forebear-&gt;size) {
+ 218       add_to_list(n, forebear); // parent stays NULL in this case.
+ 219     } else {
+ 220       if (n-&gt;size &lt; forebear-&gt;size) {
+ 221         if (forebear-&gt;left == NULL) {
+ 222           set_left_child(forebear, n);
+ 223         } else {
+ 224           insert(forebear-&gt;left, n);
+ 225         }
+ 226       } else {
+ 227         assert(n-&gt;size &gt; forebear-&gt;size, "sanity");
+ 228         if (forebear-&gt;right == NULL) {
+ 229           set_right_child(forebear, n);
+ 230           if (_largest_size_added &lt; n-&gt;size) {
+ 231             _largest_size_added = n-&gt;size;
+ 232           }
+ 233         } else {
+ 234           insert(forebear-&gt;right, n);
+ 235         }
+ 236       }
+ 237     }
+ 238   }
+ 239 
+ 240   // Given a node and a wish size, search this node and all children for
+ 241   // the node closest (equal or larger sized) to the size s.
+ 242   static node_t* find_closest_fit(node_t* n, size_t s) {
+ 243 
+ 244     if (n-&gt;size == s) {
+ 245       // Perfect fit.
+ 246       return n;
+ 247 
+ 248     } else if (n-&gt;size &lt; s) {
+ 249       // too small, dive down right side
+ 250       if (n-&gt;right != NULL) {
+ 251         return find_closest_fit(n-&gt;right, s);
+ 252       } else {
+ 253         return NULL;
+ 254       }
+ 255     } else {
+ 256       // n is a possible fit
+ 257       assert(n-&gt;size &gt; s, "Sanity");
+ 258       if (n-&gt;left != NULL &amp;&amp; n-&gt;left-&gt;size &gt;= s) {
+ 259         // but not the best - dive down left side.
+ 260         return find_closest_fit(n-&gt;left, s);
+ 261       } else {
+ 262         // n is the best fit.
+ 263         return n;
+ 264       }
+ 265     }
+ 266 
+ 267   }
+ 268 
+ 269   // Given a wish size, search the whole tree for a
+ 270   // node closest (equal or larger sized) to the size s.
+ 271   node_t* find_closest_fit(size_t s) {
+ 272     if (_root != NULL) {
+ 273       return find_closest_fit(_root, s);
+ 274     }
+ 275     return NULL;
+ 276   }
+ 277 
+ 278   // Given a node n, remove it from the tree and repair tree.
+ 279   void remove_node_from_tree(node_t* n) {
+ 280 
+ 281     assert(n-&gt;next == NULL, "do not delete a node which has a non-empty list");
+ 282 
+ 283     // Maintain largest size node to speed up lookup
+ 284     if (n-&gt;size == _largest_size_added) {
+ 285       node_t* pred = predecessor(n);
+ 286       if (pred != NULL) {
+ 287         _largest_size_added = pred-&gt;size;
+ 288       } else {
+ 289         _largest_size_added = 0;
+ 290       }
+ 291     }
+ 292 
+ 293     if (n-&gt;left == NULL &amp;&amp; n-&gt;right == NULL) {
+ 294       replace_node_in_parent(n, NULL);
+ 295 
+ 296     } else if (n-&gt;left == NULL &amp;&amp; n-&gt;right != NULL) {
+ 297       replace_node_in_parent(n, n-&gt;right);
+ 298 
+ 299     } else if (n-&gt;left != NULL &amp;&amp; n-&gt;right == NULL) {
+ 300       replace_node_in_parent(n, n-&gt;left);
+ 301 
+ 302     } else {
+ 303 
+ 304       // Node has two children.
+ 305 
+ 306       // 1) Find direct successor (the next larger node).
+ 307       node_t* succ = successor(n);
+ 308 
+ 309       // There has to be a successor since n-&gt;right was != NULL...
+ 310       assert(succ != NULL, "must be");
+ 311 
+ 312       // ... and it should not have a left child since successor
+ 313       //     is supposed to be the next larger node, so it must be the mostleft node
+ 314       //     in the sub tree rooted at n-&gt;right
+ 315       assert(succ-&gt;left == NULL, "must be");
+ 316 
+ 317       assert(succ-&gt;size &gt; n-&gt;size, "sanity");
+ 318 
+ 319       node_t* successor_parent = succ-&gt;parent;
+ 320       node_t* successor_right_child = succ-&gt;right;
+ 321 
+ 322       // Remove successor from its parent.
+ 323       if (successor_parent == n) {
+ 324 
+ 325         // special case: successor is a direct child of n. Has to be the right child then.
+ 326         assert(n-&gt;right == succ, "sanity");
+ 327 
+ 328         // Just replace n with this successor.
+ 329         replace_node_in_parent(n, succ);
+ 330 
+ 331         // Take over n's old left child, too.
+ 332         // We keep the successor's right child.
+ 333         set_left_child(succ, n-&gt;left);
+ 334 
+ 335       } else {
+ 336 
+ 337         // If the successors parent is not n, we are deeper in the tree,
+ 338         // the successor has to be the left child of its parent.
+ 339         assert(successor_parent-&gt;left == succ, "sanity");
+ 340 
+ 341         // The right child of the successor (if there was one) replaces the successor at its parent's left child.
+ 342         set_left_child(successor_parent, succ-&gt;right);
+ 343 
+ 344         // and the successor replaces n at its parent
+ 345         replace_node_in_parent(n, succ);
+ 346 
+ 347         // and takes over n's old children
+ 348         set_left_child(succ, n-&gt;left);
+ 349         set_right_child(succ, n-&gt;right);
+ 350 
+ 351       }
+ 352     }
+ 353   }
+ 354 
+ 355 #ifdef ASSERT
+ 356 
+ 357   struct veri_data_t;
+ 358   void verify_node_siblings(node_t* n, veri_data_t* vd) const;
+ 359   void verify_node(node_t* n, size_t left_limit, size_t right_limit, veri_data_t* vd, int lvl) const;
+ 360   void verify_tree() const;
+ 361 
+ 362   void zap_range(MetaWord* p, size_t word_size);
+ 363 
+ 364 #endif // ASSERT
+ 365 
+ 366 
+ 367   static void print_node(outputStream* st, node_t* n, int lvl);
+ 368 
+ 369 public:
+ 370 
+ 371   BlockTree() : _root(NULL), _largest_size_added(0) {}
+ 372 
+ 373   // Add a memory block to the tree. Memory block will be used to store
+ 374   // node information.
+ 375   void add_block(MetaWord* p, size_t word_size) {
+ 376     DEBUG_ONLY(zap_range(p, word_size));
+ 377     assert(word_size &gt;= minimal_word_size &amp;&amp; word_size &lt; maximal_word_size,
+ 378            "invalid block size " SIZE_FORMAT, word_size);
+ 379     node_t* n = (node_t*)p;
+ 380     n-&gt;size = word_size;
+ 381     n-&gt;next = n-&gt;left = n-&gt;right = n-&gt;parent = NULL;
+ 382     if (_root == NULL) {
+ 383       _root = n;
+ 384     } else {
+ 385       insert(_root, n);
+ 386     }
+ 387     _counter.add(word_size);
+ 388 
+ 389     // Maintain largest node to speed up lookup
+ 390     if (_largest_size_added &lt; n-&gt;size) {
+ 391       _largest_size_added = n-&gt;size;
+ 392     }
+ 393 
+ 394   }
+ 395 
+ 396   // Given a word_size, searches and returns a block of at least that size.
+ 397   // Block may be larger. Real block size is returned in *p_real_word_size.
+ 398   MetaWord* get_block(size_t word_size, size_t* p_real_word_size) {
+ 399     assert(word_size &gt;= minimal_word_size &amp;&amp; word_size &lt; maximal_word_size,
+ 400            "invalid block size " SIZE_FORMAT, word_size);
+ 401 
+ 402     if (_largest_size_added &lt; word_size) {
+ 403       return NULL;
+ 404     }
+ 405 
+ 406     node_t* n = find_closest_fit(word_size);
+ 407 
+ 408     if (n != NULL) {
+ 409       assert(n-&gt;size &gt;= word_size, "sanity");
+ 410 
+ 411       // If the node has siblings, remove one of them,
+ 412       // otherwise remove this node from the tree.
+ 413       if (n-&gt;next != NULL) {
+ 414         n = remove_from_list(n);
+ 415       } else {
+ 416         remove_node_from_tree(n);
+ 417       }
+ 418 
+ 419       MetaWord* p = (MetaWord*)n;
+ 420       *p_real_word_size = n-&gt;size;
+ 421 
+ 422       _counter.sub(n-&gt;size);
+ 423 
+ 424       DEBUG_ONLY(zap_range(p, n-&gt;size));
+ 425 
+ 426       return p;
+ 427     }
+ 428     return NULL;
+ 429   }
+ 430 
+ 431 
+ 432   // Returns number of blocks in this structure
+ 433   unsigned count() const { return _counter.count(); }
+ 434 
+ 435   // Returns total size, in words, of all elements.
+ 436   size_t total_size() const { return _counter.total_size(); }
+ 437 
+ 438   bool is_empty() const { return _root == NULL; }
+ 439 
+ 440   void print_tree(outputStream* st) const;
+ 441 
+ 442   DEBUG_ONLY(void verify() const { verify_tree(); })
+ 443 
+ 444 };
+ 445 
+ 446 } // namespace metaspace
+ 447 
+ 448 #endif // SHARE_MEMORY_METASPACE_BLOCKTREE_HPP
+</pre></body></html>

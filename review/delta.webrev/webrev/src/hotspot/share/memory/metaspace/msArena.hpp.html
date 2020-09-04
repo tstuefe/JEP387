@@ -1,0 +1,264 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>New src/hotspot/share/memory/metaspace/msArena.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_MSARENA_HPP
+  27 #define SHARE_MEMORY_METASPACE_MSARENA_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "memory/metaspace/msChunkManager.hpp"
+  31 #include "memory/metaspace/msCommon.hpp"
+  32 #include "memory/metaspace/msCounter.hpp"
+  33 #include "memory/metaspace/msMetachunk.hpp"
+  34 #include "memory/metaspace/msMetachunkList.hpp"
+  35 #include "memory/metaspace.hpp"
+  36 
+  37 class outputStream;
+  38 class Mutex;
+  39 
+  40 namespace metaspace {
+  41 
+  42 class ArenaGrowthPolicy;
+  43 class FreeBlocks;
+  44 
+  45 struct ArenaStats;
+  46 
+  47 // The MetaspaceArena is a growable metaspace memory pool belonging to a CLD;
+  48 //  internally it consists of a list of metaspace chunks, of which the head chunk
+  49 //  is the current chunk from which we allocate via pointer bump.
+  50 //
+  51 //  +---------------+
+  52 //  |     Arena     |
+  53 //  +---------------+
+  54 //            |
+  55 //            | _chunks                                               commit top
+  56 //            |                                                       v
+  57 //        +----------+      +----------+      +----------+      +----------+
+  58 //        | retired  | ---&gt; | retired  | ---&gt; | retired  | ---&gt; | current  |
+  59 //        | chunk    |      | chunk    |      | chunk    |      | chunk    |
+  60 //        +----------+      +----------+      +----------+      +----------+
+  61 //                                                                  ^
+  62 //                                                                  used top
+  63 //
+  64 //        +------------+
+  65 //        | FreeBlocks | --&gt; O -&gt; O -&gt; O -&gt; O
+  66 //        +------------+
+  67 //
+  68 //
+  69 
+  70 // When the current chunk is used up, MetaspaceArena requestes a new chunk from
+  71 //  the associated ChunkManager.
+  72 //
+  73 // MetaspaceArena also keeps a FreeBlocks structure to manage memory blocks which
+  74 //  had been deallocated prematurely.
+  75 //
+  76 
+  77 class MetaspaceArena : public CHeapObj&lt;mtClass&gt; {
+  78 
+  79   // Reference to an outside lock to use for synchronizing access to this arena.
+  80   //  This lock is normally owned by the CLD which owns the ClassLoaderMetaspace which
+  81   //  owns this arena.
+  82   // Todo: This should be changed. Either the CLD should synchronize access to the
+  83   //       CLMS and its arenas itself, or the arena should have an own lock. The latter
+  84   //       would allow for more fine granular locking since it would allow access to
+  85   //       both class- and non-class arena in the CLMS independently.
+  86   Mutex* const _lock;
+  87 
+  88   // Reference to the chunk manager to allocate chunks from.
+  89   ChunkManager* const _chunk_manager;
+  90 
+  91   // Reference to the growth policy to use.
+  92   const ArenaGrowthPolicy* const _growth_policy;
+  93 
+  94   // List of chunks. Head of the list is the current chunk.
+  95   MetachunkList _chunks;
+  96 
+  97   // Structure to take care of leftover/deallocated space in used chunks.
+  98   // Owned by the Arena. Gets allocated on demand only.
+  99   FreeBlocks* _fbl;
+ 100 
+ 101   Metachunk* current_chunk()              { return _chunks.first(); }
+ 102   const Metachunk* current_chunk() const  { return _chunks.first(); }
+ 103 
+ 104   // Reference to an outside counter to keep track of used space.
+ 105   SizeAtomicCounter* const _total_used_words_counter;
+ 106 
+ 107   // A name for purely debugging/logging purposes.
+ 108   const char* const _name;
+ 109 
+ 110   Mutex* lock() const                           { return _lock; }
+ 111   ChunkManager* chunk_manager() const           { return _chunk_manager; }
+ 112 
+ 113   // free block list
+ 114   FreeBlocks* fbl() const                       { return _fbl; }
+ 115   void add_allocation_to_fbl(MetaWord* p, size_t word_size);
+ 116 
+ 117   // Given a chunk, add its remaining free committed space to the free block list.
+ 118   void salvage_chunk(Metachunk* c);
+ 119 
+ 120   // Allocate a new chunk from the underlying chunk manager able to hold at least
+ 121   // requested word size.
+ 122   Metachunk* allocate_new_chunk(size_t requested_word_size);
+ 123 
+ 124   // Returns the level of the next chunk to be added, acc to growth policy.
+ 125   chunklevel_t next_chunk_level() const;
+ 126 
+ 127   // Attempt to enlarge the current chunk to make it large enough to hold at least
+ 128   //  requested_word_size additional words.
+ 129   //
+ 130   // On success, true is returned, false otherwise.
+ 131   bool attempt_enlarge_current_chunk(size_t requested_word_size);
+ 132 
+ 133   // Prematurely returns a metaspace allocation to the _block_freelists
+ 134   // because it is not needed anymore (requires CLD lock to be active).
+ 135   void deallocate_locked(MetaWord* p, size_t word_size);
+ 136 
+ 137   // Returns true if the area indicated by pointer and size have actually been allocated
+ 138   // from this arena.
+ 139   DEBUG_ONLY(bool is_valid_area(MetaWord* p, size_t word_size) const;)
+ 140 
+ 141 public:
+ 142 
+ 143   MetaspaceArena(ChunkManager* chunk_manager,
+ 144                const ArenaGrowthPolicy* growth_policy,
+ 145                Mutex* lock,
+ 146                SizeAtomicCounter* total_used_words_counter,
+ 147                const char* name);
+ 148 
+ 149   ~MetaspaceArena();
+ 150 
+ 151   // Allocate memory from Metaspace.
+ 152   // 1) Attempt to allocate from the dictionary of deallocated blocks.
+ 153   // 2) Attempt to allocate from the current chunk.
+ 154   // 3) Attempt to enlarge the current chunk in place if it is too small.
+ 155   // 4) Attempt to get a new chunk and allocate from that chunk.
+ 156   // At any point, if we hit a commit limit, we return NULL.
+ 157   MetaWord* allocate(size_t word_size);
+ 158 
+ 159   // Prematurely returns a metaspace allocation to the _block_freelists because it is not
+ 160   // needed anymore.
+ 161   void deallocate(MetaWord* p, size_t word_size);
+ 162 
+ 163   // Update statistics. This walks all in-use chunks.
+ 164   void add_to_statistics(ArenaStats* out) const;
+ 165 
+ 166   // Convenience method to get the most important usage statistics.
+ 167   // For deeper analysis use add_to_statistics().
+ 168   void usage_numbers(size_t* p_used_words, size_t* p_committed_words, size_t* p_capacity_words) const;
+ 169 
+ 170   DEBUG_ONLY(void verify() const;)
+ 171   DEBUG_ONLY(void verify_locked() const;)
+ 172 
+ 173   void print_on(outputStream* st) const;
+ 174   void print_on_locked(outputStream* st) const;
+ 175 
+ 176 };
+ 177 
+ 178 } // namespace metaspace
+ 179 
+ 180 #endif // SHARE_MEMORY_METASPACE_MSARENA_HPP
+ 181 
+</pre></body></html>

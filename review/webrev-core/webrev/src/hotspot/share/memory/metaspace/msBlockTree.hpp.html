@@ -179,311 +179,312 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   97 
   98   };
   99 
- 100 public:
- 101 
- 102   // Minimum word size a block has to be to be added to this structure (note ceil division).
- 103   const static size_t MinWordSize =
- 104       (sizeof(Node) + sizeof(MetaWord) - 1) / sizeof(MetaWord);
- 105 
- 106 private:
- 107 
- 108   Node* _root;
- 109 
- 110   MemRangeCounter _counter;
- 111 
- 112   // Given a node n, add it to the list starting at head
- 113   static void add_to_list(Node* n, Node* head) {
- 114     assert(head-&gt;_word_size == n-&gt;_word_size, "sanity");
- 115     n-&gt;_next = head-&gt;_next;
- 116     head-&gt;_next = n;
- 117     DEBUG_ONLY(n-&gt;_left = n-&gt;_right = n-&gt;_parent = NULL;)
- 118   }
- 119 
- 120   // Given a node list starting at head, remove one of the follow up nodes from
- 121   //  that list and return it. The head node gets not modified and remains in the
- 122   //  tree.
- 123   // List must contain at least one other node.
- 124   static Node* remove_from_list(Node* head) {
- 125     assert(head-&gt;_next != NULL, "sanity");
- 126     Node* n = head-&gt;_next;
- 127     head-&gt;_next = n-&gt;_next;
- 128     return n;
- 129   }
- 130 
- 131   // Given a node c and a node p, wire up c as left child of p.
- 132   static void set_left_child(Node* p, Node* c) {
- 133     p-&gt;_left = c;
- 134     if (c != NULL) {
- 135       assert(c-&gt;_word_size &lt; p-&gt;_word_size, "sanity");
- 136       c-&gt;_parent = p;
- 137     }
- 138   }
- 139 
- 140   // Given a node c and a node p, wire up c as right child of p.
- 141   static void set_right_child(Node* p, Node* c) {
- 142     p-&gt;_right = c;
- 143     if (c != NULL) {
- 144       assert(c-&gt;_word_size &gt; p-&gt;_word_size, "sanity");
- 145       c-&gt;_parent = p;
- 146     }
- 147   }
- 148 
- 149   // Given a node n, return its predecessor in the tree
- 150   // (node with the next-smaller size).
- 151   static Node* predecessor(Node* n) {
- 152     Node* pred = NULL;
- 153     if (n-&gt;_left != NULL) {
- 154       pred = n-&gt;_left;
- 155       while (pred-&gt;_right != NULL) {
- 156         pred = pred-&gt;_right;
- 157       }
- 158     } else {
- 159       pred = n-&gt;_parent;
- 160       Node* n2 = n;
- 161       while (pred != NULL &amp;&amp; n2 == pred-&gt;_left) {
- 162         n2 = pred;
- 163         pred = pred-&gt;_parent;
- 164       }
- 165     }
- 166     return pred;
- 167   }
- 168 
- 169   // Given a node n, return its successor in the tree
- 170   // (node with the next-larger size).
- 171   static Node* successor(Node* n) {
- 172     Node* succ = NULL;
- 173     if (n-&gt;_right != NULL) {
- 174       // If there is a right child, search the left-most
- 175       // child of that child.
- 176       succ = n-&gt;_right;
- 177       while (succ-&gt;_left != NULL) {
- 178         succ = succ-&gt;_left;
- 179       }
- 180     } else {
- 181       succ = n-&gt;_parent;
- 182       Node* n2 = n;
- 183       // As long as I am the right child of my parent, search upward
- 184       while (succ != NULL &amp;&amp; n2 == succ-&gt;_right) {
- 185         n2 = succ;
- 186         succ = succ-&gt;_parent;
- 187       }
- 188     }
- 189     return succ;
- 190   }
- 191 
- 192   // Given a node, replace it with a replacement node as a child for its parent.
- 193   // If the node is root and has no parent, sets it as root.
- 194   void replace_node_in_parent(Node* child, Node* replace) {
- 195     Node* parent = child-&gt;_parent;
- 196     if (parent != NULL) {
- 197       if (parent-&gt;_left == child) { // Child is left child
- 198         set_left_child(parent, replace);
- 199       } else {
- 200         set_right_child(parent, replace);
- 201       }
- 202     } else {
- 203       assert(child == _root, "must be root");
- 204       _root = replace;
- 205       if (replace != NULL) {
- 206         replace-&gt;_parent = NULL;
- 207       }
- 208     }
- 209     return;
- 210   }
- 211 
- 212   // Given a node n and an insertion point, insert n under insertion point.
- 213   void insert(Node* insertion_point, Node* n) {
- 214     assert(n-&gt;_parent == NULL, "Sanity");
- 215     for(;;) {
- 216       if (n-&gt;_word_size == insertion_point-&gt;_word_size) {
- 217         add_to_list(n, insertion_point); // parent stays NULL in this case.
- 218         break;
- 219       } else if (n-&gt;_word_size &gt; insertion_point-&gt;_word_size) {
- 220         if (insertion_point-&gt;_right == NULL) {
- 221           set_right_child(insertion_point, n);
- 222           break;
- 223         } else {
- 224           insertion_point = insertion_point-&gt;_right;
- 225         }
- 226       } else {
- 227         if (insertion_point-&gt;_left == NULL) {
- 228           set_left_child(insertion_point, n);
- 229           break;
- 230         } else {
- 231           insertion_point = insertion_point-&gt;_left;
- 232         }
- 233       }
- 234     }
- 235   }
- 236 
- 237   // Given a node and a wish size, search this node and all children for
- 238   // the node closest (equal or larger sized) to the size s.
- 239   static Node* find_closest_fit(Node* n, size_t s) {
- 240 
- 241     Node* best_match = NULL;
- 242 
- 243     while (n != NULL) {
- 244       if (n-&gt;_word_size &gt;= s) {
- 245         best_match = n;
- 246         if (n-&gt;_word_size == s) {
- 247           break; // perfect match or max depth reached
- 248         }
- 249         n = n-&gt;_left;
- 250       } else {
- 251         n = n-&gt;_right;
- 252       }
- 253     }
- 254 
- 255     return best_match;
- 256   }
+ 100   // Needed for verify() and print_tree()
+ 101   struct walkinfo;
+ 102 
+ 103 public:
+ 104 
+ 105   // Minimum word size a block has to be to be added to this structure (note ceil division).
+ 106   const static size_t MinWordSize =
+ 107       (sizeof(Node) + sizeof(MetaWord) - 1) / sizeof(MetaWord);
+ 108 
+ 109 private:
+ 110 
+ 111   Node* _root;
+ 112 
+ 113   MemRangeCounter _counter;
+ 114 
+ 115   // Given a node n, add it to the list starting at head
+ 116   static void add_to_list(Node* n, Node* head) {
+ 117     assert(head-&gt;_word_size == n-&gt;_word_size, "sanity");
+ 118     n-&gt;_next = head-&gt;_next;
+ 119     head-&gt;_next = n;
+ 120     DEBUG_ONLY(n-&gt;_left = n-&gt;_right = n-&gt;_parent = NULL;)
+ 121   }
+ 122 
+ 123   // Given a node list starting at head, remove one of the follow up nodes from
+ 124   //  that list and return it. The head node gets not modified and remains in the
+ 125   //  tree.
+ 126   // List must contain at least one other node.
+ 127   static Node* remove_from_list(Node* head) {
+ 128     assert(head-&gt;_next != NULL, "sanity");
+ 129     Node* n = head-&gt;_next;
+ 130     head-&gt;_next = n-&gt;_next;
+ 131     return n;
+ 132   }
+ 133 
+ 134   // Given a node c and a node p, wire up c as left child of p.
+ 135   static void set_left_child(Node* p, Node* c) {
+ 136     p-&gt;_left = c;
+ 137     if (c != NULL) {
+ 138       assert(c-&gt;_word_size &lt; p-&gt;_word_size, "sanity");
+ 139       c-&gt;_parent = p;
+ 140     }
+ 141   }
+ 142 
+ 143   // Given a node c and a node p, wire up c as right child of p.
+ 144   static void set_right_child(Node* p, Node* c) {
+ 145     p-&gt;_right = c;
+ 146     if (c != NULL) {
+ 147       assert(c-&gt;_word_size &gt; p-&gt;_word_size, "sanity");
+ 148       c-&gt;_parent = p;
+ 149     }
+ 150   }
+ 151 
+ 152   // Given a node n, return its predecessor in the tree
+ 153   // (node with the next-smaller size).
+ 154   static Node* predecessor(Node* n) {
+ 155     Node* pred = NULL;
+ 156     if (n-&gt;_left != NULL) {
+ 157       pred = n-&gt;_left;
+ 158       while (pred-&gt;_right != NULL) {
+ 159         pred = pred-&gt;_right;
+ 160       }
+ 161     } else {
+ 162       pred = n-&gt;_parent;
+ 163       Node* n2 = n;
+ 164       while (pred != NULL &amp;&amp; n2 == pred-&gt;_left) {
+ 165         n2 = pred;
+ 166         pred = pred-&gt;_parent;
+ 167       }
+ 168     }
+ 169     return pred;
+ 170   }
+ 171 
+ 172   // Given a node n, return its successor in the tree
+ 173   // (node with the next-larger size).
+ 174   static Node* successor(Node* n) {
+ 175     Node* succ = NULL;
+ 176     if (n-&gt;_right != NULL) {
+ 177       // If there is a right child, search the left-most
+ 178       // child of that child.
+ 179       succ = n-&gt;_right;
+ 180       while (succ-&gt;_left != NULL) {
+ 181         succ = succ-&gt;_left;
+ 182       }
+ 183     } else {
+ 184       succ = n-&gt;_parent;
+ 185       Node* n2 = n;
+ 186       // As long as I am the right child of my parent, search upward
+ 187       while (succ != NULL &amp;&amp; n2 == succ-&gt;_right) {
+ 188         n2 = succ;
+ 189         succ = succ-&gt;_parent;
+ 190       }
+ 191     }
+ 192     return succ;
+ 193   }
+ 194 
+ 195   // Given a node, replace it with a replacement node as a child for its parent.
+ 196   // If the node is root and has no parent, sets it as root.
+ 197   void replace_node_in_parent(Node* child, Node* replace) {
+ 198     Node* parent = child-&gt;_parent;
+ 199     if (parent != NULL) {
+ 200       if (parent-&gt;_left == child) { // Child is left child
+ 201         set_left_child(parent, replace);
+ 202       } else {
+ 203         set_right_child(parent, replace);
+ 204       }
+ 205     } else {
+ 206       assert(child == _root, "must be root");
+ 207       _root = replace;
+ 208       if (replace != NULL) {
+ 209         replace-&gt;_parent = NULL;
+ 210       }
+ 211     }
+ 212     return;
+ 213   }
+ 214 
+ 215   // Given a node n and an insertion point, insert n under insertion point.
+ 216   void insert(Node* insertion_point, Node* n) {
+ 217     assert(n-&gt;_parent == NULL, "Sanity");
+ 218     for(;;) {
+ 219       if (n-&gt;_word_size == insertion_point-&gt;_word_size) {
+ 220         add_to_list(n, insertion_point); // parent stays NULL in this case.
+ 221         break;
+ 222       } else if (n-&gt;_word_size &gt; insertion_point-&gt;_word_size) {
+ 223         if (insertion_point-&gt;_right == NULL) {
+ 224           set_right_child(insertion_point, n);
+ 225           break;
+ 226         } else {
+ 227           insertion_point = insertion_point-&gt;_right;
+ 228         }
+ 229       } else {
+ 230         if (insertion_point-&gt;_left == NULL) {
+ 231           set_left_child(insertion_point, n);
+ 232           break;
+ 233         } else {
+ 234           insertion_point = insertion_point-&gt;_left;
+ 235         }
+ 236       }
+ 237     }
+ 238   }
+ 239 
+ 240   // Given a node and a wish size, search this node and all children for
+ 241   // the node closest (equal or larger sized) to the size s.
+ 242   static Node* find_closest_fit(Node* n, size_t s) {
+ 243 
+ 244     Node* best_match = NULL;
+ 245 
+ 246     while (n != NULL) {
+ 247       if (n-&gt;_word_size &gt;= s) {
+ 248         best_match = n;
+ 249         if (n-&gt;_word_size == s) {
+ 250           break; // perfect match or max depth reached
+ 251         }
+ 252         n = n-&gt;_left;
+ 253       } else {
+ 254         n = n-&gt;_right;
+ 255       }
+ 256     }
  257 
- 258   // Given a wish size, search the whole tree for a
- 259   // node closest (equal or larger sized) to the size s.
- 260   Node* find_closest_fit(size_t s) {
- 261     if (_root != NULL) {
- 262       return find_closest_fit(_root, s);
- 263     }
- 264     return NULL;
- 265   }
- 266 
- 267   // Given a node n, remove it from the tree and repair tree.
- 268   void remove_node_from_tree(Node* n) {
+ 258     return best_match;
+ 259   }
+ 260 
+ 261   // Given a wish size, search the whole tree for a
+ 262   // node closest (equal or larger sized) to the size s.
+ 263   Node* find_closest_fit(size_t s) {
+ 264     if (_root != NULL) {
+ 265       return find_closest_fit(_root, s);
+ 266     }
+ 267     return NULL;
+ 268   }
  269 
- 270     assert(n-&gt;_next == NULL, "do not delete a node which has a non-empty list");
- 271 
- 272     if (n-&gt;_left == NULL &amp;&amp; n-&gt;_right == NULL) {
- 273       replace_node_in_parent(n, NULL);
+ 270   // Given a node n, remove it from the tree and repair tree.
+ 271   void remove_node_from_tree(Node* n) {
+ 272 
+ 273     assert(n-&gt;_next == NULL, "do not delete a node which has a non-empty list");
  274 
- 275     } else if (n-&gt;_left == NULL &amp;&amp; n-&gt;_right != NULL) {
- 276       replace_node_in_parent(n, n-&gt;_right);
+ 275     if (n-&gt;_left == NULL &amp;&amp; n-&gt;_right == NULL) {
+ 276       replace_node_in_parent(n, NULL);
  277 
- 278     } else if (n-&gt;_left != NULL &amp;&amp; n-&gt;_right == NULL) {
- 279       replace_node_in_parent(n, n-&gt;_left);
+ 278     } else if (n-&gt;_left == NULL &amp;&amp; n-&gt;_right != NULL) {
+ 279       replace_node_in_parent(n, n-&gt;_right);
  280 
- 281     } else {
- 282 
- 283       // Node has two children.
- 284 
- 285       // 1) Find direct successor (the next larger node).
- 286       Node* succ = successor(n);
+ 281     } else if (n-&gt;_left != NULL &amp;&amp; n-&gt;_right == NULL) {
+ 282       replace_node_in_parent(n, n-&gt;_left);
+ 283 
+ 284     } else {
+ 285 
+ 286       // Node has two children.
  287 
- 288       // There has to be a successor since n-&gt;right was != NULL...
- 289       assert(succ != NULL, "must be");
+ 288       // 1) Find direct successor (the next larger node).
+ 289       Node* succ = successor(n);
  290 
- 291       // ... and it should not have a left child since successor
- 292       //     is supposed to be the next larger node, so it must be the mostleft node
- 293       //     in the sub tree rooted at n-&gt;right
- 294       assert(succ-&gt;_left == NULL, "must be");
- 295 
- 296       assert(succ-&gt;_word_size &gt; n-&gt;_word_size, "sanity");
- 297 
- 298       Node* successor_parent = succ-&gt;_parent;
- 299       Node* successor_right_child = succ-&gt;_right;
+ 291       // There has to be a successor since n-&gt;right was != NULL...
+ 292       assert(succ != NULL, "must be");
+ 293 
+ 294       // ... and it should not have a left child since successor
+ 295       //     is supposed to be the next larger node, so it must be the mostleft node
+ 296       //     in the sub tree rooted at n-&gt;right
+ 297       assert(succ-&gt;_left == NULL, "must be");
+ 298 
+ 299       assert(succ-&gt;_word_size &gt; n-&gt;_word_size, "sanity");
  300 
- 301       // Remove successor from its parent.
- 302       if (successor_parent == n) {
+ 301       Node* successor_parent = succ-&gt;_parent;
+ 302       Node* successor_right_child = succ-&gt;_right;
  303 
- 304         // special case: successor is a direct child of n. Has to be the right child then.
- 305         assert(n-&gt;_right == succ, "sanity");
+ 304       // Remove successor from its parent.
+ 305       if (successor_parent == n) {
  306 
- 307         // Just replace n with this successor.
- 308         replace_node_in_parent(n, succ);
+ 307         // special case: successor is a direct child of n. Has to be the right child then.
+ 308         assert(n-&gt;_right == succ, "sanity");
  309 
- 310         // Take over n's old left child, too.
- 311         // We keep the successor's right child.
- 312         set_left_child(succ, n-&gt;_left);
- 313 
- 314       } else {
- 315 
- 316         // If the successors parent is not n, we are deeper in the tree,
- 317         //  the successor has to be the left child of its parent.
- 318         assert(successor_parent-&gt;_left == succ, "sanity");
- 319 
- 320         // The right child of the successor (if there was one) replaces
- 321         //  the successor at its parent's left child.
- 322         set_left_child(successor_parent, succ-&gt;_right);
- 323 
- 324         // and the successor replaces n at its parent
- 325         replace_node_in_parent(n, succ);
+ 310         // Just replace n with this successor.
+ 311         replace_node_in_parent(n, succ);
+ 312 
+ 313         // Take over n's old left child, too.
+ 314         // We keep the successor's right child.
+ 315         set_left_child(succ, n-&gt;_left);
+ 316 
+ 317       } else {
+ 318 
+ 319         // If the successors parent is not n, we are deeper in the tree,
+ 320         //  the successor has to be the left child of its parent.
+ 321         assert(successor_parent-&gt;_left == succ, "sanity");
+ 322 
+ 323         // The right child of the successor (if there was one) replaces
+ 324         //  the successor at its parent's left child.
+ 325         set_left_child(successor_parent, succ-&gt;_right);
  326 
- 327         // and takes over n's old children
- 328         set_left_child(succ, n-&gt;_left);
- 329         set_right_child(succ, n-&gt;_right);
- 330 
- 331       }
- 332     }
- 333   }
- 334 
- 335 #ifdef ASSERT
- 336   void zap_range(MetaWord* p, size_t word_size);
- 337 #endif // ASSERT
- 338 
- 339   static void print_node(outputStream* st, Node* n, int lvl);
- 340 
- 341 public:
- 342 
- 343   BlockTree() : _root(NULL) {}
- 344 
- 345   // Add a memory block to the tree. Its content will be overwritten.
- 346   void add_block(MetaWord* p, size_t word_size) {
- 347     DEBUG_ONLY(zap_range(p, word_size));
- 348     assert(word_size &gt;= MinWordSize, "invalid block size " SIZE_FORMAT, word_size);
- 349     Node* n = new(p) Node(word_size);
- 350     if (_root == NULL) {
- 351       _root = n;
- 352     } else {
- 353       insert(_root, n);
- 354     }
- 355     _counter.add(word_size);
- 356   }
- 357 
- 358   // Given a word_size, search and return the smallest block that is equal or
- 359   //  larger than that size. Upon return, *p_real_word_size contains the actual
- 360   //  block size.
- 361   MetaWord* remove_block(size_t word_size, size_t* p_real_word_size) {
- 362     assert(word_size &gt;= MinWordSize, "invalid block size " SIZE_FORMAT, word_size);
- 363 
- 364     Node* n = find_closest_fit(word_size);
- 365 
- 366     if (n != NULL) {
- 367       assert(n-&gt;_word_size &gt;= word_size, "sanity");
- 368 
- 369       if (n-&gt;_next != NULL) {
- 370         // If the node is head of a chain of same sized nodes, we leave it alone
- 371         //  and instead remove one of the follow up nodes (which is simpler than
- 372         //  removing the chain head node and then having to graft the follow up
- 373         //  node into its place in the tree).
- 374         n = remove_from_list(n);
- 375       } else {
- 376         remove_node_from_tree(n);
- 377       }
- 378 
- 379       MetaWord* p = (MetaWord*)n;
- 380       *p_real_word_size = n-&gt;_word_size;
- 381 
- 382       _counter.sub(n-&gt;_word_size);
- 383 
- 384       DEBUG_ONLY(zap_range(p, n-&gt;_word_size));
- 385 
- 386       return p;
- 387     }
- 388     return NULL;
- 389   }
- 390 
- 391   // Returns number of blocks in this structure
- 392   unsigned count() const { return _counter.count(); }
- 393 
- 394   // Returns total size, in words, of all elements.
- 395   size_t total_size() const { return _counter.total_size(); }
- 396 
- 397   bool is_empty() const { return _root == NULL; }
- 398 
- 399   DEBUG_ONLY(void print_tree(outputStream* st) const;)
- 400   DEBUG_ONLY(void verify() const;)
- 401 
- 402 };
- 403 
- 404 } // namespace metaspace
- 405 
- 406 #endif // SHARE_MEMORY_METASPACE_MSBLOCKTREE_HPP
+ 327         // and the successor replaces n at its parent
+ 328         replace_node_in_parent(n, succ);
+ 329 
+ 330         // and takes over n's old children
+ 331         set_left_child(succ, n-&gt;_left);
+ 332         set_right_child(succ, n-&gt;_right);
+ 333 
+ 334       }
+ 335     }
+ 336   }
+ 337 
+ 338 #ifdef ASSERT
+ 339   void zap_range(MetaWord* p, size_t word_size);
+ 340 #endif // ASSERT
+ 341 
+ 342 public:
+ 343 
+ 344   BlockTree() : _root(NULL) {}
+ 345 
+ 346   // Add a memory block to the tree. Its content will be overwritten.
+ 347   void add_block(MetaWord* p, size_t word_size) {
+ 348     DEBUG_ONLY(zap_range(p, word_size));
+ 349     assert(word_size &gt;= MinWordSize, "invalid block size " SIZE_FORMAT, word_size);
+ 350     Node* n = new(p) Node(word_size);
+ 351     if (_root == NULL) {
+ 352       _root = n;
+ 353     } else {
+ 354       insert(_root, n);
+ 355     }
+ 356     _counter.add(word_size);
+ 357   }
+ 358 
+ 359   // Given a word_size, search and return the smallest block that is equal or
+ 360   //  larger than that size. Upon return, *p_real_word_size contains the actual
+ 361   //  block size.
+ 362   MetaWord* remove_block(size_t word_size, size_t* p_real_word_size) {
+ 363     assert(word_size &gt;= MinWordSize, "invalid block size " SIZE_FORMAT, word_size);
+ 364 
+ 365     Node* n = find_closest_fit(word_size);
+ 366 
+ 367     if (n != NULL) {
+ 368       assert(n-&gt;_word_size &gt;= word_size, "sanity");
+ 369 
+ 370       if (n-&gt;_next != NULL) {
+ 371         // If the node is head of a chain of same sized nodes, we leave it alone
+ 372         //  and instead remove one of the follow up nodes (which is simpler than
+ 373         //  removing the chain head node and then having to graft the follow up
+ 374         //  node into its place in the tree).
+ 375         n = remove_from_list(n);
+ 376       } else {
+ 377         remove_node_from_tree(n);
+ 378       }
+ 379 
+ 380       MetaWord* p = (MetaWord*)n;
+ 381       *p_real_word_size = n-&gt;_word_size;
+ 382 
+ 383       _counter.sub(n-&gt;_word_size);
+ 384 
+ 385       DEBUG_ONLY(zap_range(p, n-&gt;_word_size));
+ 386 
+ 387       return p;
+ 388     }
+ 389     return NULL;
+ 390   }
+ 391 
+ 392   // Returns number of blocks in this structure
+ 393   unsigned count() const { return _counter.count(); }
+ 394 
+ 395   // Returns total size, in words, of all elements.
+ 396   size_t total_size() const { return _counter.total_size(); }
+ 397 
+ 398   bool is_empty() const { return _root == NULL; }
+ 399 
+ 400   DEBUG_ONLY(void print_tree(outputStream* st) const;)
+ 401   DEBUG_ONLY(void verify() const;)
+ 402 
+ 403 };
+ 404 
+ 405 } // namespace metaspace
+ 406 
+ 407 #endif // SHARE_MEMORY_METASPACE_MSBLOCKTREE_HPP
 </pre></body></html>

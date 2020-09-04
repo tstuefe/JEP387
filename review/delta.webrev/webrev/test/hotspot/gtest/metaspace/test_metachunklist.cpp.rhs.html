@@ -1,0 +1,316 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+    <script type="text/javascript" src="../../../../ancnav.js"></script>
+    </head>
+    <body id="SUNWwebrev" onkeypress="keypress(event);">
+    <a name="0"></a>
+    <pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre><hr></hr>
+<pre>
+   1 /*
+<a name="1" id="anc1"></a><span class="changed">   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.</span>
+<span class="changed">   3  * Copyright (c) 2020 SAP SE. All rights reserved.</span>
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 
+<a name="2" id="anc2"></a><span class="new">  28 #include "memory/metaspace/msCounter.hpp"</span>
+<span class="new">  29 #include "memory/metaspace/msFreeChunkList.hpp"</span>
+<span class="new">  30 #include "memory/metaspace/msMetachunkList.hpp"</span>
+<span class="new">  31 </span>
+  32 //#define LOG_PLEASE
+<a name="3" id="anc3"></a><span class="changed">  33 #include "metaspaceGtestCommon.hpp"</span>
+<span class="changed">  34 #include "metaspaceGtestContexts.hpp"</span>
+<span class="changed">  35 #include "metaspaceGtestRangeHelpers.hpp"</span>
+<span class="changed">  36 </span>
+<span class="changed">  37 using metaspace::MemRangeCounter;</span>
+<span class="changed">  38 using metaspace::MetachunkList;</span>
+<span class="changed">  39 using metaspace::FreeChunkListVector;</span>
+<span class="changed">  40 </span>
+  41 
+  42 TEST_VM(metaspace, metachunklist) {
+  43 
+<a name="4" id="anc4"></a><span class="changed">  44   ChunkGtestContext context;</span>
+  45 
+  46   MetachunkList lst;
+  47 
+  48   Metachunk* chunks[10];
+  49   size_t total_size = 0;
+  50 
+<a name="5" id="anc5"></a><span class="changed">  51   for (int i = 0; i &lt; 10; i++) {</span>
+  52     Metachunk* c = NULL;
+<a name="6" id="anc6"></a><span class="changed">  53     context.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());</span>
+  54     chunks[i] = c;
+  55     total_size += c-&gt;committed_words();
+  56 
+  57     lst.add(c);
+  58     EXPECT_EQ(lst.first(), c);
+  59 
+  60     Metachunk* c2 = lst.remove_first();
+  61     EXPECT_EQ(c, c2);
+  62 
+  63     EXPECT_EQ(lst.count(), i);
+  64     lst.add(c);
+  65     EXPECT_EQ(lst.count(), i + 1);
+  66     EXPECT_EQ(lst.calc_committed_word_size(), total_size);
+  67 
+  68   }
+  69 
+<a name="7" id="anc7"></a><span class="changed">  70   for (int i = 0; i &lt; 10; i++) {</span>
+  71     DEBUG_ONLY(EXPECT_TRUE(lst.contains(chunks[i]));)
+  72   }
+  73 
+<a name="8" id="anc8"></a><span class="changed">  74   for (int i = 0; i &lt; 10; i++) {</span>
+  75     Metachunk* c = lst.remove_first();
+  76     DEBUG_ONLY(EXPECT_FALSE(lst.contains(c));)
+<a name="9" id="anc9"></a><span class="changed">  77     context.return_chunk(c);</span>
+  78   }
+  79 
+  80   EXPECT_EQ(lst.count(), 0);
+  81   EXPECT_EQ(lst.calc_committed_word_size(), (size_t)0);
+  82 
+  83 }
+  84 
+<a name="10" id="anc10"></a>
+  85 TEST_VM(metaspace, freechunklist) {
+  86 
+<a name="11" id="anc11"></a><span class="changed">  87   ChunkGtestContext context;</span>
+  88 
+  89   FreeChunkListVector lst;
+  90 
+  91   MemRangeCounter cnt;
+  92   MemRangeCounter committed_cnt;
+  93 
+  94   // Add random chunks to list and check the counter apis (word_size, commited_word_size, num_chunks)
+  95   // Make every other chunk randomly uncommitted, and later we check that committed chunks are sorted in at the front
+  96   // of the lists.
+<a name="12" id="anc12"></a><span class="changed">  97   for (int i = 0; i &lt; 100; i++) {</span>
+  98     Metachunk* c = NULL;
+<a name="13" id="anc13"></a><span class="changed">  99     context.alloc_chunk_expect_success(&amp;c, ChunkLevelRanges::all_chunks().random_value());</span>
+ 100     bool uncommitted_chunk = i % 3;
+ 101     if (uncommitted_chunk) {
+<a name="14" id="anc14"></a><span class="changed"> 102       context.uncommit_chunk_with_test(c);</span>
+ 103       c-&gt;set_in_use();
+ 104     }
+ 105 
+ 106     lst.add(c);
+ 107 
+ 108     LOG("-&gt;" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
+ 109 
+ 110     cnt.add(c-&gt;word_size());
+ 111     committed_cnt.add(c-&gt;committed_words());
+ 112 
+ 113     EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
+ 114     EXPECT_EQ(lst.word_size(), cnt.total_size());
+ 115     EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+ 116   }
+ 117 
+ 118   // Drain each list separately
+<a name="15" id="anc15"></a><span class="changed"> 119   for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl &lt;= HIGHEST_CHUNK_LEVEL; lvl++) {</span>
+ 120     Metachunk* c = lst.remove_first(lvl);
+ 121     bool found_uncommitted = false;
+ 122     while (c != NULL) {
+ 123 
+ 124       LOG("&lt;-" METACHUNK_FULL_FORMAT, METACHUNK_FULL_FORMAT_ARGS(c));
+ 125 
+ 126       // Within a level, no committed chunk should follow an uncommitted chunk:
+ 127       if (found_uncommitted) {
+ 128         EXPECT_TRUE(c-&gt;is_fully_uncommitted());
+ 129       } else {
+ 130         found_uncommitted = c-&gt;is_fully_uncommitted();
+ 131       }
+ 132 
+ 133       cnt.sub(c-&gt;word_size());
+ 134       committed_cnt.sub(c-&gt;committed_words());
+ 135 
+ 136       EXPECT_EQ(lst.num_chunks(), (int)cnt.count());
+ 137       EXPECT_EQ(lst.word_size(), cnt.total_size());
+ 138       EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+ 139 
+<a name="16" id="anc16"></a><span class="changed"> 140       context.return_chunk(c);</span>
+ 141 
+ 142       c = lst.remove_first(lvl);
+ 143     }
+ 144   }
+ 145 
+ 146   // TODO
+ 147 }
+ 148 
+<a name="17" id="anc17"></a><b style="font-size: large; color: red">--- EOF ---</b>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</pre><form name="eof"><input name="value" value="17" type="hidden" /></form></body></html>

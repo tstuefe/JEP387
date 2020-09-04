@@ -1,0 +1,63 @@
+--- old/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp	2020-09-04 13:57:29.309210978 +0200
++++ new/test/hotspot/gtest/metaspace/test_metaspace_misc.cpp	2020-09-04 13:57:29.049209268 +0200
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -25,12 +25,18 @@
+ 
+ #include "precompiled.hpp"
+ 
+-// #define LOG_PLEASE
+ 
+ #include "classfile/classLoaderData.hpp"
+-#include "metaspaceTestsCommon.hpp"
++#include "memory/metaspace/msChunklevel.hpp"
++#include "memory/metaspace/msSettings.hpp"
+ #include "utilities/powerOfTwo.hpp"
+ 
++// #define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++
++using metaspace::chunklevel_t;
++using namespace metaspace::chunklevel;
++using metaspace::Settings;
+ 
+ TEST_VM(metaspace, misc_sizes)   {
+ 
+@@ -49,7 +55,6 @@
+ 
+ }
+ 
+-
+ TEST_VM(metaspace, misc_max_alloc_size)   {
+ 
+   // Make sure we can allocate what we promise to allocate
+@@ -63,6 +68,8 @@
+ 
+ TEST_VM(metaspace, chunklevel_utils)   {
+ 
++  // These tests seem to be really basic, but it is amazing what one can
++  // break accidentally...
+   LOG(SIZE_FORMAT, MAX_CHUNK_BYTE_SIZE);
+   LOG(SIZE_FORMAT, MIN_CHUNK_BYTE_SIZE);
+   LOG(SIZE_FORMAT, MIN_CHUNK_WORD_SIZE);
+@@ -98,10 +105,9 @@
+   EXPECT_EQ(level_fitting_word_size((MAX_CHUNK_WORD_SIZE / 2) + 1), ROOT_CHUNK_LEVEL);
+   EXPECT_EQ(level_fitting_word_size(MAX_CHUNK_WORD_SIZE / 2), ROOT_CHUNK_LEVEL + 1);
+ 
+-  EXPECT_EQ(level_fitting_word_size(8 * K), CHUNK_LEVEL_64K);
+-  EXPECT_EQ(level_fitting_word_size(8 * K + 13), CHUNK_LEVEL_64K - 1);
+-  EXPECT_EQ(level_fitting_word_size(8 * K - 13), CHUNK_LEVEL_64K);
+-
++  EXPECT_EQ(level_fitting_word_size(8 * K), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K));
++  EXPECT_EQ(level_fitting_word_size(8 * K + 13), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K) - 1);
++  EXPECT_EQ(level_fitting_word_size(8 * K - 13), LP64_ONLY(CHUNK_LEVEL_64K) NOT_LP64(CHUNK_LEVEL_32K));
+ 
+ }
+ 

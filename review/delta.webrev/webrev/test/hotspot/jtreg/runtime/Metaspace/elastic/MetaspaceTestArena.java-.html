@@ -1,0 +1,201 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestArena.java</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 import sun.hotspot.WhiteBox;
+  27 
+  28 import java.util.concurrent.atomic.AtomicLong;
+  29 
+  30 public class MetaspaceTestArena {
+  31 
+  32     long arena;
+  33 
+  34     final long allocationCeiling;
+  35 
+  36     // Number and word size of allocations
+  37     long allocatedWords = 0;
+  38     long numAllocated = 0;
+  39     long deallocatedWords = 0;
+  40     long numDeallocated = 0;
+  41     long numAllocationFailures = 0;
+  42 
+  43     private synchronized boolean reachedCeiling() {
+  44         return (allocatedWords - deallocatedWords) &gt; allocationCeiling;
+  45     }
+  46 
+  47     private synchronized void accountAllocation(long words) {
+  48         numAllocated ++;
+  49         allocatedWords += words;
+  50     }
+  51 
+  52     private synchronized void accountDeallocation(long words) {
+  53         numDeallocated ++;
+  54         deallocatedWords += words;
+  55     }
+  56 
+  57     MetaspaceTestArena(long arena0, long allocationCeiling) {
+  58         this.allocationCeiling = allocationCeiling;
+  59         this.arena = arena0;
+  60     }
+  61 
+  62     public Allocation allocate(long words) {
+  63         if (reachedCeiling()) {
+  64             numAllocationFailures ++;
+  65             return null;
+  66         }
+  67         WhiteBox wb = WhiteBox.getWhiteBox();
+  68         long p = wb.allocateFromMetaspaceTestArena(arena, words);
+  69         if (p == 0) {
+  70             numAllocationFailures ++;
+  71             return null;
+  72         } else {
+  73             accountAllocation(words);
+  74         }
+  75         return new Allocation(p, words);
+  76     }
+  77 
+  78     public void deallocate(Allocation a) {
+  79         WhiteBox wb = WhiteBox.getWhiteBox();
+  80         wb.deallocateToMetaspaceTestArena(arena, a.p, a.word_size);
+  81         accountDeallocation(a.word_size);
+  82     }
+  83 
+  84     //// Convenience functions ////
+  85 
+  86     public Allocation allocate_expect_success(long words) {
+  87         Allocation a = allocate(words);
+  88         if (a.isNull()) {
+  89             throw new RuntimeException("Allocation failed (" + words + ")");
+  90         }
+  91         return a;
+  92     }
+  93 
+  94     public void allocate_expect_failure(long words) {
+  95         Allocation a = allocate(words);
+  96         if (!a.isNull()) {
+  97             throw new RuntimeException("Allocation failed (" + words + ")");
+  98         }
+  99     }
+ 100 
+ 101     boolean isLive() {
+ 102         return arena != 0;
+ 103     }
+ 104 
+ 105 
+ 106     @Override
+ 107     public String toString() {
+ 108         return "arena=" + arena +
+ 109                 ", ceiling=" + allocationCeiling +
+ 110                 ", allocatedWords=" + allocatedWords +
+ 111                 ", numAllocated=" + numAllocated +
+ 112                 ", deallocatedWords=" + deallocatedWords +
+ 113                 ", numDeallocated=" + numDeallocated +
+ 114                 ", numAllocationFailures=" + numAllocationFailures +
+ 115                 '}';
+ 116     }
+ 117 
+ 118 }
+</pre></body></html>

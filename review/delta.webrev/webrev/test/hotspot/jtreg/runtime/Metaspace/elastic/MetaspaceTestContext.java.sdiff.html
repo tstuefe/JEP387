@@ -1,0 +1,270 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Sdiff test/hotspot/jtreg/runtime/Metaspace/elastic </title>
+</head><body id="SUNWwebrev">
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestArena.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestOneArenaManyThreads.java.sdiff.html' target='_top'>next &gt</a></center>
+<h2>test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestContext.java</h2>
+<a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+
+<table><tr valign="top">
+<td><pre>
+
+</pre><hr></hr><pre>
+   6 import java.util.List;
+   7 
+   8 public class MetaspaceTestContext {
+   9 
+  10     long context;
+  11 
+  12     final long commitLimit;
+  13     final long reserveLimit;
+  14 
+  15     int numArenasCreated;
+  16     int numArenasDestroyed;
+  17 
+  18     HashSet&lt;MetaspaceTestArena&gt; arenaList = new HashSet&lt;&gt;();
+  19 
+  20     long allocatedWords;
+  21     long numAllocated;
+  22     long deallocatedWords;
+  23     long numDeallocated;
+  24     long allocationFailures;
+  25 
+<span class="removed">  26 </span>
+  27     public MetaspaceTestContext(long commitLimit, long reserveLimit) {
+  28         this.commitLimit = commitLimit;
+  29         this.reserveLimit = reserveLimit;
+  30         WhiteBox wb = WhiteBox.getWhiteBox();
+  31         context = wb.createMetaspaceTestContext(commitLimit, reserveLimit);
+  32         if (context == 0) {
+  33             throw new RuntimeException("Failed to create context");
+  34         }
+  35     }
+  36 
+  37     // no limits
+  38     public MetaspaceTestContext() {
+  39         this(0, 0);
+  40     }
+  41 
+  42     public void destroy() {
+  43         if (context != 0) {
+  44             WhiteBox wb = WhiteBox.getWhiteBox();
+  45             wb.destroyMetaspaceTestContext(context);
+  46             context = 0;
+
+</pre><hr></hr><pre>
+ 108             allocatedWords += a.allocatedWords;
+ 109             deallocatedWords += a.deallocatedWords;
+ 110             numAllocated += a.numAllocated;
+ 111             numDeallocated += a.numDeallocated;
+ 112             allocationFailures += a.numAllocationFailures;
+ 113         }
+ 114     }
+ 115 
+ 116     public void printToTTY() {
+ 117         if (context != 0) {
+ 118             WhiteBox wb = WhiteBox.getWhiteBox();
+ 119             wb.printMetaspaceTestContext(context);
+ 120         }
+ 121     }
+ 122 
+ 123     /**
+ 124      * Given usage and some context information for current live arenas, do a heuristic about whether the
+ 125      * Usage seems right for this case.
+ 126      */
+ 127     public void checkStatistics() {
+<span class="removed"> 128 </span>
+ 129 
+ 130         // Note:
+ 131         // Estimating Used and Committed is fuzzy, and we only have limited information here
+ 132         // (we know the current state, but not the history, which determines fragmentation and
+ 133         //  freelist occupancy).
+ 134         //
+ 135         // We do not want test which constantly generate false positives, so these checks are
+ 136         // somewhat loose and only meant to check for clear outliers, e.g. leaks.
+ 137 
+ 138         ///// used /////
+ 139 
+ 140         updateTotals();
+ 141 
+ 142         long usageMeasured = usedWords();
+ 143         long committedMeasured = committedWords();
+ 144 
+ 145         if (usageMeasured &gt; committedMeasured) {
+ 146             throw new RuntimeException("Weirdness.");
+ 147         }
+ 148 
+
+</pre><hr></hr>
+</pre></td><td><pre>
+
+</pre><hr></hr><pre>
+   6 import java.util.List;
+   7 
+   8 public class MetaspaceTestContext {
+   9 
+  10     long context;
+  11 
+  12     final long commitLimit;
+  13     final long reserveLimit;
+  14 
+  15     int numArenasCreated;
+  16     int numArenasDestroyed;
+  17 
+  18     HashSet&lt;MetaspaceTestArena&gt; arenaList = new HashSet&lt;&gt;();
+  19 
+  20     long allocatedWords;
+  21     long numAllocated;
+  22     long deallocatedWords;
+  23     long numDeallocated;
+  24     long allocationFailures;
+  25 
+
+  26     public MetaspaceTestContext(long commitLimit, long reserveLimit) {
+  27         this.commitLimit = commitLimit;
+  28         this.reserveLimit = reserveLimit;
+  29         WhiteBox wb = WhiteBox.getWhiteBox();
+  30         context = wb.createMetaspaceTestContext(commitLimit, reserveLimit);
+  31         if (context == 0) {
+  32             throw new RuntimeException("Failed to create context");
+  33         }
+  34     }
+  35 
+  36     // no limits
+  37     public MetaspaceTestContext() {
+  38         this(0, 0);
+  39     }
+  40 
+  41     public void destroy() {
+  42         if (context != 0) {
+  43             WhiteBox wb = WhiteBox.getWhiteBox();
+  44             wb.destroyMetaspaceTestContext(context);
+  45             context = 0;
+
+</pre><hr></hr><pre>
+ 107             allocatedWords += a.allocatedWords;
+ 108             deallocatedWords += a.deallocatedWords;
+ 109             numAllocated += a.numAllocated;
+ 110             numDeallocated += a.numDeallocated;
+ 111             allocationFailures += a.numAllocationFailures;
+ 112         }
+ 113     }
+ 114 
+ 115     public void printToTTY() {
+ 116         if (context != 0) {
+ 117             WhiteBox wb = WhiteBox.getWhiteBox();
+ 118             wb.printMetaspaceTestContext(context);
+ 119         }
+ 120     }
+ 121 
+ 122     /**
+ 123      * Given usage and some context information for current live arenas, do a heuristic about whether the
+ 124      * Usage seems right for this case.
+ 125      */
+ 126     public void checkStatistics() {
+
+ 127 
+ 128         // Note:
+ 129         // Estimating Used and Committed is fuzzy, and we only have limited information here
+ 130         // (we know the current state, but not the history, which determines fragmentation and
+ 131         //  freelist occupancy).
+ 132         //
+ 133         // We do not want test which constantly generate false positives, so these checks are
+ 134         // somewhat loose and only meant to check for clear outliers, e.g. leaks.
+ 135 
+ 136         ///// used /////
+ 137 
+ 138         updateTotals();
+ 139 
+ 140         long usageMeasured = usedWords();
+ 141         long committedMeasured = committedWords();
+ 142 
+ 143         if (usageMeasured &gt; committedMeasured) {
+ 144             throw new RuntimeException("Weirdness.");
+ 145         }
+ 146 
+
+</pre><hr></hr>
+</pre></td>
+</tr></table>
+<center><a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestArena.java.sdiff.html' target='_top'>&lt prev</a> <a href='../../../../../../index.html' target='_top'>index</a> <a href='../../../../../../test/hotspot/jtreg/runtime/Metaspace/elastic/MetaspaceTestOneArenaManyThreads.java.sdiff.html' target='_top'>next &gt</a></center>
+</body></html>

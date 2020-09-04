@@ -1,0 +1,132 @@
+--- old/test/hotspot/gtest/metaspace/test_freeblocks.cpp	2020-09-04 13:57:25.565186414 +0200
++++ new/test/hotspot/gtest/metaspace/test_freeblocks.cpp	2020-09-04 13:57:25.257184398 +0200
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -25,9 +25,14 @@
+ 
+ #include "precompiled.hpp"
+ 
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msFreeBlocks.hpp"
++
+ //#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
+ 
+-#include "metaspaceTestsCommon.hpp"
++using metaspace::FreeBlocks;
++using metaspace::SizeCounter;
+ 
+ #define CHECK_CONTENT(fb, num_blocks_expected, word_size_expected) \
+ { \
+@@ -90,8 +95,8 @@
+ 
+   bool allocate() {
+ 
+-    size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.minimal_word_size);
+-    MetaWord* p = _freeblocks.get_block(word_size);
++    size_t word_size = MAX2(_rgen_allocations.get(), _freeblocks.MinWordSize);
++    MetaWord* p = _freeblocks.remove_block(word_size);
+     if (p != NULL) {
+       _allocated_words.increment_by(word_size);
+       allocation_t* a = new allocation_t;
+@@ -113,11 +118,11 @@
+ 
+   void test_loop() {
+     // We loop and in each iteration execute one of three operations:
+-    // - allocation from lom
+-    // - deallocation to lom of a previously allocated block
+-    // - feeding a new larger block into the lom (mimicks chunk retiring)
+-    // When we have fed all large blocks into the lom (feedbuffer empty), we
+-    //  switch to draining the lom completely (only allocs)
++    // - allocation from fbl
++    // - deallocation to fbl of a previously allocated block
++    // - feeding a new larger block into the fbl (mimicks chunk retiring)
++    // When we have fed all large blocks into the fbl (feedbuffer empty), we
++    //  switch to draining the fbl completely (only allocs)
+     bool forcefeed = false;
+     bool draining = false;
+     bool stop = false;
+@@ -128,17 +133,17 @@
+       if (!draining && (surprise >= 7 || forcefeed)) {
+         forcefeed = false;
+         if (feed_some()) {
+-          _num_feeds ++;
++          _num_feeds++;
+         } else {
+-          // We fed all input memory into the LOM. Now lets proceed until the lom is drained.
++          // We fed all input memory into the fbl. Now lets proceed until the fbl is drained.
+           draining = true;
+         }
+       } else if (!draining && surprise < 1) {
+         deallocate_top();
+-        _num_deallocs ++;
++        _num_deallocs++;
+       } else {
+         if (allocate()) {
+-          _num_allocs ++;
++          _num_allocs++;
+         } else {
+           if (draining) {
+             stop = _freeblocks.total_size() < 512;
+@@ -160,11 +165,8 @@
+ 
+     // Drain
+ 
+-
+   }
+ 
+-
+-
+ public:
+ 
+   FreeBlocksTest(size_t avg_alloc_size) :
+@@ -180,7 +182,6 @@
+     CHECK_CONTENT(_freeblocks, 1, 1024);
+   }
+ 
+-
+   static void test_small_allocations() {
+     FreeBlocksTest test(10);
+     test.test_loop();
+@@ -196,25 +197,23 @@
+     test.test_loop();
+   }
+ 
+-
+ };
+ 
+-
+ TEST_VM(metaspace, freeblocks_basics) {
+ 
+-  FreeBlocks lom;
++  FreeBlocks fbl;
+   MetaWord tmp[1024];
+-  CHECK_CONTENT(lom, 0, 0);
++  CHECK_CONTENT(fbl, 0, 0);
+ 
+-  lom.add_block(tmp, 1024);
+-  DEBUG_ONLY(lom.verify();)
+-  ASSERT_FALSE(lom.is_empty());
+-  CHECK_CONTENT(lom, 1, 1024);
++  fbl.add_block(tmp, 1024);
++  DEBUG_ONLY(fbl.verify();)
++  ASSERT_FALSE(fbl.is_empty());
++  CHECK_CONTENT(fbl, 1, 1024);
+ 
+-  MetaWord* p = lom.get_block(1024);
++  MetaWord* p = fbl.remove_block(1024);
+   EXPECT_EQ(p, tmp);
+-  DEBUG_ONLY(lom.verify();)
+-  CHECK_CONTENT(lom, 0, 0);
++  DEBUG_ONLY(fbl.verify();)
++  CHECK_CONTENT(fbl, 0, 0);
+ 
+ }
+ 

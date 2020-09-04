@@ -1,0 +1,114 @@
+--- old/test/hotspot/gtest/metaspace/test_metachunklist.cpp	2020-09-04 13:57:28.153203381 +0200
++++ new/test/hotspot/gtest/metaspace/test_metachunklist.cpp	2020-09-04 13:57:27.877201570 +0200
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -25,23 +25,32 @@
+ 
+ #include "precompiled.hpp"
+ 
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msFreeChunkList.hpp"
++#include "memory/metaspace/msMetachunkList.hpp"
++
+ //#define LOG_PLEASE
+-#include "metaspace/metaspaceTestsCommon.hpp"
+-#include "metaspace/metaspaceTestContexts.hpp"
+-#include "metaspace/metaspace_rangehelpers.hpp"
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestContexts.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
++
++using metaspace::MemRangeCounter;
++using metaspace::MetachunkList;
++using metaspace::FreeChunkListVector;
++
+ 
+ TEST_VM(metaspace, metachunklist) {
+ 
+-  ChunkTestsContext helper;
++  ChunkGtestContext context;
+ 
+   MetachunkList lst;
+ 
+   Metachunk* chunks[10];
+   size_t total_size = 0;
+ 
+-  for (int i = 0; i < 10; i ++) {
++  for (int i = 0; i < 10; i++) {
+     Metachunk* c = NULL;
+-    helper.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
++    context.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
+     chunks[i] = c;
+     total_size += c->committed_words();
+ 
+@@ -58,14 +67,14 @@
+ 
+   }
+ 
+-  for (int i = 0; i < 10; i ++) {
++  for (int i = 0; i < 10; i++) {
+     DEBUG_ONLY(EXPECT_TRUE(lst.contains(chunks[i]));)
+   }
+ 
+-  for (int i = 0; i < 10; i ++) {
++  for (int i = 0; i < 10; i++) {
+     Metachunk* c = lst.remove_first();
+     DEBUG_ONLY(EXPECT_FALSE(lst.contains(c));)
+-    helper.return_chunk(c);
++    context.return_chunk(c);
+   }
+ 
+   EXPECT_EQ(lst.count(), 0);
+@@ -73,10 +82,9 @@
+ 
+ }
+ 
+-
+ TEST_VM(metaspace, freechunklist) {
+ 
+-  ChunkTestsContext helper;
++  ChunkGtestContext context;
+ 
+   FreeChunkListVector lst;
+ 
+@@ -86,12 +94,12 @@
+   // Add random chunks to list and check the counter apis (word_size, commited_word_size, num_chunks)
+   // Make every other chunk randomly uncommitted, and later we check that committed chunks are sorted in at the front
+   // of the lists.
+-  for (int i = 0; i < 100; i ++) {
++  for (int i = 0; i < 100; i++) {
+     Metachunk* c = NULL;
+-    helper.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
++    context.alloc_chunk_expect_success(&c, ChunkLevelRanges::all_chunks().random_value());
+     bool uncommitted_chunk = i % 3;
+     if (uncommitted_chunk) {
+-      helper.uncommit_chunk_with_test(c);
++      context.uncommit_chunk_with_test(c);
+       c->set_in_use();
+     }
+ 
+@@ -108,7 +116,7 @@
+   }
+ 
+   // Drain each list separately
+-  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl ++) {
++  for (chunklevel_t lvl = LOWEST_CHUNK_LEVEL; lvl <= HIGHEST_CHUNK_LEVEL; lvl++) {
+     Metachunk* c = lst.remove_first(lvl);
+     bool found_uncommitted = false;
+     while (c != NULL) {
+@@ -129,7 +137,7 @@
+       EXPECT_EQ(lst.word_size(), cnt.total_size());
+       EXPECT_EQ(lst.committed_word_size(), committed_cnt.total_size());
+ 
+-      helper.return_chunk(c);
++      context.return_chunk(c);
+ 
+       c = lst.remove_first(lvl);
+     }

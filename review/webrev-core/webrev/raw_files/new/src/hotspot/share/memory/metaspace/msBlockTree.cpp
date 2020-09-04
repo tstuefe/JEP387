@@ -26,6 +26,7 @@
 #include "precompiled.hpp"
 
 #include "memory/metaspace/msBlockTree.hpp"
+#include "memory/resourceArea.hpp"
 #include "utilities/debug.hpp"
 #include "utilities/globalDefinitions.hpp"
 #include "utilities/growableArray.hpp"
@@ -56,6 +57,16 @@ namespace metaspace {
   } while(0)
 
 
+
+// walkinfo keeps a node plus the size corridor it and its children
+//  are supposed to be in.
+struct BlockTree::walkinfo {
+  BlockTree::Node* n;
+  int depth;
+  size_t lim1; // (
+  size_t lim2; // )
+};
+
 void BlockTree::verify() const {
 
   // Traverse the tree and test that all nodes are in the correct order.
@@ -64,15 +75,6 @@ void BlockTree::verify() const {
   int longest_edge = 0;
 
   if (_root != NULL) {
-
-    // walkinfo keeps a node plus the size corridor it and its children
-    //  are supposed to be in.
-    struct walkinfo {
-      Node* n;
-      size_t lim1; // (
-      size_t lim2; // )
-      int depth;
-    };
 
     ResourceMark rm;
 
@@ -157,23 +159,11 @@ void BlockTree::zap_range(MetaWord* p, size_t word_size) {
 #undef assrt
 #undef assrt0
 
-void BlockTree::print_node(outputStream* st, Node* n, int lvl) {
-  for (int i = 0; i < lvl; i++) {
-    st->print("---");
-  }
-  st->print_cr("<" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n->_word_size);
-}
-
 void BlockTree::print_tree(outputStream* st) const {
 
   if (_root != NULL) {
 
     ResourceMark rm;
-
-    struct walkinfo {
-      Node* n;
-      int depth;
-    };
 
     GrowableArray<walkinfo> stack;
 
@@ -184,16 +174,22 @@ void BlockTree::print_tree(outputStream* st) const {
     stack.push(info);
     while (stack.length() > 0) {
       info = stack.pop();
-      print_node(st, info.n, info.depth);
-      if (info.n->_right != NULL) {
+      const Node* n = info.n;
+      // Print node.
+      for (int i = 0; i < info.depth; i++) {
+         st->print("---");
+      }
+      st->print_cr("<" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n->_word_size);
+      // Handle children.
+      if (n->_right != NULL) {
         walkinfo info2;
-        info2.n = info.n->_right;
+        info2.n = n->_right;
         info2.depth = info.depth + 1;
         stack.push(info2);
       }
-      if (info.n->_left != NULL) {
+      if (n->_left != NULL) {
         walkinfo info2;
-        info2.n = info.n->_left;
+        info2.n = n->_left;
         info2.depth = info.depth + 1;
         stack.push(info2);
       }

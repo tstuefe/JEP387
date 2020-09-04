@@ -1,0 +1,357 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/virtualSpaceList.cpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #include "precompiled.hpp"
+  27 #include "logging/log.hpp"
+  28 #include "memory/metaspace.hpp"
+  29 #include "memory/metaspace/chunkManager.hpp"
+  30 #include "memory/metaspace/counter.hpp"
+  31 #include "memory/metaspace/commitLimiter.hpp"
+  32 #include "memory/metaspace/counter.hpp"
+  33 #include "memory/metaspace/freeChunkList.hpp"
+  34 #include "memory/metaspace/metaspaceContext.hpp"
+  35 #include "memory/metaspace/virtualSpaceList.hpp"
+  36 #include "memory/metaspace/virtualSpaceNode.hpp"
+  37 #include "runtime/mutexLocker.hpp"
+  38 
+  39 
+  40 namespace metaspace {
+  41 
+  42 #define LOGFMT         "VsList @" PTR_FORMAT " (%s)"
+  43 #define LOGFMT_ARGS    p2i(this), this-&gt;_name
+  44 
+  45 // Create a new, empty, expandable list.
+  46 VirtualSpaceList::VirtualSpaceList(const char* name, CommitLimiter* commit_limiter)
+  47   : _name(name),
+  48     _first_node(NULL),
+  49     _can_expand(true),
+  50     _can_purge(true),
+  51     _commit_limiter(commit_limiter),
+  52     _reserved_words_counter(),
+  53     _committed_words_counter()
+  54 {
+  55 }
+  56 
+  57 // Create a new list. The list will contain one node only, which uses the given ReservedSpace.
+  58 // It will be not expandable beyond that first node.
+  59 VirtualSpaceList::VirtualSpaceList(const char* name, ReservedSpace rs, CommitLimiter* commit_limiter)
+  60 : _name(name),
+  61   _first_node(NULL),
+  62   _can_expand(false),
+  63   _can_purge(false),
+  64   _commit_limiter(commit_limiter),
+  65   _reserved_words_counter(),
+  66   _committed_words_counter()
+  67 {
+  68   // Create the first node spanning the existing ReservedSpace. This will be the only node created
+  69   // for this list since we cannot expand.
+  70   VirtualSpaceNode* vsn = VirtualSpaceNode::create_node(rs, _commit_limiter,
+  71                                                         &amp;_reserved_words_counter, &amp;_committed_words_counter);
+  72   assert(vsn != NULL, "node creation failed");
+  73   _first_node = vsn;
+  74   _first_node-&gt;set_next(NULL);
+  75   _nodes_counter.increment();
+  76 }
+  77 
+  78 VirtualSpaceList::~VirtualSpaceList() {
+  79   assert_lock_strong(MetaspaceExpand_lock);
+  80   // Note: normally, there is no reason ever to delete a vslist since they are
+  81   // global objects, but for gtests it makes sense to allow this.
+  82   VirtualSpaceNode* vsn = _first_node;
+  83   VirtualSpaceNode* vsn2 = vsn;
+  84   while (vsn != NULL) {
+  85     vsn2 = vsn-&gt;next();
+  86     delete vsn;
+  87     vsn = vsn2;
+  88   }
+  89 }
+  90 
+  91 // Create a new node and append it to the list. After
+  92 // this function, _current_node shall point to a new empty node.
+  93 // List must be expandable for this to work.
+  94 void VirtualSpaceList::create_new_node() {
+  95   assert(_can_expand, "List is not expandable");
+  96   assert_lock_strong(MetaspaceExpand_lock);
+  97 
+  98   VirtualSpaceNode* vsn = VirtualSpaceNode::create_node(Settings::virtual_space_node_default_word_size(),
+  99                                                         _commit_limiter,
+ 100                                                         &amp;_reserved_words_counter, &amp;_committed_words_counter);
+ 101   assert(vsn != NULL, "node creation failed");
+ 102   vsn-&gt;set_next(_first_node);
+ 103   _first_node = vsn;
+ 104   _nodes_counter.increment();
+ 105 }
+ 106 
+ 107 // Allocate a root chunk from this list.
+ 108 // Note: this just returns a chunk whose memory is reserved; no memory is committed yet.
+ 109 // Hence, before using this chunk, it must be committed.
+ 110 // Also, no limits are checked, since no committing takes place.
+ 111 Metachunk*  VirtualSpaceList::allocate_root_chunk() {
+ 112   assert_lock_strong(MetaspaceExpand_lock);
+ 113 
+ 114   if (_first_node == NULL ||
+ 115       _first_node-&gt;free_words() == 0) {
+ 116 
+ 117     // Since all allocations from a VirtualSpaceNode happen in
+ 118     // root-chunk-size units, and the node size must be root-chunk-size aligned,
+ 119     // we should never have left-over space.
+ 120     assert(_first_node == NULL ||
+ 121            _first_node-&gt;free_words() == 0, "Sanity");
+ 122 
+ 123     if (_can_expand) {
+ 124       create_new_node();
+ 125       UL2(debug, "added new node (now: %d).", num_nodes());
+ 126     } else {
+ 127       UL(debug, "list cannot expand.");
+ 128       return NULL; // We cannot expand this list.
+ 129     }
+ 130   }
+ 131 
+ 132   Metachunk* c = _first_node-&gt;allocate_root_chunk();
+ 133 
+ 134   assert(c != NULL, "This should have worked");
+ 135 
+ 136   return c;
+ 137 
+ 138 }
+ 139 
+ 140 // Attempts to purge nodes. This will remove and delete nodes which only contain free chunks.
+ 141 // The free chunks are removed from the freelists before the nodes are deleted.
+ 142 // Return number of purged nodes.
+ 143 int VirtualSpaceList::purge(FreeChunkListVector* freelists) {
+ 144 
+ 145   assert_lock_strong(MetaspaceExpand_lock);
+ 146 
+ 147   if (_can_purge == false) {
+ 148     return 0;
+ 149   }
+ 150 
+ 151   UL(debug, "purging.");
+ 152 
+ 153   VirtualSpaceNode* vsn = _first_node;
+ 154   VirtualSpaceNode* prev_vsn = NULL;
+ 155   int num = 0, num_purged = 0;
+ 156   while (vsn != NULL) {
+ 157     VirtualSpaceNode* next_vsn = vsn-&gt;next();
+ 158     bool purged = vsn-&gt;attempt_purge(freelists);
+ 159     if (purged) {
+ 160       // Note: from now on do not dereference vsn!
+ 161       UL2(debug, "purged node @" PTR_FORMAT ".", p2i(vsn));
+ 162       if (_first_node == vsn) {
+ 163         _first_node = next_vsn;
+ 164       }
+ 165       DEBUG_ONLY(vsn = (VirtualSpaceNode*)((uintptr_t)(0xdeadbeef));)
+ 166       if (prev_vsn != NULL) {
+ 167         prev_vsn-&gt;set_next(next_vsn);
+ 168       }
+ 169       num_purged ++;
+ 170       _nodes_counter.decrement();
+ 171     } else {
+ 172       prev_vsn = vsn;
+ 173     }
+ 174     vsn = next_vsn;
+ 175     num ++;
+ 176   }
+ 177 
+ 178   UL2(debug, "purged %d nodes (now: %d)", num_purged, num_nodes());
+ 179 
+ 180   return num_purged;
+ 181 
+ 182 }
+ 183 
+ 184 // Print all nodes in this space list.
+ 185 void VirtualSpaceList::print_on(outputStream* st) const {
+ 186   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 187 
+ 188   st-&gt;print_cr("vsl %s:", _name);
+ 189   const VirtualSpaceNode* vsn = _first_node;
+ 190   int n = 0;
+ 191   while (vsn != NULL) {
+ 192     st-&gt;print("- node #%d: ", n);
+ 193     vsn-&gt;print_on(st);
+ 194     vsn = vsn-&gt;next();
+ 195     n ++;
+ 196   }
+ 197   st-&gt;print_cr("- total %d nodes, " SIZE_FORMAT " reserved words, " SIZE_FORMAT " committed words.",
+ 198                n, reserved_words(), committed_words());
+ 199 }
+ 200 
+ 201 #ifdef ASSERT
+ 202 void VirtualSpaceList::verify_locked(bool slow) const {
+ 203 
+ 204   assert_lock_strong(MetaspaceExpand_lock);
+ 205 
+ 206   assert(_name != NULL, "Sanity");
+ 207 
+ 208   int n = 0;
+ 209 
+ 210   if (_first_node != NULL) {
+ 211 
+ 212     size_t total_reserved_words = 0;
+ 213     size_t total_committed_words = 0;
+ 214     const VirtualSpaceNode* vsn = _first_node;
+ 215     while (vsn != NULL) {
+ 216       n ++;
+ 217       vsn-&gt;verify_locked(slow);
+ 218       total_reserved_words += vsn-&gt;word_size();
+ 219       total_committed_words += vsn-&gt;committed_words();
+ 220       vsn = vsn-&gt;next();
+ 221     }
+ 222 
+ 223     _nodes_counter.check(n);
+ 224     _reserved_words_counter.check(total_reserved_words);
+ 225     _committed_words_counter.check(total_committed_words);
+ 226 
+ 227   } else {
+ 228 
+ 229     _reserved_words_counter.check(0);
+ 230     _committed_words_counter.check(0);
+ 231 
+ 232   }
+ 233 }
+ 234 
+ 235 void VirtualSpaceList::verify(bool slow) const {
+ 236   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+ 237   verify_locked(slow);
+ 238 }
+ 239 #endif
+ 240 
+ 241 // Returns true if this pointer is contained in one of our nodes.
+ 242 bool VirtualSpaceList::contains(const MetaWord* p) const {
+ 243   const VirtualSpaceNode* vsn = _first_node;
+ 244   while (vsn != NULL) {
+ 245     if (vsn-&gt;contains(p)) {
+ 246       return true;
+ 247     }
+ 248     vsn = vsn-&gt;next();
+ 249   }
+ 250   return false;
+ 251 }
+ 252 
+ 253 // Returns true if the vslist is not expandable and no more root chunks
+ 254 // can be allocated.
+ 255 bool VirtualSpaceList::is_full() const {
+ 256   if (!_can_expand &amp;&amp; _first_node != NULL &amp;&amp; _first_node-&gt;free_words() == 0) {
+ 257     return true;
+ 258   }
+ 259   return false;
+ 260 }
+ 261 
+ 262 // Convenience methods to return the global class-space chunkmanager
+ 263 //  and non-class chunkmanager, respectively.
+ 264 VirtualSpaceList* VirtualSpaceList::vslist_class() {
+ 265   return MetaspaceContext::context_class() == NULL ? NULL : MetaspaceContext::context_class()-&gt;vslist();
+ 266 }
+ 267 
+ 268 VirtualSpaceList* VirtualSpaceList::vslist_nonclass() {
+ 269   return MetaspaceContext::context_nonclass() == NULL ? NULL : MetaspaceContext::context_nonclass()-&gt;vslist();
+ 270 }
+ 271 
+ 272 
+ 273 
+ 274 } // namespace metaspace
+</pre></body></html>

@@ -1,0 +1,395 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>source Cdiff src/hotspot/share/memory/metaspace.cpp</title>
+</head>
+<body id="SUNWwebrev">
+<center><a href='../../../../src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace.hpp.cdiff.html' target='_top'>next &gt</a></center>
+<h2>src/hotspot/share/memory/metaspace.cpp</h2>
+        <a class="print" href="javascript:print()">Print this page</a>
+<pre>rev <a href="https://bugs.openjdk.java.net/browse/JDK-60811">60811</a> : imported patch jep387-all.patch
+rev <a href="https://bugs.openjdk.java.net/browse/JDK-60812">60812</a> : [mq]: diff1</pre>
+        <pre>
+<hr /><span class="oldmarker">*** 27,50 ****</span>
+  #include "aot/aotLoader.hpp"
+  #include "gc/shared/collectedHeap.hpp"
+  #include "logging/log.hpp"
+  #include "logging/logStream.hpp"
+  #include "memory/filemap.hpp"
+  #include "memory/metaspace.hpp"
+  #include "memory/metaspaceShared.hpp"
+  #include "memory/metaspaceTracer.hpp"
+<span class="removed">- #include "memory/metaspace/chunkHeaderPool.hpp"</span>
+<span class="removed">- #include "memory/metaspace/chunkManager.hpp"</span>
+<span class="removed">- #include "memory/metaspace/commitLimiter.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metaspaceCommon.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metaspaceContext.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metaspaceEnums.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metaspaceReport.hpp"</span>
+<span class="removed">- #include "memory/metaspace/metaspaceSizesSnapshot.hpp"</span>
+<span class="removed">- #include "memory/metaspace/runningCounters.hpp"</span>
+<span class="removed">- #include "memory/metaspace/settings.hpp"</span>
+<span class="removed">- #include "memory/metaspace/virtualSpaceList.hpp"</span>
+  #include "memory/universe.hpp"
+  #include "oops/compressedOops.hpp"
+  #include "runtime/atomic.hpp"
+  #include "runtime/init.hpp"
+  #include "runtime/java.hpp"
+<span class="newmarker">--- 27,49 ----</span>
+  #include "aot/aotLoader.hpp"
+  #include "gc/shared/collectedHeap.hpp"
+  #include "logging/log.hpp"
+  #include "logging/logStream.hpp"
+  #include "memory/filemap.hpp"
+<span class="new">+ #include "memory/metaspace/metaspaceSizesSnapshot.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msChunkHeaderPool.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msChunkManager.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msCommitLimiter.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msCommon.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msContext.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msReport.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msRunningCounters.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msSettings.hpp"</span>
+<span class="new">+ #include "memory/metaspace/msVirtualSpaceList.hpp"</span>
+  #include "memory/metaspace.hpp"
+  #include "memory/metaspaceShared.hpp"
+  #include "memory/metaspaceTracer.hpp"
+  #include "memory/universe.hpp"
+  #include "oops/compressedOops.hpp"
+  #include "runtime/atomic.hpp"
+  #include "runtime/init.hpp"
+  #include "runtime/java.hpp"
+<hr /><span class="oldmarker">*** 66,92 ****</span>
+  size_t MetaspaceUtils::used_words() {
+    return RunningCounters::used_words();
+  }
+  
+  size_t MetaspaceUtils::used_words(Metaspace::MetadataType mdtype) {
+<span class="changed">!   return metaspace::is_class(mdtype) ? RunningCounters::used_words_class() : RunningCounters::used_words_nonclass();</span>
+  }
+  
+  size_t MetaspaceUtils::reserved_words() {
+    return RunningCounters::reserved_words();
+  }
+  
+  size_t MetaspaceUtils::reserved_words(Metaspace::MetadataType mdtype) {
+<span class="changed">!   return metaspace::is_class(mdtype) ? RunningCounters::reserved_words_class() : RunningCounters::reserved_words_nonclass();</span>
+  }
+  
+  size_t MetaspaceUtils::committed_words() {
+    return RunningCounters::committed_words();
+  }
+  
+  size_t MetaspaceUtils::committed_words(Metaspace::MetadataType mdtype) {
+<span class="changed">!   return metaspace::is_class(mdtype) ? RunningCounters::committed_words_class() : RunningCounters::committed_words_nonclass();</span>
+  }
+  
+  
+  
+  void MetaspaceUtils::print_metaspace_change(const metaspace::MetaspaceSizesSnapshot&amp; pre_meta_values) {
+<span class="newmarker">--- 65,91 ----</span>
+  size_t MetaspaceUtils::used_words() {
+    return RunningCounters::used_words();
+  }
+  
+  size_t MetaspaceUtils::used_words(Metaspace::MetadataType mdtype) {
+<span class="changed">!   return Metaspace::is_class_space_allocation(mdtype) ? RunningCounters::used_words_class() : RunningCounters::used_words_nonclass();</span>
+  }
+  
+  size_t MetaspaceUtils::reserved_words() {
+    return RunningCounters::reserved_words();
+  }
+  
+  size_t MetaspaceUtils::reserved_words(Metaspace::MetadataType mdtype) {
+<span class="changed">!   return Metaspace::is_class_space_allocation(mdtype) ? RunningCounters::reserved_words_class() : RunningCounters::reserved_words_nonclass();</span>
+  }
+  
+  size_t MetaspaceUtils::committed_words() {
+    return RunningCounters::committed_words();
+  }
+  
+  size_t MetaspaceUtils::committed_words(Metaspace::MetadataType mdtype) {
+<span class="changed">!   return Metaspace::is_class_space_allocation(mdtype) ? RunningCounters::committed_words_class() : RunningCounters::committed_words_nonclass();</span>
+  }
+  
+  
+  
+  void MetaspaceUtils::print_metaspace_change(const metaspace::MetaspaceSizesSnapshot&amp; pre_meta_values) {
+<hr /><span class="oldmarker">*** 141,153 ****</span>
+  // Optional parts can be enabled via flags.
+  // Function will walk the CLDG and will lock the expand lock; if that is not
+  // convenient, use print_basic_report() instead.
+  void MetaspaceUtils::print_report(outputStream* out, size_t scale) {
+    const int flags =
+<span class="changed">!       MetaspaceReporter::rf_show_loaders |</span>
+<span class="changed">!       MetaspaceReporter::rf_break_down_by_chunktype |</span>
+<span class="changed">!       MetaspaceReporter::rf_show_classes;</span>
+    MetaspaceReporter::print_report(out, scale, flags);
+  }
+  
+  void MetaspaceUtils::print_on(outputStream* out) {
+  
+<span class="newmarker">--- 140,152 ----</span>
+  // Optional parts can be enabled via flags.
+  // Function will walk the CLDG and will lock the expand lock; if that is not
+  // convenient, use print_basic_report() instead.
+  void MetaspaceUtils::print_report(outputStream* out, size_t scale) {
+    const int flags =
+<span class="changed">!       (int)MetaspaceReporter::Option::ShowLoaders |</span>
+<span class="changed">!       (int)MetaspaceReporter::Option::BreakDownByChunkType |</span>
+<span class="changed">!       (int)MetaspaceReporter::Option::ShowClasses;</span>
+    MetaspaceReporter::print_report(out, scale, flags);
+  }
+  
+  void MetaspaceUtils::print_on(outputStream* out) {
+  
+<hr /><span class="oldmarker">*** 172,202 ****</span>
+                    reserved_bytes(ct)/K);
+    }
+  }
+  
+  #ifdef ASSERT
+<span class="changed">! void MetaspaceUtils::verify(bool slow) {</span>
+    if (Metaspace::initialized()) {
+  
+      // Verify non-class chunkmanager...
+      ChunkManager* cm = ChunkManager::chunkmanager_nonclass();
+<span class="changed">!     cm-&gt;verify(slow);</span>
+  
+      // ... and space list.
+      VirtualSpaceList* vsl = VirtualSpaceList::vslist_nonclass();
+<span class="changed">!     vsl-&gt;verify(slow);</span>
+  
+      if (Metaspace::using_class_space()) {
+        // If we use compressed class pointers, verify class chunkmanager...
+        cm = ChunkManager::chunkmanager_class();
+<span class="changed">!       assert(cm != NULL, "Sanity");</span>
+<span class="changed">!       cm-&gt;verify(slow);</span>
+  
+        // ... and class spacelist.
+<span class="changed">!       VirtualSpaceList* vsl = VirtualSpaceList::vslist_nonclass();</span>
+<span class="changed">!       assert(vsl != NULL, "Sanity");</span>
+<span class="changed">!       vsl-&gt;verify(slow);</span>
+      }
+  
+    }
+  }
+  #endif
+<span class="newmarker">--- 171,199 ----</span>
+                    reserved_bytes(ct)/K);
+    }
+  }
+  
+  #ifdef ASSERT
+<span class="changed">! void MetaspaceUtils::verify() {</span>
+    if (Metaspace::initialized()) {
+  
+      // Verify non-class chunkmanager...
+      ChunkManager* cm = ChunkManager::chunkmanager_nonclass();
+<span class="changed">!     cm-&gt;verify();</span>
+  
+      // ... and space list.
+      VirtualSpaceList* vsl = VirtualSpaceList::vslist_nonclass();
+<span class="changed">!     vsl-&gt;verify();</span>
+  
+      if (Metaspace::using_class_space()) {
+        // If we use compressed class pointers, verify class chunkmanager...
+        cm = ChunkManager::chunkmanager_class();
+<span class="changed">!       cm-&gt;verify();</span>
+  
+        // ... and class spacelist.
+<span class="changed">!       vsl = VirtualSpaceList::vslist_class();</span>
+<span class="changed">!       vsl-&gt;verify();</span>
+      }
+  
+    }
+  }
+  #endif
+<hr /><span class="oldmarker">*** 796,806 ****</span>
+    }
+  
+    assert(loader_data != NULL, "Should never pass around a NULL loader_data. "
+          "ClassLoaderData::the_null_class_loader_data() should have been used.");
+  
+<span class="changed">!   Metaspace::MetadataType mdtype = (type == MetaspaceObj::ClassType) ? Metaspace::ClassType : Metaspace::NonClassType;</span>
+  
+    // Try to allocate metadata.
+    MetaWord* result = loader_data-&gt;metaspace_non_null()-&gt;allocate(word_size, mdtype);
+  
+    if (result == NULL) {
+<span class="newmarker">--- 793,803 ----</span>
+    }
+  
+    assert(loader_data != NULL, "Should never pass around a NULL loader_data. "
+          "ClassLoaderData::the_null_class_loader_data() should have been used.");
+  
+<span class="changed">!   MetadataType mdtype = (type == MetaspaceObj::ClassType) ? ClassType : NonClassType;</span>
+  
+    // Try to allocate metadata.
+    MetaWord* result = loader_data-&gt;metaspace_non_null()-&gt;allocate(word_size, mdtype);
+  
+    if (result == NULL) {
+<hr /><span class="oldmarker">*** 841,851 ****</span>
+  
+    // If result is still null, we are out of memory.
+    Log(gc, metaspace, freelist, oom) log;
+    if (log.is_info()) {
+      log.info("Metaspace (%s) allocation failed for size " SIZE_FORMAT,
+<span class="changed">!              metaspace::is_class(mdtype) ? "class" : "data", word_size);</span>
+      ResourceMark rm;
+      if (log.is_debug()) {
+        if (loader_data-&gt;metaspace_or_null() != NULL) {
+          LogStream ls(log.debug());
+          loader_data-&gt;print_value_on(&amp;ls);
+<span class="newmarker">--- 838,848 ----</span>
+  
+    // If result is still null, we are out of memory.
+    Log(gc, metaspace, freelist, oom) log;
+    if (log.is_info()) {
+      log.info("Metaspace (%s) allocation failed for size " SIZE_FORMAT,
+<span class="changed">!              is_class_space_allocation(mdtype) ? "class" : "data", word_size);</span>
+      ResourceMark rm;
+      if (log.is_debug()) {
+        if (loader_data-&gt;metaspace_or_null() != NULL) {
+          LogStream ls(log.debug());
+          loader_data-&gt;print_value_on(&amp;ls);
+<hr /><span class="oldmarker">*** 854,873 ****</span>
+      LogStream ls(log.info());
+      // In case of an OOM, log out a short but still useful report.
+      MetaspaceUtils::print_basic_report(&amp;ls, 0);
+    }
+  
+<span class="changed">!   // Which limit did we hit? CompressedClassSpaceSize or MaxMetaspaceSize?</span>
+    bool out_of_compressed_class_space = false;
+<span class="changed">!   if (metaspace::is_class(mdtype)) {</span>
+      ClassLoaderMetaspace* metaspace = loader_data-&gt;metaspace_non_null();
+      out_of_compressed_class_space =
+        MetaspaceUtils::committed_bytes(Metaspace::ClassType) +
+<span class="removed">-       // TODO: Okay this is just cheesy.</span>
+<span class="removed">-       // Of course this may fail and return incorrect results.</span>
+<span class="removed">-       // Think this over - we need some clean way to remember which limit</span>
+<span class="removed">-       // exactly we hit during an allocation. Some sort of allocation context structure?</span>
+        align_up(word_size * BytesPerWord, 4 * M) &gt;
+        CompressedClassSpaceSize;
+    }
+  
+    // -XX:+HeapDumpOnOutOfMemoryError and -XX:OnOutOfMemoryError support
+<span class="newmarker">--- 851,866 ----</span>
+      LogStream ls(log.info());
+      // In case of an OOM, log out a short but still useful report.
+      MetaspaceUtils::print_basic_report(&amp;ls, 0);
+    }
+  
+<span class="changed">!   // TODO: this exception text may be wrong and misleading. This needs more thinking. See JDK-8252189.</span>
+    bool out_of_compressed_class_space = false;
+<span class="changed">!   if (is_class_space_allocation(mdtype)) {</span>
+      ClassLoaderMetaspace* metaspace = loader_data-&gt;metaspace_non_null();
+      out_of_compressed_class_space =
+        MetaspaceUtils::committed_bytes(Metaspace::ClassType) +
+        align_up(word_size * BytesPerWord, 4 * M) &gt;
+        CompressedClassSpaceSize;
+    }
+  
+    // -XX:+HeapDumpOnOutOfMemoryError and -XX:OnOutOfMemoryError support
+<hr /><span class="oldmarker">*** 891,900 ****</span>
+<span class="newmarker">--- 884,903 ----</span>
+    } else {
+      THROW_OOP(Universe::out_of_memory_error_metaspace());
+    }
+  }
+  
+<span class="new">+ const char* Metaspace::metadata_type_name(Metaspace::MetadataType mdtype) {</span>
+<span class="new">+   switch (mdtype) {</span>
+<span class="new">+     case Metaspace::ClassType: return "Class";</span>
+<span class="new">+     case Metaspace::NonClassType: return "Metadata";</span>
+<span class="new">+     default:</span>
+<span class="new">+       assert(false, "Got bad mdtype: %d", (int) mdtype);</span>
+<span class="new">+       return NULL;</span>
+<span class="new">+   }</span>
+<span class="new">+ }</span>
+<span class="new">+ </span>
+  void Metaspace::purge() {
+    ChunkManager* cm = ChunkManager::chunkmanager_nonclass();
+    if (cm != NULL) {
+      cm-&gt;purge();
+    }
+</pre>
+<center><a href='../../../../src/hotspot/share/jfr/recorder/checkpoint/types/jfrType.cpp.cdiff.html' target='_top'>&lt prev</a> <a href='../../../../index.html' target='_top'>index</a> <a href='../../../../src/hotspot/share/memory/metaspace.hpp.cdiff.html' target='_top'>next &gt</a></center>
+</body></html>
+

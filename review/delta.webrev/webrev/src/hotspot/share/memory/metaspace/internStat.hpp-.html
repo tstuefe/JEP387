@@ -1,0 +1,211 @@
+<?xml version="1.0"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head><meta charset="utf-8">
+<meta http-equiv="cache-control" content="no-cache" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="-1" />
+<!--
+   Note to customizers: the body of the webrev is IDed as SUNWwebrev
+   to allow easy overriding by users of webrev via the userContent.css
+   mechanism available in some browsers.
+
+   For example, to have all "removed" information be red instead of
+   brown, set a rule in your userContent.css file like:
+
+       body#SUNWwebrev span.removed { color: red ! important; }
+-->
+<style type="text/css" media="screen">
+body {
+    background-color: #eeeeee;
+}
+hr {
+    border: none 0;
+    border-top: 1px solid #aaa;
+    height: 1px;
+}
+div.summary {
+    font-size: .8em;
+    border-bottom: 1px solid #aaa;
+    padding-left: 1em;
+    padding-right: 1em;
+}
+div.summary h2 {
+    margin-bottom: 0.3em;
+}
+div.summary table th {
+    text-align: right;
+    vertical-align: top;
+    white-space: nowrap;
+}
+span.lineschanged {
+    font-size: 0.7em;
+}
+span.oldmarker {
+    color: red;
+    font-size: large;
+    font-weight: bold;
+}
+span.newmarker {
+    color: green;
+    font-size: large;
+    font-weight: bold;
+}
+span.removed {
+    color: brown;
+}
+span.changed {
+    color: blue;
+}
+span.new {
+    color: blue;
+    font-weight: bold;
+}
+a.print { font-size: x-small; }
+
+</style>
+
+<style type="text/css" media="print">
+pre { font-size: 0.8em; font-family: courier, monospace; }
+span.removed { color: #444; font-style: italic }
+span.changed { font-weight: bold; }
+span.new { font-weight: bold; }
+span.newmarker { font-size: 1.2em; font-weight: bold; }
+span.oldmarker { font-size: 1.2em; font-weight: bold; }
+a.print {display: none}
+hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
+</style>
+
+<title>Old src/hotspot/share/memory/metaspace/internStat.hpp</title>
+<body id="SUNWwebrev">
+<pre>
+   1 /*
+   2  * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
+   3  * Copyright (c) 2020 SAP SE. All rights reserved.
+   4  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+   5  *
+   6  * This code is free software; you can redistribute it and/or modify it
+   7  * under the terms of the GNU General Public License version 2 only, as
+   8  * published by the Free Software Foundation.
+   9  *
+  10  * This code is distributed in the hope that it will be useful, but WITHOUT
+  11  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  12  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+  13  * version 2 for more details (a copy is included in the LICENSE file that
+  14  * accompanied this code).
+  15  *
+  16  * You should have received a copy of the GNU General Public License version
+  17  * 2 along with this work; if not, write to the Free Software Foundation,
+  18  * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+  19  *
+  20  * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+  21  * or visit www.oracle.com if you need additional information or have any
+  22  * questions.
+  23  *
+  24  */
+  25 
+  26 #ifndef SHARE_MEMORY_METASPACE_INTERNSTAT_HPP
+  27 #define SHARE_MEMORY_METASPACE_INTERNSTAT_HPP
+  28 
+  29 #include "memory/allocation.hpp"
+  30 #include "runtime/atomic.hpp"
+  31 #include "utilities/globalDefinitions.hpp"
+  32 
+  33 class outputStream;
+  34 
+  35 namespace metaspace {
+  36 
+  37 
+  38 // These are some counters useful for debugging and analyzing Metaspace problems.
+  39 // They get printed as part of the Metaspace report (e.g. via jcmd VM.metaspace)
+  40 
+  41 class InternalStats : public AllStatic {
+  42 
+  43   // Note: all counters which are modified on the classloader local allocation path
+  44   //   (not under ExpandLock protection) have to be atomic.
+  45 
+  46 #define ALL_MY_COUNTERS(x, x_atomic)                \
+  47                                                     \
+  48   /* Number of allocations. */                      \
+  49   DEBUG_ONLY(x_atomic(num_allocs))                  \
+  50                                                     \
+  51   /* Number of external deallocations */            \
+  52   /* (excluding retired chunk remains) */           \
+  53         DEBUG_ONLY(x_atomic(num_deallocs))                \
+  54                                                     \
+  55   /* Number of times an allocation was satisfied */ \
+  56   /*  from deallocated blocks. */                   \
+  57   DEBUG_ONLY(x_atomic(num_allocs_from_deallocated_blocks)) \
+  58                                                     \
+  59   /* Number of times an arena retired a chunk */    \
+  60   DEBUG_ONLY(x_atomic(num_chunks_retired))          \
+  61                                                     \
+  62   /* Number of times an allocation failed */        \
+  63   /*  because we hit a limit. */                    \
+  64   x_atomic(num_allocs_failed_limit)                 \
+  65                                                     \
+  66   /* Number of times an arena was born ... */       \
+  67         x_atomic(num_arena_births)                        \
+  68   /* ... and died. */                               \
+  69         x_atomic(num_arena_deaths)                        \
+  70                                                     \
+  71   /* Number of times VirtualSpaceNode were */       \
+  72   /*  born...  */                                   \
+  73   x(num_vsnodes_births)                             \
+  74   /* ... and died. */                               \
+  75   x(num_vsnodes_deaths)                             \
+  76                                                     \
+  77   /* Number of times we committed space. */         \
+  78   x(num_space_committed)                            \
+  79   /* Number of times we uncommitted space. */       \
+  80   x(num_space_uncommitted)                          \
+  81                                                     \
+  82   /* Number of times a chunk was returned to the */ \
+  83   /*  freelist (external only). */                  \
+  84   x(num_chunks_returned_to_freelist)                \
+  85   /* Number of times a chunk was taken from */      \
+  86   /*  freelist (external only) */                   \
+  87   x(num_chunks_taken_from_freelist)                 \
+  88                                                     \
+  89   /* Number of successful chunk merges */           \
+  90   x(num_chunk_merges)                               \
+  91   /* Number of chunk splits */                      \
+  92   x(num_chunk_splits)                               \
+  93   /* Number of chunk in place enlargements */       \
+  94   x(num_chunks_enlarged)                            \
+  95                                                     \
+  96   /* Number of times we did a purge */              \
+  97   x(num_purges)                                     \
+  98 
+  99 
+ 100 #define DEFINE_COUNTER(name)          static uint64_t _##name;
+ 101 #define DEFINE_ATOMIC_COUNTER(name)   static volatile uint64_t _##name;
+ 102   ALL_MY_COUNTERS(DEFINE_COUNTER, DEFINE_ATOMIC_COUNTER)
+ 103 #undef DEFINE_COUNTER
+ 104 #undef DEFINE_ATOMIC_COUNTER
+ 105 
+ 106 public:
+ 107 
+ 108 // incrementors
+ 109 #define INCREMENTOR(name)           static void inc_##name() { _##name ++; }
+ 110 #define INCREMENTOR_ATOMIC(name)    static void inc_##name() { Atomic::inc(&amp;_##name); }
+ 111   ALL_MY_COUNTERS(INCREMENTOR, INCREMENTOR_ATOMIC)
+ 112 #undef INCREMENTOR
+ 113 #undef INCREMENTOR_ATOMIC
+ 114 
+ 115 // getters
+ 116 #define GETTER(name)                static uint64_t name() { return _##name; }
+ 117   ALL_MY_COUNTERS(GETTER, GETTER)
+ 118 #undef GETTER
+ 119 
+ 120 
+ 121   static void print_on(outputStream* st);
+ 122 
+ 123 
+ 124 };
+ 125 
+ 126 } // namespace metaspace
+ 127 
+ 128 #endif // SHARE_MEMORY_METASPACE_INTERNSTAT_HPP
+</pre></body></html>

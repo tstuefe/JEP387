@@ -159,41 +159,45 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   77   CommitLimiter _commit_limiter;
   78   SizeAtomicCounter _used_words_counter;
   79 
-  80 public:
-  81 
-  82   // Note: limit == 0 means unlimited
-  83   // Reserve limit &gt; 0 simulates a non-expandable VirtualSpaceList (like CompressedClassSpace)
-  84   // Commit limit &gt; 0 simulates a limit to max commitable space (like MaxMetaspaceSize)
-  85   MetaspaceTestContext(const char* name, size_t commit_limit = 0, size_t reserve_limit = 0);
-  86   ~MetaspaceTestContext();
-  87 
-  88   // Create an arena, feeding off this area.
-  89   MetaspaceTestArena* create_arena(Metaspace::MetaspaceType type);
-  90 
-  91   void purge_area();
-  92 
-  93   // Accessors
-  94   const CommitLimiter&amp; commit_limiter() const { return _commit_limiter; }
-  95   const VirtualSpaceList&amp; vslist() const      { return *(_context-&gt;vslist()); }
-  96   ChunkManager&amp; cm()                          { return *(_context-&gt;cm()); }
-  97 
-  98   // Returns reserve- and commit limit we run the test with (in the real world,
-  99   // these would be equivalent to CompressedClassSpaceSize resp MaxMetaspaceSize)
- 100   size_t reserve_limit() const    { return _reserve_limit == 0 ? max_uintx : 0; }
- 101   size_t commit_limit() const     { return _commit_limit == 0 ? max_uintx : 0; }
- 102 
- 103   // Convenience function to retrieve total committed/used words
- 104   size_t used_words() const       { return _used_words_counter.get(); }
- 105   size_t committed_words() const  { return _commit_limiter.committed_words(); }
+  80   // For non-expandable contexts we keep track of the space
+  81   // and delete it at destruction time.
+  82   ReservedSpace _rs;
+  83 
+  84 public:
+  85 
+  86   // Note: limit == 0 means unlimited
+  87   // Reserve limit &gt; 0 simulates a non-expandable VirtualSpaceList (like CompressedClassSpace)
+  88   // Commit limit &gt; 0 simulates a limit to max commitable space (like MaxMetaspaceSize)
+  89   MetaspaceTestContext(const char* name, size_t commit_limit = 0, size_t reserve_limit = 0);
+  90   ~MetaspaceTestContext();
+  91 
+  92   // Create an arena, feeding off this area.
+  93   MetaspaceTestArena* create_arena(Metaspace::MetaspaceType type);
+  94 
+  95   void purge_area();
+  96 
+  97   // Accessors
+  98   const CommitLimiter&amp; commit_limiter() const { return _commit_limiter; }
+  99   const VirtualSpaceList&amp; vslist() const      { return *(_context-&gt;vslist()); }
+ 100   ChunkManager&amp; cm()                          { return *(_context-&gt;cm()); }
+ 101 
+ 102   // Returns reserve- and commit limit we run the test with (in the real world,
+ 103   // these would be equivalent to CompressedClassSpaceSize resp MaxMetaspaceSize)
+ 104   size_t reserve_limit() const    { return _reserve_limit == 0 ? max_uintx : 0; }
+ 105   size_t commit_limit() const     { return _commit_limit == 0 ? max_uintx : 0; }
  106 
- 107   DEBUG_ONLY(void verify() const;)
- 108 
- 109   void print_on(outputStream* st) const;
+ 107   // Convenience function to retrieve total committed/used words
+ 108   size_t used_words() const       { return _used_words_counter.get(); }
+ 109   size_t committed_words() const  { return _commit_limiter.committed_words(); }
  110 
- 111 };
+ 111   DEBUG_ONLY(void verify() const;)
  112 
- 113 } // namespace metaspace
+ 113   void print_on(outputStream* st) const;
  114 
- 115 #endif // SHARE_MEMORY_METASPACE_MSTESTHELPERS_HPP
+ 115 };
  116 
+ 117 } // namespace metaspace
+ 118 
+ 119 #endif // SHARE_MEMORY_METASPACE_MSTESTHELPERS_HPP
+ 120 
 </pre></body></html>

@@ -1,0 +1,217 @@
+--- old/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp	2020-09-04 13:57:31.057222482 +0200
++++ new/test/hotspot/gtest/metaspace/test_virtualspacenode.cpp	2020-09-04 13:57:30.797220770 +0200
+@@ -1,6 +1,6 @@
+ /*
+- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+- * Copyright (c) 2018, 2020 SAP SE. All rights reserved.
++ * Copyright (c) 2020, Oracle and/or its affiliates. All rights reserved.
++ * Copyright (c) 2020 SAP SE. All rights reserved.
+  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+  *
+  * This code is free software; you can redistribute it and/or modify it
+@@ -25,14 +25,29 @@
+ 
+ #include "precompiled.hpp"
+ 
+- #define LOG_PLEASE
+-
+-#include "metaspace/metaspaceTestsCommon.hpp"
+-#include "metaspace/metaspace_rangehelpers.hpp"
+-
+-static int test_node_id = 100000; // start high to make it stick out in logs.
+-
+-
++#include "memory/metaspace/msChunklevel.hpp"
++#include "memory/metaspace/msCommitLimiter.hpp"
++#include "memory/metaspace/msCounter.hpp"
++#include "memory/metaspace/msFreeChunkList.hpp"
++#include "memory/metaspace/msMetachunk.hpp"
++#include "memory/metaspace/msMetachunkList.hpp"
++#include "memory/metaspace/msSettings.hpp"
++#include "memory/metaspace/msVirtualSpaceNode.hpp"
++#include "runtime/mutexLocker.hpp"
++#include "utilities/debug.hpp"
++
++//#define LOG_PLEASE
++#include "metaspaceGtestCommon.hpp"
++#include "metaspaceGtestRangeHelpers.hpp"
++
++using metaspace::chunklevel_t;
++using metaspace::CommitLimiter;
++using metaspace::FreeChunkListVector;
++using metaspace::Metachunk;
++using metaspace::MetachunkList;
++using metaspace::VirtualSpaceNode;
++using metaspace::Settings;
++using metaspace::SizeCounter;
+ 
+ class VirtualSpaceNodeTest {
+ 
+@@ -68,7 +83,7 @@
+   void lock_and_verify_node() {
+ #ifdef ASSERT
+     MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+-    _node->verify_locked(true);
++    _node->verify_locked();
+ #endif
+   }
+ 
+@@ -91,7 +106,7 @@
+ 
+     } else {
+ 
+-      DEBUG_ONLY(c->verify(true);)
++      DEBUG_ONLY(c->verify();)
+       EXPECT_NOT_NULL(c);
+       EXPECT_TRUE(c->is_root_chunk());
+       EXPECT_TRUE(c->is_free());
+@@ -120,7 +135,7 @@
+     bool rc = c->ensure_committed(request_commit_words);
+ 
+     verify();
+-    DEBUG_ONLY(c->verify(true);)
++    DEBUG_ONLY(c->verify();)
+ 
+     lock_and_verify_node();
+ 
+@@ -162,7 +177,7 @@
+ 
+     c->uncommit();
+ 
+-    DEBUG_ONLY(c->verify(true);)
++    DEBUG_ONLY(c->verify();)
+ 
+     lock_and_verify_node();
+ 
+@@ -192,7 +207,7 @@
+ 
+   Metachunk* split_chunk_with_checks(Metachunk* c, chunklevel_t target_level, FreeChunkListVector* freelist) {
+ 
+-    DEBUG_ONLY(c->verify(true);)
++    DEBUG_ONLY(c->verify();)
+ 
+     const chunklevel_t orig_level = c->level();
+     assert(orig_level < target_level, "Sanity");
+@@ -219,9 +234,9 @@
+     // buddy chunk to appear of level + 1 (aka, half size).
+     size_t expected_wordsize_increase = 0;
+     int expected_num_chunks_increase = 0;
+-    for (chunklevel_t l = orig_level + 1; l <= target_level; l ++) {
++    for (chunklevel_t l = orig_level + 1; l <= target_level; l++) {
+       expected_wordsize_increase += metaspace::chunklevel::word_size_for_level(l);
+-      expected_num_chunks_increase ++;
++      expected_num_chunks_increase++;
+     }
+ 
+     const int total_num_chunks_in_freelist_after = freelist->num_chunks();
+@@ -234,7 +249,6 @@
+ 
+   } // end: split_chunk_with_checks
+ 
+-
+   Metachunk* merge_chunk_with_checks(Metachunk* c, chunklevel_t expected_target_level, FreeChunkListVector* freelist) {
+ 
+     const chunklevel_t orig_level = c->level();
+@@ -261,7 +275,7 @@
+     int expected_num_chunks_decrease = 0;
+     for (chunklevel_t l = orig_level; l > expected_target_level; l --) {
+       expected_wordsize_decrease += metaspace::chunklevel::word_size_for_level(l);
+-      expected_num_chunks_decrease ++;
++      expected_num_chunks_decrease++;
+     }
+ 
+     const int total_num_chunks_in_freelist_after = freelist->num_chunks();
+@@ -338,7 +352,7 @@
+     TestMap testmap(c->word_size());
+     assert(testmap.get_num_set() == 0, "Sanity");
+ 
+-    for (int run = 0; run < 1000; run ++) {
++    for (int run = 0; run < 1000; run++) {
+ 
+       const size_t committed_words_before = testmap.get_num_set();
+       ASSERT_EQ(_commit_limiter.committed_words(), committed_words_before);
+@@ -420,7 +434,7 @@
+ 
+     const int granules_per_root_chunk = (int)(c->word_size() / Settings::commit_granule_words());
+ 
+-    for (int granules_to_commit = 0; granules_to_commit < granules_per_root_chunk; granules_to_commit ++) {
++    for (int granules_to_commit = 0; granules_to_commit < granules_per_root_chunk; granules_to_commit++) {
+ 
+       const size_t words_to_commit = Settings::commit_granule_words() * granules_to_commit;
+ 
+@@ -435,7 +449,7 @@
+       verify();
+ 
+       for (chunklevel_t target_level = LOWEST_CHUNK_LEVEL + 1;
+-           target_level <= HIGHEST_CHUNK_LEVEL; target_level ++) {
++           target_level <= HIGHEST_CHUNK_LEVEL; target_level++) {
+ 
+         // Split:
+         Metachunk* c2 = split_chunk_with_checks(c, target_level, &freelist);
+@@ -471,13 +485,8 @@
+ 
+   } // end: test_splitting_chunks
+ 
+-
+-
+-
+ };
+ 
+-
+-
+ TEST_VM(metaspace, virtual_space_node_test_basics) {
+ 
+   MutexLocker fcl(MetaspaceExpand_lock, Mutex::_no_safepoint_check_flag);
+@@ -492,19 +501,19 @@
+   ASSERT_NOT_NULL(node);
+   ASSERT_EQ(node->committed_words(), (size_t)0);
+   ASSERT_EQ(node->committed_words(), scomm.get());
+-  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
+ 
+   bool b = node->ensure_range_is_committed(node->base(), node->word_size());
+   ASSERT_TRUE(b);
+   ASSERT_EQ(node->committed_words(), word_size);
+   ASSERT_EQ(node->committed_words(), scomm.get());
+-  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
+   zap_range(node->base(), node->word_size());
+ 
+   node->uncommit_range(node->base(), node->word_size());
+   ASSERT_EQ(node->committed_words(), (size_t)0);
+   ASSERT_EQ(node->committed_words(), scomm.get());
+-  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
+ 
+   const int num_granules = (int)(word_size / Settings::commit_granule_words());
+   for (int i = 1; i < num_granules; i += 4) {
+@@ -512,18 +521,17 @@
+     ASSERT_TRUE(b);
+     ASSERT_EQ(node->committed_words(), i * Settings::commit_granule_words());
+     ASSERT_EQ(node->committed_words(), scomm.get());
+-    DEBUG_ONLY(node->verify_locked(true);)
++    DEBUG_ONLY(node->verify_locked();)
+     zap_range(node->base(), i * Settings::commit_granule_words());
+   }
+ 
+   node->uncommit_range(node->base(), node->word_size());
+   ASSERT_EQ(node->committed_words(), (size_t)0);
+   ASSERT_EQ(node->committed_words(), scomm.get());
+-  DEBUG_ONLY(node->verify_locked(true);)
++  DEBUG_ONLY(node->verify_locked();)
+ 
+ }
+ 
+-
+ // Note: we unfortunately need TEST_VM even though the system tested
+ // should be pretty independent since we need things like os::vm_page_size()
+ // which in turn need OS layer initialization.
+@@ -544,7 +552,7 @@
+ TEST_VM(metaspace, virtual_space_node_test_3) {
+   double d = os::elapsedTime();
+   // Test committing uncommitting arbitrary ranges
+-  for (int run = 0; run < 100; run ++) {
++  for (int run = 0; run < 100; run++) {
+     VirtualSpaceNodeTest test(metaspace::chunklevel::MAX_CHUNK_WORD_SIZE,
+         metaspace::chunklevel::MAX_CHUNK_WORD_SIZE);
+     test.test_split_and_merge_chunks();
