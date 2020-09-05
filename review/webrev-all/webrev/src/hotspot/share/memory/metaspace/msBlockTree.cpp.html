@@ -116,173 +116,176 @@ hr { border: none 0; border-top: 1px solid #aaa; height: 1px; }
   34 
   35 namespace metaspace {
   36 
-  37 #ifdef ASSERT
-  38 
-  39 // Tree verification
-  40 
-  41 // These asserts prints the tree, then asserts
-  42 #define assrt(cond, format, ...) \
-  43   do { \
-  44     if (!(cond)) { \
-  45       print_tree(tty); \
-  46       assert(cond, format, __VA_ARGS__); \
-  47     } \
-  48   } while(0)
-  49 
-  50   // This assert prints the tree, then stops (generic message)
-  51 #define assrt0(cond) \
-  52   do { \
-  53     if (!(cond)) { \
-  54       print_tree(tty); \
-  55       assert(cond, "sanity"); \
-  56     } \
-  57   } while(0)
-  58 
-  59 
-  60 
-  61 // walkinfo keeps a node plus the size corridor it and its children
-  62 //  are supposed to be in.
-  63 struct BlockTree::walkinfo {
-  64   BlockTree::Node* n;
-  65   int depth;
-  66   size_t lim1; // (
-  67   size_t lim2; // )
-  68 };
-  69 
-  70 void BlockTree::verify() const {
-  71 
-  72   // Traverse the tree and test that all nodes are in the correct order.
-  73 
-  74   MemRangeCounter counter;
-  75   int longest_edge = 0;
+  37 // Needed to prevent linker errors on MacOS and AIX
+  38 const size_t BlockTree::MinWordSize;
+  39 
+  40 #ifdef ASSERT
+  41 
+  42 // Tree verification
+  43 
+  44 // These asserts prints the tree, then asserts
+  45 #define assrt(cond, format, ...) \
+  46   do { \
+  47     if (!(cond)) { \
+  48       print_tree(tty); \
+  49       assert(cond, format, __VA_ARGS__); \
+  50     } \
+  51   } while(0)
+  52 
+  53   // This assert prints the tree, then stops (generic message)
+  54 #define assrt0(cond) \
+  55   do { \
+  56     if (!(cond)) { \
+  57       print_tree(tty); \
+  58       assert(cond, "sanity"); \
+  59     } \
+  60   } while(0)
+  61 
+  62 
+  63 
+  64 // walkinfo keeps a node plus the size corridor it and its children
+  65 //  are supposed to be in.
+  66 struct BlockTree::walkinfo {
+  67   BlockTree::Node* n;
+  68   int depth;
+  69   size_t lim1; // (
+  70   size_t lim2; // )
+  71 };
+  72 
+  73 void BlockTree::verify() const {
+  74 
+  75   // Traverse the tree and test that all nodes are in the correct order.
   76 
-  77   if (_root != NULL) {
-  78 
-  79     ResourceMark rm;
-  80 
-  81     GrowableArray&lt;walkinfo&gt; stack;
-  82 
-  83     walkinfo info;
-  84     info.n = _root;
-  85     info.lim1 = 0;
-  86     info.lim2 = SIZE_MAX;
-  87     info.depth = 0;
-  88 
-  89     stack.push(info);
-  90 
-  91     while (stack.length() &gt; 0) {
-  92 
-  93       info = stack.pop();
-  94       const Node* n = info.n;
+  77   MemRangeCounter counter;
+  78   int longest_edge = 0;
+  79 
+  80   if (_root != NULL) {
+  81 
+  82     ResourceMark rm;
+  83 
+  84     GrowableArray&lt;walkinfo&gt; stack;
+  85 
+  86     walkinfo info;
+  87     info.n = _root;
+  88     info.lim1 = 0;
+  89     info.lim2 = SIZE_MAX;
+  90     info.depth = 0;
+  91 
+  92     stack.push(info);
+  93 
+  94     while (stack.length() &gt; 0) {
   95 
-  96       // Assume a (ridiculously large) edge limit to catch cases
-  97       //  of badly degenerated or circular trees.
-  98       assrt0(info.depth &lt; 10000);
-  99 
- 100       counter.add(n-&gt;_word_size);
- 101 
- 102       // Verify node.
- 103       if (n == _root) {
- 104         assrt0(n-&gt;_parent == NULL);
- 105       } else {
- 106         assrt0(n-&gt;_parent != NULL);
- 107       }
- 108 
- 109       // check size and ordering
- 110       assrt(n-&gt;_word_size &gt;= MinWordSize, "bad node size " SIZE_FORMAT, n-&gt;_word_size);
- 111       assrt0(n-&gt;_word_size &gt; info.lim1);
- 112       assrt0(n-&gt;_word_size &lt; info.lim2);
- 113 
- 114       // Check children
- 115       if (n-&gt;_left != NULL) {
- 116         assrt0(n-&gt;_left != n);
- 117         assrt0(n-&gt;_left-&gt;_parent == n);
- 118 
- 119         walkinfo info2;
- 120         info2.n = n-&gt;_left;
- 121         info2.lim1 = info.lim1;
- 122         info2.lim2 = n-&gt;_word_size;
- 123         info2.depth = info.depth + 1;
- 124         stack.push(info2);
- 125       }
- 126 
- 127       if (n-&gt;_right != NULL) {
- 128         assrt0(n-&gt;_right != n);
- 129         assrt0(n-&gt;_right-&gt;_parent == n);
- 130 
- 131         walkinfo info2;
- 132         info2.n = n-&gt;_right;
- 133         info2.lim1 = n-&gt;_word_size;
- 134         info2.lim2 = info.lim2;
- 135         info2.depth = info.depth + 1;
- 136         stack.push(info2);
- 137       }
- 138 
- 139       // If node has same-sized siblings check those too.
- 140       const Node* n2 = n-&gt;_next;
- 141       while (n2 != NULL) {
- 142         assrt0(n2 != n);
- 143         assrt0(n2-&gt;_word_size == n-&gt;_word_size);
- 144         counter.add(n2-&gt;_word_size);
- 145         n2 = n2-&gt;_next;
- 146       }
- 147     }
- 148   }
- 149 
- 150   // At the end, check that counters match
- 151   _counter.check(counter);
+  96       info = stack.pop();
+  97       const Node* n = info.n;
+  98 
+  99       // Assume a (ridiculously large) edge limit to catch cases
+ 100       //  of badly degenerated or circular trees.
+ 101       assrt0(info.depth &lt; 10000);
+ 102 
+ 103       counter.add(n-&gt;_word_size);
+ 104 
+ 105       // Verify node.
+ 106       if (n == _root) {
+ 107         assrt0(n-&gt;_parent == NULL);
+ 108       } else {
+ 109         assrt0(n-&gt;_parent != NULL);
+ 110       }
+ 111 
+ 112       // check size and ordering
+ 113       assrt(n-&gt;_word_size &gt;= MinWordSize, "bad node size " SIZE_FORMAT, n-&gt;_word_size);
+ 114       assrt0(n-&gt;_word_size &gt; info.lim1);
+ 115       assrt0(n-&gt;_word_size &lt; info.lim2);
+ 116 
+ 117       // Check children
+ 118       if (n-&gt;_left != NULL) {
+ 119         assrt0(n-&gt;_left != n);
+ 120         assrt0(n-&gt;_left-&gt;_parent == n);
+ 121 
+ 122         walkinfo info2;
+ 123         info2.n = n-&gt;_left;
+ 124         info2.lim1 = info.lim1;
+ 125         info2.lim2 = n-&gt;_word_size;
+ 126         info2.depth = info.depth + 1;
+ 127         stack.push(info2);
+ 128       }
+ 129 
+ 130       if (n-&gt;_right != NULL) {
+ 131         assrt0(n-&gt;_right != n);
+ 132         assrt0(n-&gt;_right-&gt;_parent == n);
+ 133 
+ 134         walkinfo info2;
+ 135         info2.n = n-&gt;_right;
+ 136         info2.lim1 = n-&gt;_word_size;
+ 137         info2.lim2 = info.lim2;
+ 138         info2.depth = info.depth + 1;
+ 139         stack.push(info2);
+ 140       }
+ 141 
+ 142       // If node has same-sized siblings check those too.
+ 143       const Node* n2 = n-&gt;_next;
+ 144       while (n2 != NULL) {
+ 145         assrt0(n2 != n);
+ 146         assrt0(n2-&gt;_word_size == n-&gt;_word_size);
+ 147         counter.add(n2-&gt;_word_size);
+ 148         n2 = n2-&gt;_next;
+ 149       }
+ 150     }
+ 151   }
  152 
- 153 }
- 154 
- 155 void BlockTree::zap_range(MetaWord* p, size_t word_size) {
- 156   memset(p, 0xF3, word_size * sizeof(MetaWord));
- 157 }
- 158 
- 159 #undef assrt
- 160 #undef assrt0
+ 153   // At the end, check that counters match
+ 154   _counter.check(counter);
+ 155 
+ 156 }
+ 157 
+ 158 void BlockTree::zap_range(MetaWord* p, size_t word_size) {
+ 159   memset(p, 0xF3, word_size * sizeof(MetaWord));
+ 160 }
  161 
- 162 void BlockTree::print_tree(outputStream* st) const {
- 163 
- 164   if (_root != NULL) {
- 165 
- 166     ResourceMark rm;
- 167 
- 168     GrowableArray&lt;walkinfo&gt; stack;
- 169 
- 170     walkinfo info;
- 171     info.n = _root;
- 172     info.depth = 0;
- 173 
- 174     stack.push(info);
- 175     while (stack.length() &gt; 0) {
- 176       info = stack.pop();
- 177       const Node* n = info.n;
- 178       // Print node.
- 179       for (int i = 0; i &lt; info.depth; i++) {
- 180          st-&gt;print("---");
- 181       }
- 182       st-&gt;print_cr("&lt;" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n-&gt;_word_size);
- 183       // Handle children.
- 184       if (n-&gt;_right != NULL) {
- 185         walkinfo info2;
- 186         info2.n = n-&gt;_right;
- 187         info2.depth = info.depth + 1;
- 188         stack.push(info2);
- 189       }
- 190       if (n-&gt;_left != NULL) {
- 191         walkinfo info2;
- 192         info2.n = n-&gt;_left;
- 193         info2.depth = info.depth + 1;
- 194         stack.push(info2);
- 195       }
- 196     }
- 197 
- 198   } else {
- 199     st-&gt;print_cr("&lt;no nodes&gt;");
- 200   }
- 201 }
- 202 
- 203 #endif // ASSERT
- 204 
- 205 } // namespace metaspace
+ 162 #undef assrt
+ 163 #undef assrt0
+ 164 
+ 165 void BlockTree::print_tree(outputStream* st) const {
+ 166 
+ 167   if (_root != NULL) {
+ 168 
+ 169     ResourceMark rm;
+ 170 
+ 171     GrowableArray&lt;walkinfo&gt; stack;
+ 172 
+ 173     walkinfo info;
+ 174     info.n = _root;
+ 175     info.depth = 0;
+ 176 
+ 177     stack.push(info);
+ 178     while (stack.length() &gt; 0) {
+ 179       info = stack.pop();
+ 180       const Node* n = info.n;
+ 181       // Print node.
+ 182       for (int i = 0; i &lt; info.depth; i++) {
+ 183          st-&gt;print("---");
+ 184       }
+ 185       st-&gt;print_cr("&lt;" PTR_FORMAT " (size " SIZE_FORMAT ")", p2i(n), n-&gt;_word_size);
+ 186       // Handle children.
+ 187       if (n-&gt;_right != NULL) {
+ 188         walkinfo info2;
+ 189         info2.n = n-&gt;_right;
+ 190         info2.depth = info.depth + 1;
+ 191         stack.push(info2);
+ 192       }
+ 193       if (n-&gt;_left != NULL) {
+ 194         walkinfo info2;
+ 195         info2.n = n-&gt;_left;
+ 196         info2.depth = info.depth + 1;
+ 197         stack.push(info2);
+ 198       }
+ 199     }
+ 200 
+ 201   } else {
+ 202     st-&gt;print_cr("&lt;no nodes&gt;");
+ 203   }
+ 204 }
+ 205 
+ 206 #endif // ASSERT
+ 207 
+ 208 } // namespace metaspace
 </pre></body></html>
