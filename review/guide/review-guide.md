@@ -1,3 +1,4 @@
+
 <!-- TOC -->
 
 - [1. Preface](#1-preface)
@@ -44,9 +45,18 @@
         - [4.1 Gtests](#41-gtests)
         - [4.2 jtreg tests](#42-jtreg-tests)
     - [5. Further information](#5-further-information)
+    - [6. Planned work after JEP387](#6-planned-work-after-jep387)
+    - [7 FAQ](#7-faq)
+        - [7.1 Why a buddy allocators? Why multiple chunk sizes?](#71-why-a-buddy-allocators-why-multiple-chunk-sizes)
 
 <!-- /TOC -->
 
+----------
+2020-09-04:
+ - extended section 3 "Locking and concurrency"
+ - added section 6 (planned work)
+ - added section 7 (faq)
+----------
 
 # 1. Preface
 
@@ -654,7 +664,7 @@ There is locking at class loader level (`ClassLoaderData::_metaspace_lock`) whic
 
 The moment central data structures are accessed (e.g. when memory needs to be committed, a new chunk allocated or returned to the freelist), a global lock is taken, the `MetaspaceExpand_lock`.
 
-(Note: in the future this lock may actually be changed to a lock local to the `MetaspaceContext`.)
+(Note: subject to change, see [JDK-8252132 "Investigate MetaspaceArena locking after JEP387"](https://bugs.openjdk.java.net/browse/JDK-8252132)
 
 ## 4. Tests
 
@@ -668,7 +678,6 @@ In `test/hotspot/gtest/metaspace` reside a large number of new tests. These are 
 
 Apart from the gtests, new jtreg have been written to stress test multithreaded allocation, deallocation and arena deletion. These tests live inside `test/hotspot/jtreg/runtime/Metaspace/elastic`. They use a newly introduced set of Whitebox APIs which allows for creation of metaspace contexts and metaspace arenas which are independent on the global Metaspace/class space. That allows for isolated testing without interfering with or getting interfered by global VM metaspace.
 
-
 ## 5. Further information
 
 Not vital for this review but may give more information.
@@ -680,5 +689,37 @@ Not vital for this review but may give more information.
 - A brief talk we gave at Fosdem 2020: https://www.youtube.com/watch?v=XqaQ-z70sQs 
 
 - A series of articles with a bit more depth describing the old Metaspace implementation: https://stuefe.de/posts/metaspace/what-is-metaspace 
+
+## 6. Planned work after JEP387
+
+These are planned improvements/cleanup work which will be done after JEP387 hits mainline.
+
+- [JDK-8251342 "Rework JFR metaspace free chunk statistics after JEP 387"](https://bugs.openjdk.java.net/browse/JDK-8251342)
+- [JDK-8251392 "Brush up and consolidate Metaspace statistics after JEP 387"](https://bugs.openjdk.java.net/browse/JDK-8251392)
+- [JDK-8252014 "Find a better place for counter utility classes after JEP387"](https://bugs.openjdk.java.net/browse/JDK-8252014)
+- [JDK-8252132 "Investigate MetaspaceArena locking after JEP387"](https://bugs.openjdk.java.net/browse/JDK-8252132)
+- [JDK-8252187 "Optimize freeblocks storage in MetaspaceArena after JEP387"](https://bugs.openjdk.java.net/browse/JDK-8252187)
+- [JDK-8252189 "Clarify meaning of OOM texts for out-of-metaspace errors"](https://bugs.openjdk.java.net/browse/JDK-8252189)
+
+## 7 FAQ
+
+### 7.1 Why a buddy allocators? Why multiple chunk sizes?
+
+__If we do now commit chunks on demand, why not just give a large chunk to every Arena and be done with it? Why do we need multiple chunk sizes, and a buddy allocator?__
+
+To have a truly uniform chunk size it would have to be large enough to contain every conceivable metaspace allocation. So, it should be a root chunk. So why not give each arena a root chunk, partly committed, and let them commit the space on demand?
+
+We'd run up a ridiculous process vsize. Let's say we have 10000 class loaders. With compressed class space active, we have 2 arenas per loader. A root chunk is 4MB in size, so we would use up ~82GB of address space for metaspace alone. Without compressed class space, we would still come to ~41GB. That would be impossible on 32bit. On 64bit, even though on most modern OSes vsize does not matter much we may still experience problems (confused users, running up against quotas/swap space etc).
+
+With 4MB root chunks one would quickly exhaust the compressed class space. When running with CompressedClassSpaceSize=1G (default), we'd have space enough for 256 root chunks. Assuming no arena ever wants a second chunk for class space allocation, that would mean we cannot have more than 256 loaders/CLDs.
+
+Each arena would use up a complete commit granule, which is by default 64K. That is a lot. Even if we shrink granule size to the lowest possible size - one 4K page on most platforms - we would still use up 4K per loader. This is still too much. The lowest chunk size is 1K for a reason, because there are loaders which never load more than one of two classes and therefore only ever load one or two Klass structure. A Klass structure, on 64bit platforms, comes to about 600-1000 bytes, therefore the smallest chunk size is 1K.
+
+In other words, chunks can be smaller than a commit granule because we may want to share a single granule among multiple loaders.
+
+Therefore we need multiple chunk sizes: small chunks to cut down on waste for small loaders, large chunks to hold large contiguous metaspace allocations, and to streamline allocation for large loaders. And once we have multiple chunk sizes we need to manage them when they are freed, and a buddy allocator is one of the simplest way to do so.
+
+
+
 
 

@@ -454,10 +454,24 @@ code {
 </ul>
 </li>
 <li><a href="#5-further-information">5. Further information</a></li>
+<li><a href="#6-planned-work-after-jep387">6. Planned work after JEP387</a></li>
+<li><a href="#7-faq">7 FAQ</a>
+<ul>
+<li><a href="#71-why-a-buddy-allocators-why-multiple-chunk-sizes">7.1 Why a buddy allocators? Why multiple chunk sizes?</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
 <!-- /TOC -->
+<hr>
+<p>2020-09-04:</p>
+<ul>
+<li>extended section 3 &quot;Locking and concurrency&quot;</li>
+<li>added section 6 (planned work)</li>
+<li>added section 7 (faq)</li>
+</ul>
+<hr>
 <h1 id="1-preface">1. Preface</h1>
 <p><em>(not as complicated as it looks!)</em></p>
 <p>JEP 387 &quot;Elastic Metaspace&quot; is the rewrite of the Metaspace allocator with the following goals:</p>
@@ -489,7 +503,7 @@ code {
 <p>Metaspace arenas are growable. Internally they are lists of variable-sized memory chunks, the <code>Metachunk</code>s. These are the unit of allocation from the lower levels. Arenas obtain these chunks from their respective metaspace context and return all chunks back to the context when they die.</p>
 <p>Chunks are variable power-of-two sized. Largest size is 4M (&quot;Root Chunk&quot;). Smallest size is 1K.</p>
 <p>Chunks are managed by a <a href="https://en.wikipedia.org/wiki/Buddy_memory_allocation">buddy allocator</a>. A buddy allocator is a simple old efficient algorithm useful to keep fragmentation at bay, at the cost of limiting the size of managed areas to power of two units. This restriction does not matter for Metaspace since the chunks are not the ultimate unit of allocation, just an intermediate.</p>
-<p>In code (see <code>chunklevel.hpp</code>), chunk size is given as &quot;chunk level&quot; (<code>typedef .. chklvl_t</code>). A root chunk - the largest chunk there is - has chunk level 0. The smallest chunk has chunk level 13. Helper functions and constants to work with chunk level can be found at chunk_level.hpp.</p>
+<p>In code (see <code>chunklevel.hpp</code>), chunk size is given as &quot;chunk level&quot; (<code>typedef .. chunklevel_t</code>). A root chunk - the largest chunk there is - has chunk level 0. The smallest chunk has chunk level 13. Helper functions and constants to work with chunk level can be found at chunk_level.hpp.</p>
 <h4 id="1221-merging-chunks">1.2.2.1. Merging chunks</h4>
 <p>A chunk is always part of a pair of chunks, unless the chunk is a root chunk. We call a chunk a &quot;leader&quot; if it is the first chunk (lower address) of the pair.</p>
 <pre class="hljs"><code><div>+-------------------+-------------------+
@@ -519,18 +533,34 @@ code {
        not free
 </div></code></pre>
 <h4 id="1222-splitting-chunks">1.2.2.2. Splitting chunks</h4>
-<p>To get a small chunk from a larger chunk, a large chunk can be split. Splitting always happens at pow2 sizes. A split operation yields the desired smaller chunk as well as splinter chunks.</p>
-<p>In this example, A is four times as big as the chunk we need, so we split it twice, arriving at the target chunk d1, and splinter chunks D2, C and B.</p>
-<pre class="hljs"><code><div>+---------------------------------------+
-|                   A                   |
-+---------------------------------------+
-                    |
-                    v
-+-------------------+-------------------+
-| d1 | D2 |    C    |         B         |
-+-------------------+-------------------+
-  ^
-  Result chunk
+<p>To get a small chunk from a larger chunk, a large chunk can be split. Splitting always happens at power-of-2 sizes (convention, followed by most implementations). A split operation yields the desired smaller chunk as well as splinter chunks.</p>
+<pre class="hljs"><code><div>Step
+     +---------------------------------------+
+ 0   |                   A                   |
+     +---------------------------------------+
+
+                         |
+                         v
+     +-------------------+-------------------+
+ 1   | d1 | D2 |    C    |         B         |
+     +-------------------+-------------------+
+       ^
+       Result chunk
+                         |
+                         v
+     +-------------------+-------------------+
+ 2   | d1 | d2 |    c    |         B         |
+     +-------------------+-------------------+
+            ^
+            Result chunk
+                         |
+                         v
+     +-------------------+-------------------+
+ 3   | d1 | d2 | c1 | C2 |         B         |
+     +-------------------+-------------------+
+                 ^
+                 Result chunk
+
 </div></code></pre>
 <h2 id="13-how-it-all-looks-in-memory">1.3 How it all looks in memory</h2>
 <pre class="hljs"><code><div> +------------------+ &lt;--- virtual memory region
@@ -857,7 +887,7 @@ base                           used_words          committed_words    end.
 <p>Locking in Elastic Metaspace is a simple a two-step mechanism which is unchanged from the old Metaspace.</p>
 <p>There is locking at class loader level (<code>ClassLoaderData::_metaspace_lock</code>) which guards access to the <code>ClassLoaderMetaspace</code>. Ideally the brunt of Metaspace allocations should only need this lock. It guards the access to the current chunk and the pointer bump allocation done with it.</p>
 <p>The moment central data structures are accessed (e.g. when memory needs to be committed, a new chunk allocated or returned to the freelist), a global lock is taken, the <code>MetaspaceExpand_lock</code>.</p>
-<p>(Note: in the future this lock may actually be changed to a lock local to the <code>MetaspaceContext</code>.)</p>
+<p>(Note: subject to change, see <a href="https://bugs.openjdk.java.net/browse/JDK-8252132">JDK-8252132 &quot;Investigate MetaspaceArena locking after JEP387&quot;</a></p>
 <h2 id="4-tests">4. Tests</h2>
 <p>A lot of tests have been written anew to test the Metaspace.</p>
 <h3 id="41-gtests">4.1 Gtests</h3>
@@ -880,6 +910,25 @@ base                           used_words          committed_words    end.
 <p>A series of articles with a bit more depth describing the old Metaspace implementation: https://stuefe.de/posts/metaspace/what-is-metaspace</p>
 </li>
 </ul>
+<h2 id="6-planned-work-after-jep387">6. Planned work after JEP387</h2>
+<p>These are planned improvements/cleanup work which will be done after JEP387 hits mainline.</p>
+<ul>
+<li><a href="https://bugs.openjdk.java.net/browse/JDK-8251342">JDK-8251342 &quot;Rework JFR metaspace free chunk statistics after JEP 387&quot;</a></li>
+<li><a href="https://bugs.openjdk.java.net/browse/JDK-8251392">JDK-8251392 &quot;Brush up and consolidate Metaspace statistics after JEP 387&quot;</a></li>
+<li><a href="https://bugs.openjdk.java.net/browse/JDK-8252014">JDK-8252014 &quot;Find a better place for counter utility classes after JEP387&quot;</a></li>
+<li><a href="https://bugs.openjdk.java.net/browse/JDK-8252132">JDK-8252132 &quot;Investigate MetaspaceArena locking after JEP387&quot;</a></li>
+<li><a href="https://bugs.openjdk.java.net/browse/JDK-8252187">JDK-8252187 &quot;Optimize freeblocks storage in MetaspaceArena after JEP387&quot;</a></li>
+<li><a href="https://bugs.openjdk.java.net/browse/JDK-8252189">JDK-8252189 &quot;Clarify meaning of OOM texts for out-of-metaspace errors&quot;</a></li>
+</ul>
+<h2 id="7-faq">7 FAQ</h2>
+<h3 id="71-why-a-buddy-allocators-why-multiple-chunk-sizes">7.1 Why a buddy allocators? Why multiple chunk sizes?</h3>
+<p><strong>If we do now commit chunks on demand, why not just give a large chunk to every Arena and be done with it? Why do we need multiple chunk sizes, and a buddy allocator?</strong></p>
+<p>To have a truly uniform chunk size it would have to be large enough to contain every conceivable metaspace allocation. So, it should be a root chunk. So why not give each arena a root chunk, partly committed, and let them commit the space on demand?</p>
+<p>We'd run up a ridiculous process vsize. Let's say we have 10000 class loaders. With compressed class space active, we have 2 arenas per loader. A root chunk is 4MB in size, so we would use up ~82GB of address space for metaspace alone. Without compressed class space, we would still come to ~41GB. That would be impossible on 32bit. On 64bit, even though on most modern OSes vsize does not matter much we may still experience problems (confused users, running up against quotas/swap space etc).</p>
+<p>With 4MB root chunks one would quickly exhaust the compressed class space. When running with CompressedClassSpaceSize=1G (default), we'd have space enough for 256 root chunks. Assuming no arena ever wants a second chunk for class space allocation, that would mean we cannot have more than 256 loaders/CLDs.</p>
+<p>Each arena would use up a complete commit granule, which is by default 64K. That is a lot. Even if we shrink granule size to the lowest possible size - one 4K page on most platforms - we would still use up 4K per loader. This is still too much. The lowest chunk size is 1K for a reason, because there are loaders which never load more than one of two classes and therefore only ever load one or two Klass structure. A Klass structure, on 64bit platforms, comes to about 600-1000 bytes, therefore the smallest chunk size is 1K.</p>
+<p>In other words, chunks can be smaller than a commit granule because we may want to share a single granule among multiple loaders.</p>
+<p>Therefore we need multiple chunk sizes: small chunks to cut down on waste for small loaders, large chunks to hold large contiguous metaspace allocations, and to streamline allocation for large loaders. And once we have multiple chunk sizes we need to manage them when they are freed, and a buddy allocator is one of the simplest way to do so.</p>
 
 </body>
 </html>
