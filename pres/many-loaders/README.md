@@ -8,7 +8,7 @@ After:
 
 ![After](./new.png "After")
 
-This is from an artificial test case involving tons of small grained class loaders. This is usually a pathological situation but may happen in the context of badly written user programs, dynamic languages, when lots of reflection proxies are generated etc.
+This is from an artificial test case involving tons of small grained class loaders (5 groups, each 10K loaders, each loading 3 classes). This is usually a pathological situation but may happen in the context of badly written user programs, dynamic languages, when lots of reflection proxies are generated etc.
 
 
 
