@@ -4,7 +4,7 @@ import java.util.Random;
 
 public class Utils {
 
-    static Random rand = new Random();
+    static public Random rand = new Random();
 
     static final float defaultWiggle = 0.0f;
 
@@ -12,8 +12,35 @@ public class Utils {
         createRandomClass(classname, sizeFactor, defaultWiggle);
     }
 
-    static public void createRandomClass(String classname, int sizeFactor, float wiggle) {
-        String code = Utils.makeRandomSource(sizeFactor).replaceAll("CLASSNAME", classname);
+    static public String nameClass(int number) {
+        return "myclass_" + number;
+    }
+
+    // n -> n + (n * [-wiggle...wiggle))
+    static private int fluctuate(int n, float wiggle) {
+        int max_abs_deviation = (int)((float)n * wiggle);
+        int rand_deviation = 0;
+        if (max_abs_deviation >= 1) {
+            rand_deviation = rand.nextInt((max_abs_deviation * 2) + 1) - max_abs_deviation;
+        }
+        return n + rand_deviation;
+    }
+
+    static public void generateClasses(int num, int sizeFactor, float wiggle) {
+        for (int j = 0; j < num; j++) {
+            String className = nameClass(j);
+            Utils.createRandomClass(className, sizeFactor, wiggle);
+            if (j % 100 == 0) {
+                System.out.print("*");
+            }
+        }
+        System.out.println(".");
+    }
+
+    static void createRandomClass(String classname, int sizeFactor, float wiggle) {
+        int sizeFactorFluctuated = fluctuate(sizeFactor, wiggle);
+        sizeFactorFluctuated = Integer.max(1, sizeFactorFluctuated);
+        String code = Utils.makeRandomSource(sizeFactorFluctuated).replaceAll("CLASSNAME", classname);
         boolean success = InMemoryJavaFileManager.theFileManager().compileSingleFile(classname, code);
         assert(success);
     }
